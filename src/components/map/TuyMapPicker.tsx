@@ -76,11 +76,16 @@ export default function TuyMapPicker({
 }: TuyMapPickerProps) {
   const [coords, setCoords] = useState<[number, number]>(initialCoordinates);
   const [barangay, setBarangay] = useState<string>(initialBarangay);
+  const [detectedBarangay, setDetectedBarangay] = useState<string>(initialBarangay);
+  const [addressChoice, setAddressChoice] = useState<'custom' | 'barangay'>('custom');
   const [streetAddress, setStreetAddress] = useState<string>(
     initialAddress || `Brgy. ${initialBarangay}, Tuy, Batangas`
   );
-
   const [hasPin, setHasPin] = useState<boolean>(true);
+  const [isAddressDirty, setIsAddressDirty] = useState<boolean>(
+    Boolean(initialAddress && initialAddress !== `Brgy. ${initialBarangay}, Tuy, Batangas`)
+  );
+
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerInstance = useRef<google.maps.Marker | null>(null);
@@ -116,7 +121,7 @@ export default function TuyMapPicker({
     };
   };
 
-  // Helper to safely instantiate a marker
+  // Helper to safely instantiate or move marker
   const createOrUpdateMarker = (
     map: google.maps.Map,
     position: google.maps.LatLng | google.maps.LatLngLiteral,
@@ -150,8 +155,7 @@ export default function TuyMapPicker({
           const detected = getClosestTuyBarangay(lng, lat);
           setCoords([lng, lat]);
           setHasPin(true);
-          setBarangay(detected);
-          setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
+          setDetectedBarangay(detected);
         }
       });
 
@@ -220,8 +224,7 @@ export default function TuyMapPicker({
           const detected = getClosestTuyBarangay(lng, lat);
           setCoords([lng, lat]);
           setHasPin(true);
-          setBarangay(detected);
-          setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
+          setDetectedBarangay(detected);
         });
       })
       .catch((err) => {
@@ -233,12 +236,23 @@ export default function TuyMapPicker({
     };
   }, [isGoogleMapsActive]);
 
-  // When barangay quick button or dropdown is chosen
-  const handleBarangaySelect = (brgyName: string) => {
+  // When barangay dropdown is manually chosen by the user
+  const handleBarangayDropdownChange = (brgyName: string) => {
+    setBarangay(brgyName);
+    if (!isAddressDirty) {
+      setStreetAddress(`Brgy. ${brgyName}, Tuy, Batangas`);
+    }
+  };
+
+  // Move pin to the selected barangay center (User-initiated only)
+  const handleCenterPinToBarangay = (brgyName: string = barangay) => {
     setBarangay(brgyName);
     const targetCoords = BARANGAY_COORDINATES[brgyName] || TUY_CENTER_COORDINATES;
     setCoords(targetCoords);
-    setStreetAddress(`Brgy. ${brgyName}, Tuy, Batangas`);
+    setDetectedBarangay(brgyName);
+    if (!isAddressDirty) {
+      setStreetAddress(`Brgy. ${brgyName}, Tuy, Batangas`);
+    }
 
     if (mapInstance.current && typeof window !== 'undefined' && window.google) {
       const pos = toLatLngLiteral(targetCoords);
@@ -253,13 +267,11 @@ export default function TuyMapPicker({
   // Toggle or Clear Pin (No Marker mode)
   const handleTogglePin = () => {
     if (hasPin) {
-      // Remove marker
       if (markerInstance.current) {
         markerInstance.current.setMap(null);
       }
       setHasPin(false);
     } else {
-      // Place marker at current coordinates / barangay center
       if (mapInstance.current && typeof window !== 'undefined' && window.google) {
         const pos = toLatLngLiteral(coords);
         createOrUpdateMarker(mapInstance.current, pos, window.google);
@@ -275,19 +287,23 @@ export default function TuyMapPicker({
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
 
-    // Bounds for Tuy: Lng ~120.710 to 120.755, Lat ~14.045 to 14.008
     const lng = 120.710 + x * (120.755 - 120.710);
     const lat = 14.045 - y * (14.045 - 14.008);
 
     const detected = getClosestTuyBarangay(lng, lat);
     setCoords([lng, lat]);
     setHasPin(true);
-    setBarangay(detected);
-    setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
+    setDetectedBarangay(detected);
   };
 
   const handleConfirm = () => {
-    const finalAddress = streetAddress.trim() || `Brgy. ${barangay}, Tuy, Batangas`;
+    // Determine the address string based on user's choice:
+    // Either the custom editable text or the official barangay format
+    const finalAddress =
+      addressChoice === 'barangay'
+        ? `Brgy. ${barangay}, Tuy, Batangas`
+        : (streetAddress.trim() || `Brgy. ${barangay}, Tuy, Batangas`);
+
     onSelectLocation({
       coordinates: hasPin ? coords : [0, 0],
       address: finalAddress,
@@ -327,15 +343,18 @@ export default function TuyMapPicker({
 
       {/* Quick Barangay Buttons */}
       <div className="p-3 bg-slate-50 border-b border-slate-200">
-        <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-2">
-          Quick Barangay Jumper (Tuy, Batangas):
-        </span>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+            Quick Barangay Jumper (Tuy, Batangas):
+          </span>
+          <span className="text-[10px] text-slate-400">Pans map &amp; drops pin to center</span>
+        </div>
         <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
           {Object.keys(BARANGAY_COORDINATES).map((b) => (
             <button
               key={b}
               type="button"
-              onClick={() => handleBarangaySelect(b)}
+              onClick={() => handleCenterPinToBarangay(b)}
               className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                 barangay === b
                   ? 'bg-blue-600 text-white shadow-xs'
@@ -372,12 +391,12 @@ export default function TuyMapPicker({
             {hasPin ? (
               <>
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Pin Active • Click map to move or drag</span>
+                <span>Pin Placed • Click map to move or drag</span>
               </>
             ) : (
               <>
                 <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span className="text-amber-200">No Pin Set • Click map to place marker</span>
+                <span className="text-amber-200">No Pin Placed • Click map to drop pin</span>
               </>
             )}
           </div>
@@ -409,7 +428,7 @@ export default function TuyMapPicker({
             <div className="relative z-10 flex items-center justify-between text-xs text-blue-200 bg-black/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-white/10 pointer-events-none mt-8">
               <span className="flex items-center gap-1.5">
                 <Crosshair className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="font-bold text-amber-300">Auto-detected: Brgy. {barangay}</span>
+                <span className="font-bold text-amber-300">Proximity: Brgy. {detectedBarangay}</span>
               </span>
               <span className="font-mono text-[11px] text-slate-300">
                 {hasPin ? `${coords[1].toFixed(4)}° N, ${coords[0].toFixed(4)}° E` : 'No Pin'}
@@ -428,7 +447,7 @@ export default function TuyMapPicker({
                     Brgy. {barangay}, Tuy, Batangas
                   </p>
                   <p className="text-[11px] text-blue-200/90 font-medium">
-                    Tap anywhere on the map to place pin &amp; auto-update address
+                    Tap anywhere on the map to place pin
                   </p>
                 </div>
               ) : (
@@ -447,16 +466,27 @@ export default function TuyMapPicker({
         )}
       </div>
 
-      {/* Address Form Inputs */}
-      <div className="p-4 sm:p-5 space-y-3 bg-white">
+      {/* Address & Barangay Controls */}
+      <div className="p-4 sm:p-5 space-y-4 bg-white">
+        {/* Row 1: Barangay selection & Coordinates */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Detected Barangay
+            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+              <span>Selected Barangay (Official)</span>
+              {detectedBarangay !== barangay && (
+                <button
+                  type="button"
+                  onClick={() => handleBarangayDropdownChange(detectedBarangay)}
+                  className="text-[10px] font-bold text-blue-600 hover:underline"
+                  title="Click to use the nearest detected barangay"
+                >
+                  Use Proximity ({detectedBarangay})
+                </button>
+              )}
             </label>
             <select
               value={barangay}
-              onChange={(e) => handleBarangaySelect(e.target.value)}
+              onChange={(e) => handleBarangayDropdownChange(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-xs text-slate-900 font-bold focus:ring-2 focus:ring-blue-500"
             >
               {TUY_BARANGAYS.map((b) => (
@@ -469,13 +499,13 @@ export default function TuyMapPicker({
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
-              <span>Pinpoint Coordinates (Lng, Lat)</span>
+              <span>Pinned GPS Coordinates (Saved)</span>
               <button
                 type="button"
                 onClick={handleTogglePin}
                 className="text-[11px] font-bold text-blue-600 hover:underline"
               >
-                {hasPin ? 'Clear Pin' : 'Add Pin'}
+                {hasPin ? 'Clear Pin' : 'Drop Pin'}
               </button>
             </label>
             <input
@@ -489,23 +519,100 @@ export default function TuyMapPicker({
           </div>
         </div>
 
+        {/* Address Selection Option (Save Home Address Editable OR Barangay Address) */}
+        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-extrabold text-slate-900">
+              Choose Address Format to Save:
+            </span>
+            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              Coordinates ({coords[1].toFixed(4)}, {coords[0].toFixed(4)}) will be saved
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {/* Option A: Custom Editable Home Address */}
+            <label
+              className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                addressChoice === 'custom'
+                  ? 'bg-white border-blue-600 shadow-xs ring-1 ring-blue-600'
+                  : 'bg-white/70 border-slate-200 hover:bg-white'
+              }`}
+            >
+              <input
+                type="radio"
+                name="addressChoice"
+                checked={addressChoice === 'custom'}
+                onChange={() => setAddressChoice('custom')}
+                className="mt-0.5 text-blue-600 focus:ring-blue-500"
+              />
+              <div className="text-xs">
+                <span className="font-bold text-slate-900 block">Home Address (Editable)</span>
+                <span className="text-[11px] text-slate-500 block mt-0.5">
+                  Save custom street, house #, or sitio
+                </span>
+              </div>
+            </label>
+
+            {/* Option B: Standard Barangay Address */}
+            <label
+              className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                addressChoice === 'barangay'
+                  ? 'bg-white border-blue-600 shadow-xs ring-1 ring-blue-600'
+                  : 'bg-white/70 border-slate-200 hover:bg-white'
+              }`}
+            >
+              <input
+                type="radio"
+                name="addressChoice"
+                checked={addressChoice === 'barangay'}
+                onChange={() => setAddressChoice('barangay')}
+                className="mt-0.5 text-blue-600 focus:ring-blue-500"
+              />
+              <div className="text-xs">
+                <span className="font-bold text-slate-900 block">Barangay Format</span>
+                <span className="text-[11px] text-blue-700 font-semibold block mt-0.5 truncate">
+                  Brgy. {barangay}, Tuy, Batangas
+                </span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* Editable Address Text Input */}
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
-            <span>Home Address (Auto-populated from map pin)</span>
-            <span className="text-[11px] text-blue-600 font-semibold">Editable</span>
+            <span>
+              {addressChoice === 'custom'
+                ? 'Custom Home Address (Will be saved)'
+                : 'Custom Home Address (Optional)'}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setStreetAddress(`Brgy. ${barangay}, Tuy, Batangas`);
+                setIsAddressDirty(false);
+              }}
+              className="text-[11px] text-blue-600 font-semibold hover:underline"
+            >
+              Reset to &quot;Brgy. {barangay}&quot;
+            </button>
           </label>
           <input
             type="text"
-            required
+            required={addressChoice === 'custom'}
             placeholder="e.g. 142 Rizal St., Brgy. Poblacion 1, Tuy, Batangas"
             value={streetAddress}
-            onChange={(e) => setStreetAddress(e.target.value)}
+            onChange={(e) => {
+              setStreetAddress(e.target.value);
+              setIsAddressDirty(true);
+            }}
             className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs sm:text-sm text-slate-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
         {/* Action Buttons */}
-        <div className="pt-2 flex items-center justify-end gap-2">
+        <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
           {onClose && (
             <button
               type="button"
@@ -519,7 +626,7 @@ export default function TuyMapPicker({
           <button
             type="button"
             onClick={handleConfirm}
-            className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95"
+            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95"
           >
             <Check className="w-4 h-4" />
             <span>Apply Selected Address</span>

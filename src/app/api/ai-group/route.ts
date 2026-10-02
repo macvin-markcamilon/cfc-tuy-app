@@ -24,6 +24,61 @@ export interface AIGroupingResult {
   generatedAt: string;
 }
 
+// Priority-ordered list of Gemini models to try
+const CANDIDATE_MODELS = [
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-pro',
+  'gemini-1.5-pro-latest',
+  'gemini-1.0-pro',
+  'gemini-pro',
+];
+
+/**
+ * Discover the first available generateContent-capable model for this API key.
+ * Falls back to the candidate list if ListModels fails.
+ */
+async function resolveModel(apiKey: string): Promise<string> {
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      { method: 'GET', headers: { 'Content-Type': 'application/json' } }
+    );
+    if (resp.ok) {
+      const data = await resp.json();
+      const models: { name: string; supportedGenerationMethods?: string[] }[] =
+        data.models || [];
+      // Prefer our priority list if available
+      for (const candidate of CANDIDATE_MODELS) {
+        const found = models.find(
+          (m) =>
+            (m.name === `models/${candidate}` || m.name === candidate) &&
+            m.supportedGenerationMethods?.includes('generateContent')
+        );
+        if (found) {
+          const modelId = found.name.replace('models/', '');
+          console.log(`[ai-group] Using model from ListModels: ${modelId}`);
+          return modelId;
+        }
+      }
+      // Pick any model that supports generateContent
+      const any = models.find((m) =>
+        m.supportedGenerationMethods?.includes('generateContent')
+      );
+      if (any) {
+        const modelId = any.name.replace('models/', '');
+        console.log(`[ai-group] Using fallback model from ListModels: ${modelId}`);
+        return modelId;
+      }
+    }
+  } catch (e) {
+    console.warn('[ai-group] ListModels failed, using default candidate list:', e);
+  }
+  // Hard fallback — first in our priority list
+  console.log(`[ai-group] Defaulting to candidate model: ${CANDIDATE_MODELS[0]}`);
+  return CANDIDATE_MODELS[0];
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -48,6 +103,9 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Resolve which model is available for this key
+    const model = await resolveModel(apiKey);
 
     // Build the structured prompt for Gemini
     const couplesData = couples
@@ -94,24 +152,22 @@ Please group these couples according to the instruction above. Remember to use t
 
 ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
 
-    // Call Gemini API
+    // Call Gemini API with the resolved model
+    console.log(`[ai-group] Calling model: ${model}`);
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [
             {
-              parts: [
-                { text: systemPrompt + '\n\n' + userMessage },
-              ],
+              parts: [{ text: systemPrompt + '\n\n' + userMessage }],
             },
           ],
           generationConfig: {
             temperature: 0.4,
             maxOutputTokens: 4096,
-            responseMimeType: 'application/json',
           },
         }),
       }
@@ -119,7 +175,7 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
 
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
-      console.error('Gemini API error:', errorText);
+      console.error(`[ai-group] Gemini API error (model=${model}):`, errorText);
       let detail = geminiResponse.statusText;
       try {
         const errJson = JSON.parse(errorText);
@@ -135,7 +191,7 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
     const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     if (!rawText) {
-      console.error('Empty Gemini response:', JSON.stringify(geminiData));
+      console.error('[ai-group] Empty Gemini response:', JSON.stringify(geminiData));
       return NextResponse.json(
         { error: 'The AI returned an empty response. Please try again.' },
         { status: 500 }
@@ -145,14 +201,14 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
     // Parse the JSON from Gemini's response
     let parsed: { groups: { groupNumber: number; groupName: string; rationale: string; coupleIds: string[] }[]; summary: string };
     try {
-      // Strip markdown code fences if any (belt-and-suspenders since we request JSON MIME)
+      // Strip markdown code fences if present
       const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
       parsed = JSON.parse(cleaned);
       if (!parsed?.groups || !Array.isArray(parsed.groups)) {
         throw new Error('Missing "groups" array in AI response');
       }
     } catch (e: any) {
-      console.error('Failed to parse Gemini JSON output:', rawText, e?.message);
+      console.error('[ai-group] Failed to parse Gemini JSON output:', rawText, e?.message);
       return NextResponse.json(
         { error: `The AI returned an unexpected format: ${e?.message || 'parse error'}. Please try again.` },
         { status: 500 }
@@ -178,7 +234,7 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
 
     return NextResponse.json(result);
   } catch (err: any) {
-    console.error('AI grouping error:', err);
+    console.error('[ai-group] Unexpected error:', err);
     return NextResponse.json({ error: err?.message || 'Internal server error' }, { status: 500 });
   }
 }

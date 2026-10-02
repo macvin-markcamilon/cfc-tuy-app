@@ -1,7 +1,7 @@
 import React from 'react';
 import Hero from '@/components/home/Hero';
 import QuickStats from '@/components/home/QuickStats';
-import TuyMapboxMap from '@/components/map/TuyMapboxMap';
+import TuyGoogleMap from '@/components/map/TuyGoogleMap';
 import MinistriesGrid from '@/components/home/MinistriesGrid';
 import EventsPreview from '@/components/home/EventsPreview';
 import CLPCallout from '@/components/home/CLPCallout';
@@ -18,13 +18,13 @@ export default function Home() {
       {/* Quick Community Stats */}
       <QuickStats />
 
-      {/* Interactive Mapbox Tuy Chapter Map Section */}
+      {/* Interactive Google Maps Tuy Chapter Map Section */}
       <section className="py-12 sm:py-16 lg:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
             <div className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
               <MapPin className="w-4 h-4" />
-              <span>Interactive Mapbox Explorer</span>
+              <span>Interactive Google Maps Explorer</span>
             </div>
             <h2 className="mt-1 text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
               Tuy Barangay Households & Meeting Venues
@@ -44,7 +44,7 @@ export default function Home() {
         </div>
 
         {/* The Map Component */}
-        <TuyMapboxMap height="h-[500px] sm:h-[600px]" showFilters={true} />
+        <TuyGoogleMap height="h-[500px] sm:h-[600px]" showFilters={true} />
       </section>
 
       {/* Ministries Overview */}

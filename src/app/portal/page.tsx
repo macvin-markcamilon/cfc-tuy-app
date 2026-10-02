@@ -22,10 +22,10 @@ export default function LeaderPortalPage() {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const googleMapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   const isSupabaseConfigured = Boolean(supabaseUrl && supabaseKey);
-  const isMapboxConfigured = Boolean(mapboxToken && mapboxToken.startsWith('pk.'));
+  const isGoogleMapsConfigured = Boolean(googleMapsKey && googleMapsKey.length > 20);
 
   const sqlSchemaSnippet = `-- Run this in Supabase SQL Editor:
 CREATE TABLE IF NOT EXISTS households (
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS prayer_requests (
               Servants & Administration Portal
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Manage Tuy households, verify Supabase & Mapbox connections, and monitor CLP candidates.
+              Manage Tuy households, verify Supabase & Google Maps connections, and monitor CLP candidates.
             </p>
           </div>
 
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS prayer_requests (
           </button>
         </div>
 
-        {/* Tab 1: Integrations (Supabase, Mapbox, Vercel, Domain) */}
+        {/* Tab 1: Integrations (Supabase, Google Maps, Vercel, Domain) */}
         {activeTab === 'integrations' && (
           <div className="space-y-8">
             
@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS prayer_requests (
                 </div>
               </div>
 
-              {/* 2. Mapbox Status Card */}
+              {/* 2. Google Maps Status Card */}
               <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between mb-4">
@@ -179,34 +179,34 @@ CREATE TABLE IF NOT EXISTS prayer_requests (
                         <MapPin className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="font-bold text-slate-900 dark:text-white text-base">Mapbox GL</h3>
-                        <p className="text-[11px] text-slate-400">Tuy GPS & Terrain</p>
+                        <h3 className="font-bold text-slate-900 dark:text-white text-base">Google Maps</h3>
+                        <p className="text-[11px] text-slate-400">Tuy GPS &amp; Satellite</p>
                       </div>
                     </div>
 
-                    {isMapboxConfigured ? (
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded-full border border-blue-200">
+                    {isGoogleMapsConfigured ? (
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200">
                         <CheckCircle2 className="w-3 h-3" />
-                        Active GL
+                        Connected
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-full border border-indigo-200">
+                      <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200">
                         <CheckCircle2 className="w-3 h-3" />
-                        Vector Mode
+                        Key Missing
                       </span>
                     )}
                   </div>
 
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Renders interactive barangay pins across Tuy. High-resolution satellite & 3D street layers ready.
+                    Renders interactive barangay pins across Tuy. High-resolution satellite, terrain &amp; roadmap layers ready.
                   </p>
                 </div>
 
                 <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400">
-                  {isMapboxConfigured ? (
-                    <span className="font-mono text-blue-600 truncate block">Token active (pk...)</span>
+                  {isGoogleMapsConfigured ? (
+                    <span className="font-mono text-emerald-600 dark:text-emerald-400 truncate block">API Key active (AIzaSy...)</span>
                   ) : (
-                    <span>Add <code className="text-blue-500">NEXT_PUBLIC_MAPBOX_TOKEN</code> for satellite view.</span>
+                    <span>Add <code className="text-blue-500">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> for live map.</span>
                   )}
                 </div>
               </div>

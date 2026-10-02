@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import TuyMapboxMap from '@/components/map/TuyMapboxMap';
+import TuyGoogleMap from '@/components/map/TuyGoogleMap';
 import { HOUSEHOLD_GROUPS, TUY_BARANGAYS } from '@/lib/data/mock-data';
 import { MapPin, Search, Calendar, Phone, Users, Compass, ExternalLink } from 'lucide-react';
 import { MinistryType } from '@/types';
@@ -40,9 +40,9 @@ export default function MapPage() {
           </p>
         </div>
 
-        {/* The Mapbox Map Container */}
+        {/* The Google Maps Container */}
         <div className="mb-12">
-          <TuyMapboxMap height="h-[480px] sm:h-[620px]" showFilters={true} initialMinistry={activeMinistry} />
+          <TuyGoogleMap height="h-[480px] sm:h-[620px]" showFilters={true} initialMinistry={activeMinistry} />
         </div>
 
         {/* Directory & Search Section */}

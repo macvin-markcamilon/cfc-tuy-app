@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
 import { CLPCouple } from '@/types';
 import { TUY_CENTER_COORDINATES } from '@/lib/data/mock-data';
 import {
@@ -12,12 +11,15 @@ import {
   Heart,
   Compass,
   Navigation,
-  Layers,
   Sparkles,
-  Users,
   Search,
   ExternalLink,
 } from 'lucide-react';
+import {
+  loadGoogleMaps,
+  toLatLngLiteral,
+  isGoogleMapsKeyValid,
+} from '@/lib/maps/googleMapsLoader';
 
 interface CLPCouplesMapModalProps {
   isOpen: boolean;
@@ -25,6 +27,23 @@ interface CLPCouplesMapModalProps {
   couples: CLPCouple[];
   focusedCoupleId?: string | null;
   title?: string;
+}
+
+function buildCouplePinSvg(couple: CLPCouple, isSelected: boolean): string {
+  const bg = isSelected ? '#D97706' : '#243c81';
+  const initials = `${couple.husbandFirstName.charAt(0)}${couple.wifeFirstName.charAt(0)}`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="46" viewBox="0 0 36 46">
+      <defs>
+        <filter id="cShadow" x="-30%" y="-20%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="#000000" flood-opacity="0.38"/>
+        </filter>
+      </defs>
+      <path d="M18 44 C18 44, 33 26, 33 17 A15 15 0 0 0 3 17 C3 26, 18 44, 18 44 Z" fill="${bg}" stroke="#FFFFFF" stroke-width="2.5" filter="url(#cShadow)"/>
+      <circle cx="18" cy="17" r="10.5" fill="#FFFFFF"/>
+      <text x="18" y="20.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="9" fill="${bg}">${initials}</text>
+    </svg>
+  `)}`;
 }
 
 export default function CLPCouplesMapModal({
@@ -35,15 +54,15 @@ export default function CLPCouplesMapModal({
   title = 'Invited Couples Tuy Map',
 }: CLPCouplesMapModalProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
 
   const [selectedCouple, setSelectedCouple] = useState<CLPCouple | null>(null);
-  const [mapStyle, setMapStyle] = useState<'streets' | 'satellite' | 'outdoors'>('streets');
+  const [mapStyle, setMapStyle] = useState<'streets' | 'satellite' | 'terrain'>('streets');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
 
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-  const isMapboxActive = Boolean(mapboxToken && mapboxToken.startsWith('pk.') && mapboxToken.length > 20);
+  const isGoogleMapsActive = isGoogleMapsKeyValid();
 
   // Set initial selected couple
   useEffect(() => {
@@ -57,18 +76,11 @@ export default function CLPCouplesMapModal({
     }
   }, [focusedCoupleId, couples]);
 
-  // Initialize Mapbox map
+  // Initialize Google Maps in modal
   useEffect(() => {
-    if (!isOpen || !isMapboxActive || !mapContainer.current) return;
+    if (!isOpen || !isGoogleMapsActive || !mapContainer.current) return;
 
-    mapboxgl.accessToken = mapboxToken as string;
-
-    const styleUrl =
-      mapStyle === 'satellite'
-        ? 'mapbox://styles/mapbox/satellite-streets-v12'
-        : mapStyle === 'outdoors'
-        ? 'mapbox://styles/mapbox/outdoors-v12'
-        : 'mapbox://styles/mapbox/streets-v12';
+    let isMounted = true;
 
     // Center on focused couple or default Tuy center
     let initialCenter: [number, number] = TUY_CENTER_COORDINATES;
@@ -81,80 +93,87 @@ export default function CLPCouplesMapModal({
       initialCenter = couples[0].coordinates;
     }
 
-    try {
-      const mapInstance = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: styleUrl,
-        center: initialCenter,
-        zoom: focusedCoupleId ? 15 : 13.5,
-        pitch: 25,
+    loadGoogleMaps()
+      .then(({ maps }) => {
+        if (!isMounted || !mapContainer.current) return;
+
+        const mapTypeId =
+          mapStyle === 'satellite'
+            ? maps.MapTypeId.HYBRID
+            : mapStyle === 'terrain'
+            ? maps.MapTypeId.TERRAIN
+            : maps.MapTypeId.ROADMAP;
+
+        if (!mapInstanceRef.current) {
+          const map = new maps.Map(mapContainer.current, {
+            center: toLatLngLiteral(initialCenter),
+            zoom: focusedCoupleId ? 15 : 13.5,
+            mapTypeId,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: false,
+            zoomControl: true,
+            gestureHandling: 'greedy',
+          });
+
+          mapInstanceRef.current = map;
+          setIsMapLoaded(true);
+        } else {
+          mapInstanceRef.current.setMapTypeId(mapTypeId);
+        }
+      })
+      .catch((err) => {
+        console.error('Error initializing Google Maps in modal:', err);
       });
 
-      mapInstance.addControl(new mapboxgl.NavigationControl(), 'top-right');
-
-      map.current = mapInstance;
-
-      return () => {
-        mapInstance.remove();
-      };
-    } catch (err) {
-      console.error('Error initializing Mapbox in modal:', err);
-    }
-  }, [isOpen, isMapboxActive, mapboxToken, mapStyle]);
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, isGoogleMapsActive, mapStyle]);
 
   // Update markers
   useEffect(() => {
-    const currentMap = map.current;
-    if (!currentMap || !isMapboxActive) return;
+    const currentMap = mapInstanceRef.current;
+    if (!currentMap || !isMapLoaded || typeof google === 'undefined' || !google.maps) return;
 
-    markersRef.current.forEach((m) => m.remove());
+    markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
 
     couples.forEach((couple) => {
       if (!couple.coordinates || couple.coordinates.length < 2) return;
 
       const isSelected = selectedCouple?.id === couple.id;
+      const position = toLatLngLiteral(couple.coordinates);
 
-      // Custom marker DOM element
-      const el = document.createElement('div');
-      el.className = 'cursor-pointer transition-transform hover:scale-110';
-      el.innerHTML = `
-        <div style="
-          width: ${isSelected ? '38px' : '30px'};
-          height: ${isSelected ? '38px' : '30px'};
-          background-color: ${isSelected ? '#D97706' : '#243c81'};
-          color: white;
-          border-radius: 9999px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-          border: 2px solid white;
-          font-weight: 800;
-          font-size: 11px;
-        ">
-          ${couple.husbandFirstName.charAt(0)}${couple.wifeFirstName.charAt(0)}
-        </div>
-      `;
-
-      el.addEventListener('click', () => {
-        setSelectedCouple(couple);
-        currentMap.flyTo({ center: couple.coordinates, zoom: 15.5, essential: true });
+      const marker = new google.maps.Marker({
+        position,
+        map: currentMap,
+        title: `Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName} ${couple.husbandLastName}`,
+        icon: {
+          url: buildCouplePinSvg(couple, isSelected),
+          scaledSize: new google.maps.Size(36, 46),
+          anchor: new google.maps.Point(18, 46),
+        },
+        zIndex: isSelected ? 999 : 1,
       });
 
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat(couple.coordinates)
-        .addTo(currentMap);
+      marker.addListener('click', () => {
+        setSelectedCouple(couple);
+        currentMap.panTo(position);
+        currentMap.setZoom(15.5);
+      });
 
       markersRef.current.push(marker);
     });
-  }, [couples, selectedCouple, isMapboxActive]);
+  }, [couples, selectedCouple, isMapLoaded]);
 
-  // Fly to selected couple when changed
+  // Pan to selected couple when changed
   const handleSelectCouple = (c: CLPCouple) => {
     setSelectedCouple(c);
-    if (map.current && c.coordinates) {
-      map.current.flyTo({ center: c.coordinates, zoom: 15.5, essential: true });
+    if (mapInstanceRef.current && c.coordinates) {
+      const pos = toLatLngLiteral(c.coordinates);
+      mapInstanceRef.current.panTo(pos);
+      mapInstanceRef.current.setZoom(15.5);
     }
   };
 
@@ -171,7 +190,6 @@ export default function CLPCouplesMapModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
       <div className="bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 max-w-5xl w-full flex flex-col h-[90vh] max-h-[850px]">
-        
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -186,14 +204,14 @@ export default function CLPCouplesMapModal({
                 </span>
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Interactive Mapbox visualization of invited couples across Tuy, Batangas.
+                Interactive Google Maps visualization of invited couples across Tuy, Batangas.
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {/* Style switcher */}
-            {isMapboxActive && (
+            {isGoogleMapsActive && (
               <div className="hidden sm:flex items-center gap-1 bg-slate-200/80 p-1 rounded-xl text-xs font-bold text-slate-700">
                 <button
                   type="button"
@@ -202,7 +220,7 @@ export default function CLPCouplesMapModal({
                     mapStyle === 'streets' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50'
                   }`}
                 >
-                  Streets
+                  Map
                 </button>
                 <button
                   type="button"
@@ -215,12 +233,12 @@ export default function CLPCouplesMapModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMapStyle('outdoors')}
+                  onClick={() => setMapStyle('terrain')}
                   className={`px-2.5 py-1 rounded-lg transition-all ${
-                    mapStyle === 'outdoors' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50'
+                    mapStyle === 'terrain' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50'
                   }`}
                 >
-                  Outdoors
+                  Terrain
                 </button>
               </div>
             )}
@@ -237,10 +255,8 @@ export default function CLPCouplesMapModal({
 
         {/* Main Content: Split into Sidebar & Map View */}
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-          
           {/* Left/Mobile Bottom Sidebar: Couple List & Active Card */}
           <div className="w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50 flex flex-col shrink-0 overflow-hidden">
-            
             {/* Search Input */}
             <div className="p-3 border-b border-slate-200 bg-white">
               <div className="relative">
@@ -374,9 +390,9 @@ export default function CLPCouplesMapModal({
             )}
           </div>
 
-          {/* Right Area: Interactive Mapbox Map */}
+          {/* Right Area: Interactive Google Map */}
           <div className="flex-1 relative bg-slate-950 overflow-hidden">
-            {isMapboxActive ? (
+            {isGoogleMapsActive ? (
               <div ref={mapContainer} className="w-full h-full" />
             ) : (
               /* Fallback Interactive Vector Canvas */
@@ -421,9 +437,7 @@ export default function CLPCouplesMapModal({
               </div>
             )}
           </div>
-
         </div>
-
       </div>
     </div>
   );

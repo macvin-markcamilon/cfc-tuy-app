@@ -158,7 +158,7 @@ export default function Footer() {
               Built with love <Heart className="w-3 h-3 text-red-500 fill-red-500" /> for the Tuy Community
             </span>
             <span>•</span>
-            <span>Powered by Next.js, Supabase & Mapbox</span>
+            <span>Powered by Next.js, Supabase & Google Maps</span>
           </div>
         </div>
 

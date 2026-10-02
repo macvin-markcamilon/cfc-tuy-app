@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
 import { TUY_BARANGAYS, TUY_CENTER_COORDINATES } from '@/lib/data/mock-data';
 import { MapPin, Check, Compass, Crosshair, Sparkles } from 'lucide-react';
+import {
+  loadGoogleMaps,
+  toLatLngLiteral,
+  isGoogleMapsKeyValid,
+} from '@/lib/maps/googleMapsLoader';
 
 interface TuyMapPickerProps {
   initialCoordinates?: [number, number];
@@ -76,54 +80,79 @@ export default function TuyMapPicker({
   );
 
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
-  const marker = useRef<mapboxgl.Marker | null>(null);
+  const mapInstance = useRef<google.maps.Map | null>(null);
+  const markerInstance = useRef<google.maps.Marker | null>(null);
 
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-  const isMapboxActive = Boolean(mapboxToken && mapboxToken.startsWith('pk.') && mapboxToken.length > 20);
+  const isGoogleMapsActive = isGoogleMapsKeyValid();
 
-  // Initialize Mapbox if token is provided
+  // Initialize Google Maps if key is valid
   useEffect(() => {
-    if (!isMapboxActive || !mapContainer.current) return;
+    if (!isGoogleMapsActive || !mapContainer.current) return;
 
-    mapboxgl.accessToken = mapboxToken as string;
+    let isMounted = true;
 
-    const mapInstance = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: coords,
-      zoom: 14,
-    });
+    loadGoogleMaps()
+      .then(({ maps }) => {
+        if (!isMounted || !mapContainer.current) return;
 
-    const markerInstance = new mapboxgl.Marker({ draggable: true, color: '#2563EB' })
-      .setLngLat(coords)
-      .addTo(mapInstance);
+        const center = toLatLngLiteral(coords);
 
-    // Auto-detect barangay and set address when marker is dragged
-    markerInstance.on('dragend', () => {
-      const lngLat = markerInstance.getLngLat();
-      const detected = getClosestTuyBarangay(lngLat.lng, lngLat.lat);
-      setCoords([lngLat.lng, lngLat.lat]);
-      setBarangay(detected);
-      setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
-    });
+        const map = new maps.Map(mapContainer.current, {
+          center,
+          zoom: 14,
+          mapTypeId: maps.MapTypeId.ROADMAP,
+          streetViewControl: false,
+          mapTypeControl: false,
+          fullscreenControl: false,
+          zoomControl: true,
+          gestureHandling: 'greedy',
+        });
 
-    // Auto-detect barangay and set address when map is clicked
-    mapInstance.on('click', (e) => {
-      markerInstance.setLngLat(e.lngLat);
-      const detected = getClosestTuyBarangay(e.lngLat.lng, e.lngLat.lat);
-      setCoords([e.lngLat.lng, e.lngLat.lat]);
-      setBarangay(detected);
-      setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
-    });
+        // Draggable pin
+        const marker = new maps.Marker({
+          position: center,
+          map,
+          draggable: true,
+          title: 'Drag me to adjust Tuy pinpoint',
+          animation: maps.Animation.DROP,
+        });
 
-    map.current = mapInstance;
-    marker.current = markerInstance;
+        // When marker is dragged
+        marker.addListener('dragend', () => {
+          const pos = marker.getPosition();
+          if (pos) {
+            const lng = Number(pos.lng().toFixed(6));
+            const lat = Number(pos.lat().toFixed(6));
+            const detected = getClosestTuyBarangay(lng, lat);
+            setCoords([lng, lat]);
+            setBarangay(detected);
+            setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
+          }
+        });
+
+        // When map is clicked
+        map.addListener('click', (e: google.maps.MapMouseEvent) => {
+          if (!e.latLng) return;
+          marker.setPosition(e.latLng);
+          const lng = Number(e.latLng.lng().toFixed(6));
+          const lat = Number(e.latLng.lat().toFixed(6));
+          const detected = getClosestTuyBarangay(lng, lat);
+          setCoords([lng, lat]);
+          setBarangay(detected);
+          setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
+        });
+
+        mapInstance.current = map;
+        markerInstance.current = marker;
+      })
+      .catch((err) => {
+        console.error('Error initializing Google Maps in picker:', err);
+      });
 
     return () => {
-      mapInstance.remove();
+      isMounted = false;
     };
-  }, [isMapboxActive, mapboxToken]);
+  }, [isGoogleMapsActive]);
 
   // When barangay quick button or dropdown is chosen
   const handleBarangaySelect = (brgyName: string) => {
@@ -132,13 +161,15 @@ export default function TuyMapPicker({
     setCoords(targetCoords);
     setStreetAddress(`Brgy. ${brgyName}, Tuy, Batangas`);
 
-    if (map.current && marker.current) {
-      marker.current.setLngLat(targetCoords);
-      map.current.flyTo({ center: targetCoords, zoom: 15 });
+    if (mapInstance.current && markerInstance.current) {
+      const pos = toLatLngLiteral(targetCoords);
+      markerInstance.current.setPosition(pos);
+      mapInstance.current.panTo(pos);
+      mapInstance.current.setZoom(15);
     }
   };
 
-  // Click on interactive vector canvas (Fallback when Mapbox token not configured)
+  // Click on interactive vector canvas (Fallback when Google Maps key is not configured)
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -166,7 +197,6 @@ export default function TuyMapPicker({
 
   return (
     <div className="flex flex-col bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 max-w-2xl w-full">
-      
       {/* Header */}
       <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -175,10 +205,10 @@ export default function TuyMapPicker({
           </div>
           <div>
             <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
-              Tuy Address &amp; Map Pinpoint Picker
+              Tuy Address &amp; Google Map Pinpoint Picker
             </h3>
             <p className="text-xs text-slate-500 font-medium">
-              Click anywhere on the map or select a barangay to auto-detect and populate the address.
+              Click anywhere on the map or drag the pin to auto-detect and populate the Tuy address.
             </p>
           </div>
         </div>
@@ -219,7 +249,7 @@ export default function TuyMapPicker({
 
       {/* Interactive Map Visual Area */}
       <div className="relative h-64 sm:h-72 w-full bg-slate-900 overflow-hidden cursor-crosshair">
-        {isMapboxActive ? (
+        {isGoogleMapsActive ? (
           <div ref={mapContainer} className="w-full h-full" />
         ) : (
           /* Interactive High-Fidelity Vector Canvas for Tuy */
@@ -334,7 +364,6 @@ export default function TuyMapPicker({
           </button>
         </div>
       </div>
-
     </div>
   );
 }

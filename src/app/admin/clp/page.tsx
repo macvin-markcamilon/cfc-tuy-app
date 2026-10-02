@@ -110,7 +110,7 @@ export default function CLPAdminPage() {
   const [editTalkTime, setEditTalkTime] = useState('6:30 PM - 9:00 PM');
   const [editTalkModule, setEditTalkModule] = useState('Module 1: Basic Truths');
 
-  // In-App Mapbox Modal State (for viewing single or all couples)
+  // In-App Google Maps Modal State (for viewing single or all couples)
   const [showCouplesMapModal, setShowCouplesMapModal] = useState(false);
   const [mapModalFocusedCoupleId, setMapModalFocusedCoupleId] = useState<string | null>(null);
   const [mapModalTitle, setMapModalTitle] = useState('All Invited Couples Tuy Map');
@@ -1002,7 +1002,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       </div>
                     </div>
 
-                    {/* Bottom Card Footer: GPS and In-App Mapbox View Button */}
+                    {/* Bottom Card Footer: GPS and In-App Google Maps View Button */}
                     <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                       <span className="font-mono text-[11px]">
                         GPS: {couple.coordinates[1].toFixed(4)}, {couple.coordinates[0].toFixed(4)}
@@ -2670,7 +2670,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 6: IN-APP MAPBOX VIEWER FOR SINGLE OR ALL INVITED COUPLES           */}
+      {/* MODAL 6: IN-APP GOOGLE MAPS VIEWER FOR SINGLE OR ALL INVITED COUPLES      */}
       {/* ========================================================================= */}
       <CLPCouplesMapModal
         isOpen={showCouplesMapModal}

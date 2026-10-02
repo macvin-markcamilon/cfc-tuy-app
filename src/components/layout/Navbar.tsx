@@ -51,7 +51,7 @@ export default function Navbar() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
-                Western Batangas • San Nicolas de Tolentino Parish
+                Western Batangas • Saint Vincent Ferrer Parish
               </p>
             </div>
           </Link>

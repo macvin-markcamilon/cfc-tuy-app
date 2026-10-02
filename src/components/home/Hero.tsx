@@ -67,7 +67,7 @@ export default function Hero() {
           {/* Parish Tagline */}
           <div className="mt-8 flex items-center justify-center gap-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
             <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>Under the pastoral care of San Nicolas de Tolentino Parish • Archdiocese of Lipa</span>
+            <span>Under the pastoral care of Saint Vincent Ferrer Parish • Archdiocese of Lipa</span>
           </div>
 
         </div>

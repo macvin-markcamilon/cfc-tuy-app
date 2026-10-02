@@ -40,6 +40,7 @@ import {
   Trash2,
   AlertCircle,
   Sparkles,
+  Mail,
 } from 'lucide-react';
 
 export default function CLPAdminPage() {
@@ -78,7 +79,7 @@ export default function CLPAdminPage() {
 
   // Form states - New CLP
   const [newClpName, setNewClpName] = useState('');
-  const [newClpVenue, setNewClpVenue] = useState('San Nicolas de Tolentino Parish Social Hall, Tuy');
+  const [newClpVenue, setNewClpVenue] = useState('Saint Vincent Ferrer Parish Social Hall, Tuy');
   const [newClpStartDate, setNewClpStartDate] = useState('');
   const [newClpEndDate, setNewClpEndDate] = useState('');
   const [newClpBatchNumber, setNewClpBatchNumber] = useState('');
@@ -90,12 +91,14 @@ export default function CLPAdminPage() {
   const [husbandBday, setHusbandBday] = useState('');
   const [husbandJob, setHusbandJob] = useState('');
   const [husbandPhone, setHusbandPhone] = useState('');
+  const [husbandEmail, setHusbandEmail] = useState('');
 
   const [wifeFirst, setWifeFirst] = useState('');
   const [wifeLast, setWifeLast] = useState('');
   const [wifeBday, setWifeBday] = useState('');
   const [wifeJob, setWifeJob] = useState('');
   const [wifePhone, setWifePhone] = useState('');
+  const [wifeEmail, setWifeEmail] = useState('');
 
   const [weddingAnniv, setWeddingAnniv] = useState('');
   const [coupleAddress, setCoupleAddress] = useState('Brgy. Poblacion 1, Tuy, Batangas');
@@ -106,7 +109,7 @@ export default function CLPAdminPage() {
   const [talkNumber, setTalkNumber] = useState(1);
   const [talkTitle, setTalkTitle] = useState('');
   const [talkSpeaker, setTalkSpeaker] = useState('');
-  const [talkVenue, setTalkVenue] = useState('San Nicolas de Tolentino Parish Social Hall, Tuy');
+  const [talkVenue, setTalkVenue] = useState('Saint Vincent Ferrer Parish Social Hall, Tuy');
   const [talkDate, setTalkDate] = useState('');
   const [talkTime, setTalkTime] = useState('6:30 PM - 9:00 PM');
 
@@ -198,7 +201,7 @@ export default function CLPAdminPage() {
       batchNumber: newClpBatchNumber || `Batch ${programs.length + 1}`,
       teamLeader: 'Bro. Mark & Sis. Grace Camilon',
       couplesCount: 0,
-      talksCount: autoPopulateTalks ? 12 : 0,
+      talksCount: autoPopulateTalks ? 8 : 0,
     };
 
     try {
@@ -207,7 +210,7 @@ export default function CLPAdminPage() {
       setPrograms(updated);
       setSelectedClpId(saved.id);
 
-      // Auto-populate 12 standard CFC CLP Talks if selected
+      // Auto-populate 8 revised CFC CLP Talks if selected
       if (autoPopulateTalks) {
         const createdTalks = await populateStandardTalksForCLP(saved.id, saved.startDate, saved.venue);
         setTalks((prev) => [...prev, ...createdTalks]);
@@ -268,11 +271,13 @@ export default function CLPAdminPage() {
       husbandBirthday: husbandBday,
       husbandOccupation: husbandJob,
       husbandContact: husbandPhone,
+      husbandEmail: husbandEmail.trim(),
       wifeFirstName: wifeFirst,
       wifeLastName: wifeLast,
       wifeBirthday: wifeBday,
       wifeOccupation: wifeJob,
       wifeContact: wifePhone,
+      wifeEmail: wifeEmail.trim(),
       weddingAnniversary: weddingAnniv,
       address: coupleAddress,
       barangay: coupleBarangay,
@@ -291,11 +296,13 @@ export default function CLPAdminPage() {
       setHusbandBday('');
       setHusbandJob('');
       setHusbandPhone('');
+      setHusbandEmail('');
       setWifeFirst('');
       setWifeLast('');
       setWifeBday('');
       setWifeJob('');
       setWifePhone('');
+      setWifeEmail('');
       setWeddingAnniv('');
 
       triggerToast(`Couple Bro. ${saved.husbandFirstName} & Sis. ${saved.wifeFirstName} ${saved.husbandLastName} saved!`);
@@ -361,7 +368,7 @@ export default function CLPAdminPage() {
       if (createdTalks.length > 0) {
         setSelectedTalkId(createdTalks[0].id);
       }
-      triggerToast('12 standard CFC CLP Talks populated successfully!');
+      triggerToast('8 revised CFC CLP Talks populated successfully!');
     } catch (err) {
       console.error('Error populating talks:', err);
     }
@@ -658,6 +665,12 @@ export default function CLPAdminPage() {
                               <span className="text-slate-600"> • 📞 {couple.husbandContact}</span>
                             )}
                           </div>
+                          {couple.husbandEmail && (
+                            <div className="text-slate-600 flex items-center gap-1.5 mt-1 font-medium">
+                              <Mail className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                              <span className="truncate">{couple.husbandEmail}</span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
@@ -679,6 +692,12 @@ export default function CLPAdminPage() {
                               <span className="text-slate-600"> • 📞 {couple.wifeContact}</span>
                             )}
                           </div>
+                          {couple.wifeEmail && (
+                            <div className="text-slate-600 flex items-center gap-1.5 mt-1 font-medium">
+                              <Mail className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              <span className="truncate">{couple.wifeEmail}</span>
+                            </div>
+                          )}
                         </div>
 
                         <div className="pt-2 flex items-start gap-1.5 text-xs text-slate-700">
@@ -730,7 +749,7 @@ export default function CLPAdminPage() {
                       No talks registered for this CLP yet
                     </h3>
                     <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-md mx-auto">
-                      You can instantly populate the 12 standard CFC Christian Life Program curriculum
+                      You can instantly populate the 8 revised CFC Christian Life Program curriculum
                       talks or manually add custom sessions.
                     </p>
                   </div>
@@ -740,7 +759,7 @@ export default function CLPAdminPage() {
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white font-bold text-xs sm:text-sm shadow-xs"
                     >
                       <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>Auto-populate 12 Standard CFC Talks</span>
+                      <span>Auto-populate 8 Revised CFC Talks</span>
                     </button>
                     <button
                       onClick={() => setShowAddTalkModal(true)}
@@ -1089,9 +1108,9 @@ export default function CLPAdminPage() {
                   className="mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                 />
                 <label htmlFor="autoTalks" className="text-xs text-slate-800 font-bold cursor-pointer">
-                  Auto-create the 12 Standard CFC CLP Talks scheduled weekly
+                  Auto-create the 8 Revised CFC CLP Talks scheduled weekly
                   <span className="block text-[11px] text-slate-600 font-normal mt-0.5">
-                    Generates the official 12 talk syllabus across Modules 1 to 3 with automatic Saturday dates.
+                    Generates the official 8 talk revised syllabus across Modules 1 and 2 with automatic Saturday dates.
                   </span>
                 </label>
               </div>
@@ -1176,7 +1195,7 @@ export default function CLPAdminPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-800 mb-1">
                       Birthday
@@ -1200,6 +1219,9 @@ export default function CLPAdminPage() {
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-800 mb-1">
                       Mobile Number
@@ -1210,6 +1232,18 @@ export default function CLPAdminPage() {
                       value={husbandPhone}
                       onChange={(e) => setHusbandPhone(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-800 mb-1">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="e.g. dennis.bautista@gmail.com"
+                      value={husbandEmail}
+                      onChange={(e) => setHusbandEmail(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs focus:ring-2 focus:ring-blue-600"
                     />
                   </div>
                 </div>
@@ -1251,7 +1285,7 @@ export default function CLPAdminPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-800 mb-1">
                       Birthday
@@ -1275,6 +1309,9 @@ export default function CLPAdminPage() {
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-800 mb-1">
                       Mobile Number
@@ -1285,6 +1322,18 @@ export default function CLPAdminPage() {
                       value={wifePhone}
                       onChange={(e) => setWifePhone(e.target.value)}
                       className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-800 mb-1">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="e.g. karen.bautista@gmail.com"
+                      value={wifeEmail}
+                      onChange={(e) => setWifeEmail(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs focus:ring-2 focus:ring-rose-600"
                     />
                   </div>
                 </div>
@@ -1340,6 +1389,20 @@ export default function CLPAdminPage() {
                     >
                       Change Pin
                     </button>
+                  </div>
+
+                  <div className="mt-2.5">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Full Address (Auto-populated from map pin)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={coupleAddress}
+                      onChange={(e) => setCoupleAddress(e.target.value)}
+                      placeholder="e.g. Brgy. Poblacion 1, Tuy, Batangas"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs focus:ring-2 focus:ring-blue-600 font-medium"
+                    />
                   </div>
                 </div>
 

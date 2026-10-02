@@ -9,23 +9,21 @@ const STORAGE_KEYS = {
   LEGACY_PURGED: 'cfc_tuy_sample_purged_v1',
 };
 
-export const CFC_STANDARD_12_TALKS = [
+export const CFC_STANDARD_8_TALKS = [
   // Module 1: The Basic Truths about Christianity
   { talkNumber: 1, title: "God's Love", moduleName: 'Module 1: Basic Truths' },
   { talkNumber: 2, title: 'Who is Jesus Christ?', moduleName: 'Module 1: Basic Truths' },
-  { talkNumber: 3, title: 'What it Means to be a Christian', moduleName: 'Module 1: Basic Truths' },
-  { talkNumber: 4, title: 'Repentance and Faith', moduleName: 'Module 1: Basic Truths' },
+  { talkNumber: 3, title: 'Repentance and Faith', moduleName: 'Module 1: Basic Truths' },
   // Module 2: The Authentic & Spirit-Filled Christian Life
+  { talkNumber: 4, title: 'Loving God and Neighbor', moduleName: 'Module 2: Spirit-Filled Life' },
   { talkNumber: 5, title: 'The Christian Family', moduleName: 'Module 2: Spirit-Filled Life' },
-  { talkNumber: 6, title: 'Life in the Holy Spirit', moduleName: 'Module 2: Spirit-Filled Life' },
-  { talkNumber: 7, title: 'Receiving the Power of the Holy Spirit', moduleName: 'Module 2: Spirit-Filled Life' },
-  { talkNumber: 8, title: 'Growing in the Spirit', moduleName: 'Module 2: Spirit-Filled Life' },
-  // Module 3: Living a Full Christian Life
-  { talkNumber: 9, title: 'The Life and Mission of Couples for Christ', moduleName: 'Module 3: Full Christian Life' },
-  { talkNumber: 10, title: 'Christian Conduct', moduleName: 'Module 3: Full Christian Life' },
-  { talkNumber: 11, title: 'Dedicated Christian Marriage', moduleName: 'Module 3: Full Christian Life' },
-  { talkNumber: 12, title: 'Transformation in Christ (Dedication & Commitment)', moduleName: 'Module 3: Full Christian Life' },
+  { talkNumber: 6, title: 'Empowered by the Holy Spirit', moduleName: 'Module 2: Spirit-Filled Life' },
+  { talkNumber: 7, title: 'Growing in the Spirit', moduleName: 'Module 2: Spirit-Filled Life' },
+  { talkNumber: 8, title: 'Transformation in Christ', moduleName: 'Module 2: Spirit-Filled Life' },
 ];
+
+export const CFC_STANDARD_TALKS = CFC_STANDARD_8_TALKS;
+export const CFC_STANDARD_12_TALKS = CFC_STANDARD_8_TALKS; // Alias for backward compatibility
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined';
@@ -81,7 +79,7 @@ export async function fetchCLPPrograms(): Promise<CLPProgram[]> {
           batchNumber: row.batch_number || '',
           teamLeader: row.team_leader || 'Bro. Mark & Sis. Grace Camilon',
           couplesCount: 0,
-          talksCount: 12,
+          talksCount: 8,
         }));
 
         if (isBrowser()) {
@@ -230,11 +228,13 @@ export async function fetchCLPCouples(clpId?: string): Promise<CLPCouple[]> {
           husbandBirthday: row.husband_birthday || '',
           husbandOccupation: row.husband_occupation || '',
           husbandContact: row.husband_contact || '',
+          husbandEmail: row.husband_email || '',
           wifeFirstName: row.wife_first_name,
           wifeLastName: row.wife_last_name,
           wifeBirthday: row.wife_birthday || '',
           wifeOccupation: row.wife_occupation || '',
           wifeContact: row.wife_contact || '',
+          wifeEmail: row.wife_email || '',
           weddingAnniversary: row.wedding_anniversary || '',
           address: row.address,
           barangay: row.barangay,
@@ -304,11 +304,13 @@ export async function saveCLPCouple(couple: CLPCouple): Promise<CLPCouple> {
         husband_birthday: couple.husbandBirthday || null,
         husband_occupation: couple.husbandOccupation || null,
         husband_contact: couple.husbandContact || null,
+        husband_email: couple.husbandEmail || null,
         wife_first_name: couple.wifeFirstName,
         wife_last_name: couple.wifeLastName,
         wife_birthday: couple.wifeBirthday || null,
         wife_occupation: couple.wifeOccupation || null,
         wife_contact: couple.wifeContact || null,
+        wife_email: couple.wifeEmail || null,
         wedding_anniversary: couple.weddingAnniversary || null,
         address: couple.address,
         barangay: couple.barangay,
@@ -479,28 +481,28 @@ export async function saveCLPTalk(talk: CLPTalk): Promise<CLPTalk> {
 }
 
 /**
- * Automatically creates the 12 standard CFC CLP Talks for a program.
+ * Automatically creates the 8 revised CFC CLP Talks for a program.
  */
 export async function populateStandardTalksForCLP(
   clpId: string,
   startDateStr: string,
-  venue: string
+  venue: string = 'Saint Vincent Ferrer Parish Social Hall, Tuy'
 ): Promise<CLPTalk[]> {
   const createdTalks: CLPTalk[] = [];
   const baseDate = startDateStr ? new Date(startDateStr) : new Date();
 
-  for (let i = 0; i < CFC_STANDARD_12_TALKS.length; i++) {
-    const item = CFC_STANDARD_12_TALKS[i];
+  for (let i = 0; i < CFC_STANDARD_8_TALKS.length; i++) {
+    const item = CFC_STANDARD_8_TALKS[i];
     const talkDate = new Date(baseDate);
     talkDate.setDate(baseDate.getDate() + i * 7); // weekly on Saturday
 
     const talk: CLPTalk = {
-      id: `talk-${clpId}-${item.talkNumber}-${Date.now()}`,
+      id: `talk-${clpId}-${item.talkNumber}-${Date.now() + i}`,
       clpId,
       talkNumber: item.talkNumber,
       title: item.title,
       speaker: 'To be assigned',
-      venue: venue || 'San Nicolas de Tolentino Parish Social Hall, Tuy',
+      venue: venue || 'Saint Vincent Ferrer Parish Social Hall, Tuy',
       date: talkDate.toISOString().split('T')[0],
       time: '6:30 PM - 9:00 PM',
       moduleName: item.moduleName,

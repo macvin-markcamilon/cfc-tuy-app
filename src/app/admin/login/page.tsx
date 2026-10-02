@@ -211,7 +211,7 @@ export default function AdminLoginPage() {
 
         {/* Parish Note */}
         <p className="mt-6 text-center text-xs text-blue-200">
-          San Nicolas de Tolentino Parish • Tuy Chapter, Batangas
+          Saint Vincent Ferrer Parish • Tuy Chapter, Batangas
         </p>
 
       </div>

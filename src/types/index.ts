@@ -78,11 +78,13 @@ export interface CLPCouple {
   husbandBirthday: string;
   husbandOccupation: string;
   husbandContact?: string;
+  husbandEmail?: string;
   wifeFirstName: string;
   wifeLastName: string;
   wifeBirthday: string;
   wifeOccupation: string;
   wifeContact?: string;
+  wifeEmail?: string;
   weddingAnniversary: string;
   address: string;
   barangay: string;

@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     "Kids for Christ",
     "Handmaids of the Lord",
     "Servants of the Lord",
-    "San Nicolas de Tolentino Parish Tuy",
+    "Saint Vincent Ferrer Parish Tuy",
   ],
   authors: [{ name: "CFC Tuy Chapter Secretariat" }],
   openGraph: {

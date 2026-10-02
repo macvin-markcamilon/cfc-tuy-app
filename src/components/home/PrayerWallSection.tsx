@@ -184,58 +184,70 @@ export default function PrayerWallSection() {
         )}
 
         {/* Requests Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {requests.map((item) => {
-            const hasPrayed = prayedIds[item.id];
+        {requests.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {requests.map((item) => {
+              const hasPrayed = prayedIds[item.id];
 
-            return (
-              <div
-                key={item.id}
-                className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                      {item.category}
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      {item.createdAt}
-                    </span>
+              return (
+                <div
+                  key={item.id}
+                  className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                        {item.category}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {item.createdAt}
+                      </span>
+                    </div>
+
+                    <p className="text-sm sm:text-base text-slate-800 dark:text-slate-200 font-medium leading-relaxed italic">
+                      &quot;{item.intention}&quot;
+                    </p>
+
+                    <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {item.authorName} {item.barangay ? `(${item.barangay})` : ''}
+                      </span>
+                    </div>
                   </div>
 
-                  <p className="text-sm sm:text-base text-slate-800 dark:text-slate-200 font-medium leading-relaxed italic">
-                    &quot;{item.intention}&quot;
-                  </p>
-
-                  <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      {item.authorName} {item.barangay ? `(${item.barangay})` : ''}
+                  <div className="mt-5 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      <strong className="text-blue-600 dark:text-blue-400">{item.prayerCount}</strong> brethren prayed
                     </span>
+
+                    <button
+                      onClick={() => handlePray(item.id)}
+                      disabled={hasPrayed}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                        hasPrayed
+                          ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900 cursor-default'
+                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-600 shadow-xs active:scale-95'
+                      }`}
+                    >
+                      <Heart className={`w-3.5 h-3.5 ${hasPrayed ? 'fill-red-500 text-red-500' : 'text-slate-400'}`} />
+                      <span>{hasPrayed ? 'Prayed with You' : 'I Prayed / Amen'}</span>
+                    </button>
                   </div>
                 </div>
-
-                <div className="mt-5 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    <strong className="text-blue-600 dark:text-blue-400">{item.prayerCount}</strong> brethren prayed
-                  </span>
-
-                  <button
-                    onClick={() => handlePray(item.id)}
-                    disabled={hasPrayed}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                      hasPrayed
-                        ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900 cursor-default'
-                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-600 shadow-xs active:scale-95'
-                    }`}
-                  >
-                    <Heart className={`w-3.5 h-3.5 ${hasPrayed ? 'fill-red-500 text-red-500' : 'text-slate-400'}`} />
-                    <span>{hasPrayed ? 'Prayed with You' : 'I Prayed / Amen'}</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="py-12 text-center text-slate-500">
+            <MessageSquareHeart className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
+            <p className="font-bold text-slate-800 dark:text-slate-200 text-base">
+              No prayer requests posted yet.
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              Be the first to submit a prayer intention for your family, health, or community.
+            </p>
+          </div>
+        )}
 
       </div>
     </section>

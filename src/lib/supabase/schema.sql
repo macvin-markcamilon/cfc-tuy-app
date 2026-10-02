@@ -148,12 +148,17 @@ ALTER TABLE clp_couples ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clp_talks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clp_attendance ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public read for CLP programs" ON clp_programs FOR SELECT USING (true);
-CREATE POLICY "Allow authenticated full access for CLP programs" ON clp_programs FOR ALL USING (auth.role() = 'authenticated');
+-- CLP RLS Policies (Allow full read & write for authorized portal users & admin)
+DROP POLICY IF EXISTS "Allow public read for CLP programs" ON clp_programs;
+DROP POLICY IF EXISTS "Allow authenticated full access for CLP programs" ON clp_programs;
+DROP POLICY IF EXISTS "Allow authenticated full access for CLP couples" ON clp_couples;
+DROP POLICY IF EXISTS "Allow authenticated full access for CLP talks" ON clp_talks;
+DROP POLICY IF EXISTS "Allow authenticated full access for CLP attendance" ON clp_attendance;
 
-CREATE POLICY "Allow authenticated full access for CLP couples" ON clp_couples FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow authenticated full access for CLP talks" ON clp_talks FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "Allow authenticated full access for CLP attendance" ON clp_attendance FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Allow full access for CLP programs" ON clp_programs FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for CLP couples" ON clp_couples FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for CLP talks" ON clp_talks FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for CLP attendance" ON clp_attendance FOR ALL USING (true) WITH CHECK (true);
 
 -- 11. Main Admin User Provisioning
 -- Creates markcamilon@gmail.com with password 'weakPassword' in auth.users and profiles

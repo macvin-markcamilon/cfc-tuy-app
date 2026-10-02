@@ -82,7 +82,7 @@ export default function AdminLayout({
   ];
 
   return (
-    <div className="min-h-screen flex bg-[#FFFFFF] text-slate-900">
+    <div className="min-h-screen flex bg-slate-50 text-slate-900">
       
       {/* Mobile Sidebar Backdrop */}
       {sidebarOpen && (
@@ -216,8 +216,8 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      {/* Main Content Viewport with Background #FFFFFF */}
-      <div className="flex-1 lg:pl-72 flex flex-col min-h-screen bg-[#FFFFFF]">
+      {/* Main Content Viewport with Background bg-slate-50 */}
+      <div className="flex-1 lg:pl-72 flex flex-col min-h-screen bg-slate-50">
         
         {/* Top Header Bar */}
         <header className="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs">
@@ -246,7 +246,7 @@ export default function AdminLayout({
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-[#FFFFFF]">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-50">{children}</main>
 
       </div>
 

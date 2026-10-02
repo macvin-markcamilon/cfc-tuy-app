@@ -64,72 +64,84 @@ export default function EventsPage() {
         </div>
 
         {/* Events Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-          {filteredEvents.map((evt) => {
-            const dateObj = new Date(evt.date);
-            const monthStr = dateObj.toLocaleDateString('en-US', { month: 'short' });
-            const dayStr = dateObj.toLocaleDateString('en-US', { day: 'numeric' });
-            const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+        {filteredEvents.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+            {filteredEvents.map((evt) => {
+              const dateObj = new Date(evt.date);
+              const monthStr = dateObj.toLocaleDateString('en-US', { month: 'short' });
+              const dayStr = dateObj.toLocaleDateString('en-US', { day: 'numeric' });
+              const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
 
-            return (
-              <div
-                key={evt.id}
-                id={evt.id}
-                className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl transition-all duration-200 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex flex-col items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-b from-blue-700 to-indigo-800 text-white shadow-md">
-                        <span className="text-[10px] uppercase font-bold tracking-wider">{monthStr}</span>
-                        <span className="text-xl font-black leading-none">{dayStr}</span>
+              return (
+                <div
+                  key={evt.id}
+                  id={evt.id}
+                  className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl transition-all duration-200 flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-col items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-b from-blue-700 to-indigo-800 text-white shadow-md">
+                          <span className="text-[10px] uppercase font-bold tracking-wider">{monthStr}</span>
+                          <span className="text-xl font-black leading-none">{dayStr}</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-400 font-medium block">{weekday}</span>
+                          <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{evt.category}</span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-xs text-slate-400 font-medium block">{weekday}</span>
-                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{evt.category}</span>
-                      </div>
+
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300">
+                        {evt.ministry}
+                      </span>
                     </div>
 
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300">
-                      {evt.ministry}
-                    </span>
+                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">
+                      {evt.title}
+                    </h3>
+
+                    <p className="mt-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {evt.description}
+                    </p>
+
+                    <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span>{evt.time}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                        <span>{evt.location}</span>
+                      </div>
+                    </div>
                   </div>
 
-                  <h3 className="font-bold text-lg text-slate-900 dark:text-white">
-                    {evt.title}
-                  </h3>
-
-                  <p className="mt-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {evt.description}
-                  </p>
-
-                  <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2 text-xs text-slate-500 dark:text-slate-400">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span>{evt.time}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
-                      <span>{evt.location}</span>
-                    </div>
+                  <div className="mt-6 pt-2">
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(evt.location)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 rounded-xl bg-slate-50 hover:bg-blue-600 dark:bg-slate-800 dark:hover:bg-blue-600 text-slate-700 hover:text-white dark:text-slate-300 dark:hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <span>View Venue & Map Directions</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
                   </div>
                 </div>
-
-                <div className="mt-6 pt-2">
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(evt.location)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-2.5 rounded-xl bg-slate-50 hover:bg-blue-600 dark:bg-slate-800 dark:hover:bg-blue-600 text-slate-700 hover:text-white dark:text-slate-300 dark:hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <span>View Venue & Map Directions</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="py-14 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 mb-16 shadow-xs">
+            <Calendar className="w-12 h-12 text-blue-600 mx-auto mb-3" />
+            <h3 className="font-bold text-slate-900 dark:text-white text-lg">
+              No events scheduled in this category
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+              Production events calendar will be updated as chapter assemblies and activities are finalized.
+            </p>
+          </div>
+        )}
 
         {/* CLP Registration Section */}
         <div id="clp" className="scroll-mt-24 rounded-3xl bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white p-6 sm:p-10 lg:p-12 shadow-2xl border border-blue-800/60">

@@ -52,6 +52,10 @@ import {
   TrendingUp,
   UserPlus,
   Filter,
+  Brain,
+  Download,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function CLPAdminPage() {
@@ -69,8 +73,31 @@ export default function CLPAdminPage() {
   // Attendance State
   const [attendance, setAttendance] = useState<CLPAttendance[]>([]);
 
-  // Active Tab: 'couples' | 'talks' | 'report'
-  const [activeTab, setActiveTab] = useState<'couples' | 'talks' | 'report'>('couples');
+  // Active Tab: 'couples' | 'talks' | 'report' | 'ai-groups'
+  const [activeTab, setActiveTab] = useState<'couples' | 'talks' | 'report' | 'ai-groups'>('couples');
+
+  // AI Grouping State
+  const [aiGroupPrompt, setAiGroupPrompt] = useState('');
+  const [isAiGrouping, setIsAiGrouping] = useState(false);
+  const [aiGroupError, setAiGroupError] = useState<string | null>(null);
+  const [aiGroupingResult, setAiGroupingResult] = useState<null | {
+    groups: {
+      groupNumber: number;
+      groupName: string;
+      rationale: string;
+      couples: {
+        id: string;
+        name: string;
+        barangay: string;
+        husbandOccupation: string;
+        wifeOccupation: string;
+        address: string;
+      }[];
+    }[];
+    summary: string;
+    prompt: string;
+    generatedAt: string;
+  }>(null);
 
   // Modals
   const [showAddClpModal, setShowAddClpModal] = useState(false);
@@ -686,6 +713,118 @@ export default function CLPAdminPage() {
     };
   }, [currentCouples, currentTalks, attendance, totalInvitedCouples]);
 
+  // ---------------------------------------------------------------------------
+  // AI Grouping Handler (Gemini API)
+  // ---------------------------------------------------------------------------
+  const handleAIGrouping = async () => {
+    if (!currentClp || currentCouples.length === 0) {
+      triggerToast('No couples to group. Please add invitees first.');
+      return;
+    }
+    if (!aiGroupPrompt.trim()) {
+      triggerToast('Please enter a grouping instruction.');
+      return;
+    }
+    setIsAiGrouping(true);
+    setAiGroupError(null);
+    setAiGroupingResult(null);
+    try {
+      const couplesPayload = currentCouples.map((c) => ({
+        id: c.id,
+        name: `Bro. ${c.husbandFirstName} & Sis. ${c.wifeFirstName} ${c.husbandLastName}`,
+        barangay: c.barangay,
+        husbandOccupation: c.husbandOccupation || '',
+        wifeOccupation: c.wifeOccupation || '',
+        address: c.address,
+        weddingAnniversary: c.weddingAnniversary || '',
+      }));
+      const response = await fetch('/api/ai-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ couples: couplesPayload, userPrompt: aiGroupPrompt, programName: currentClp.name }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'AI grouping failed. Please try again.');
+      setAiGroupingResult(data);
+      triggerToast(`✨ AI created ${data.groups.length} groups successfully!`);
+    } catch (err: any) {
+      setAiGroupError(err?.message || 'An error occurred during AI grouping.');
+    } finally {
+      setIsAiGrouping(false);
+    }
+  };
+
+  const handleDownloadAIGroupsHTML = () => {
+    if (!aiGroupingResult || !currentClp) return;
+    const groupColors = ['#243c81', '#7c3aed', '#0f766e', '#b45309', '#be123c', '#0369a1'];
+    const printContent = `<!DOCTYPE html>
+<html>
+<head>
+  <title>AI Groups – ${currentClp.name}</title>
+  <meta charset="utf-8"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;padding:28px;color:#1e293b;font-size:13px;background:#fff}
+    h1{font-size:22px;font-weight:900;color:#243c81;margin-bottom:4px}
+    .badge{display:inline-block;font-size:10px;font-weight:700;background:#eff6ff;color:#243c81;border:1px solid #bfdbfe;border-radius:20px;padding:2px 10px;margin-bottom:12px}
+    .meta{background:#f8fafc;border-left:4px solid #243c81;padding:12px 16px;border-radius:8px;margin-bottom:20px}
+    .meta-label{font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
+    .meta-prompt{font-size:13px;font-style:italic;color:#1e293b;margin:4px 0}
+    .meta-summary{font-size:11px;color:#64748b}
+    .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+    .group{border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;page-break-inside:avoid}
+    .gh{padding:12px 16px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+    .gn{font-size:14px;font-weight:900}
+    .gc{font-size:11px;background:rgba(255,255,255,.2);padding:2px 9px;border-radius:20px}
+    .gr{background:#f8fafc;padding:8px 16px;font-size:11px;color:#475569;border-bottom:1px solid #e2e8f0;font-style:italic}
+    .cr{display:flex;align-items:center;padding:8px 16px;border-bottom:1px solid #f8fafc}
+    .cr:last-child{border-bottom:none}
+    .cn-num{width:22px;height:22px;border-radius:50%;background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#475569;margin-right:10px;flex-shrink:0;text-align:center;line-height:22px}
+    .cn{font-size:12px;font-weight:700;flex:1}
+    .cb{font-size:10px;color:#64748b;margin-left:8px}
+    .footer{margin-top:24px;text-align:center;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:12px}
+    @media print{body{padding:12px}.grid{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+  <h1>AI Couple Groupings</h1>
+  <span class="badge">${currentClp.name}</span>
+  <div class="meta">
+    <div class="meta-label">Grouping Instruction</div>
+    <div class="meta-prompt">"${aiGroupingResult.prompt}"</div>
+    <div class="meta-summary">${aiGroupingResult.summary}</div>
+  </div>
+  <div class="grid">
+    ${aiGroupingResult.groups.map((g, gi) => `
+    <div class="group">
+      <div class="gh" style="background:${groupColors[gi % groupColors.length]}">
+        <span class="gn">Group ${g.groupNumber}: ${g.groupName}</span>
+        <span class="gc">${g.couples.length} couples</span>
+      </div>
+      <div class="gr">${g.rationale}</div>
+      ${g.couples.map((c, ci) => `
+      <div class="cr">
+        <div class="cn-num">${ci + 1}</div>
+        <span class="cn">${c.name}</span>
+        <span class="cb">Brgy. ${c.barangay}</span>
+      </div>`).join('')}
+    </div>`).join('')}
+  </div>
+  <div class="footer">Generated by CFC Tuy Chapter Admin Portal • ${new Date().toLocaleString('en-PH')}</div>
+</body>
+</html>`;
+    const blob = new Blob([printContent], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AI-Groups-${currentClp.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    triggerToast('Downloaded! Open the file in browser and press Ctrl+P to save as PDF.');
+  };
+
   // Copy report summary text
   const handleCopyReportSummary = () => {
     if (!currentClp) return;
@@ -830,7 +969,23 @@ Generated via Couples for Christ Tuy Chapter Portal`;
               <BarChart3 className="w-4 h-4 text-amber-500" />
               <span>CLP Report &amp; Analytics</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('ai-groups')}
+              className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                activeTab === 'ai-groups'
+                  ? 'bg-gradient-to-r from-violet-600 to-purple-700 text-white shadow-md shadow-violet-200'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-200'
+              }`}
+            >
+              <Brain className="w-4 h-4" />
+              <span>AI Group by Gemini</span>
+              <span className="hidden sm:inline text-[9px] font-black uppercase bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-md border border-violet-200">
+                NEW
+              </span>
+            </button>
           </div>
+
 
           {/* ========================================================================= */}
           {/* TAB 1: INVITED COUPLES DIRECTORY                                           */}
@@ -1672,6 +1827,246 @@ Generated via Couples for Christ Tuy Chapter Portal`;
               </div>
             </div>
           )}
+
+          {/* ========================================================================= */}
+          {/* TAB 4: AI GROUP BY GEMINI                                                  */}
+          {/* ========================================================================= */}
+          {activeTab === 'ai-groups' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="bg-gradient-to-br from-violet-600 to-purple-700 p-6 rounded-3xl shadow-lg shadow-violet-200 text-white">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center border border-white/20">
+                      <Brain className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black">AI Group by Gemini</h2>
+                      <p className="text-violet-200 text-xs mt-0.5">
+                        {currentCouples.length} couples in {currentClp.name} • Powered by Google Gemini
+                      </p>
+                    </div>
+                  </div>
+                  {aiGroupingResult && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadAIGroupsHTML}
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-bold transition-all"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>Download PDF</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white text-violet-700 hover:bg-violet-50 text-xs font-bold transition-all shadow-sm"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>Print</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Prompt Input Section */}
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-black text-slate-900 mb-1">
+                    Grouping Instruction
+                  </label>
+                  <p className="text-xs text-slate-500 mb-3">
+                    Describe how you want the AI to group the invitees. Be specific — the more context you give, the better the groups.
+                  </p>
+                  <textarea
+                    value={aiGroupPrompt}
+                    onChange={(e) => setAiGroupPrompt(e.target.value)}
+                    rows={3}
+                    placeholder='e.g. "Group couples by barangay so they can support each other geographically" or "Group by occupation similarity for mutual encouragement" or "Create 4 balanced groups mixing different barangays for diversity"'
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-300 resize-none font-medium placeholder:text-slate-400 placeholder:font-normal"
+                  />
+                </div>
+
+                {/* Prompt Suggestions */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Quick Suggestions</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      'Group by barangay proximity',
+                      'Group by occupation similarity',
+                      'Mix all barangays for diversity',
+                      'Create 3 balanced groups',
+                      'Separate by anniversary year',
+                    ].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setAiGroupPrompt(s)}
+                        className="px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-semibold hover:bg-violet-100 transition-colors"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAIGrouping}
+                  disabled={isAiGrouping || currentCouples.length === 0}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white font-bold text-sm shadow-md shadow-violet-200 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+                >
+                  {isAiGrouping ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Gemini is thinking...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Generate AI Groups</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Error */}
+                {aiGroupError && (
+                  <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold">Grouping Failed</p>
+                      <p className="text-xs mt-0.5 text-red-600">{aiGroupError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Loading State */}
+                {isAiGrouping && (
+                  <div className="flex items-center gap-3 p-4 bg-violet-50 border border-violet-200 rounded-2xl">
+                    <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center">
+                      <Brain className="w-4 h-4 text-violet-600 animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-violet-900">Gemini AI is analyzing {currentCouples.length} couples...</p>
+                      <p className="text-xs text-violet-600">Creating thoughtful groups based on your instruction</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Results */}
+              {aiGroupingResult && (
+                <div className="space-y-4">
+                  {/* Summary Bar */}
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-5 h-5 text-violet-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-black text-slate-900">
+                          {aiGroupingResult.groups.length} groups created from {currentCouples.length} couples
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5 italic">"{aiGroupingResult.prompt}"</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setAiGroupingResult(null); setAiGroupPrompt(''); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Regroup</span>
+                    </button>
+                  </div>
+
+                  {/* AI Summary */}
+                  {aiGroupingResult.summary && (
+                    <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
+                      <p className="text-xs font-black uppercase tracking-widest text-violet-400 mb-1">AI Summary</p>
+                      <p className="text-sm text-violet-900 font-medium">{aiGroupingResult.summary}</p>
+                    </div>
+                  )}
+
+                  {/* Group Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2">
+                    {aiGroupingResult.groups.map((group, gi) => {
+                      const colorSets = [
+                        { bg: 'bg-[#243c81]', light: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', num: 'bg-blue-100 text-blue-700' },
+                        { bg: 'bg-violet-600', light: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-800', num: 'bg-violet-100 text-violet-700' },
+                        { bg: 'bg-teal-700', light: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800', num: 'bg-teal-100 text-teal-700' },
+                        { bg: 'bg-amber-600', light: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', num: 'bg-amber-100 text-amber-700' },
+                        { bg: 'bg-rose-600', light: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800', num: 'bg-rose-100 text-rose-700' },
+                        { bg: 'bg-sky-600', light: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-800', num: 'bg-sky-100 text-sky-700' },
+                      ];
+                      const colors = colorSets[gi % colorSets.length];
+                      return (
+                        <div key={group.groupNumber} className={`rounded-2xl border ${colors.border} overflow-hidden shadow-xs`}>
+                          {/* Group Header */}
+                          <div className={`${colors.bg} px-5 py-4 flex items-center justify-between`}>
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">Group {group.groupNumber}</p>
+                              <h3 className="text-base font-black text-white">{group.groupName}</h3>
+                            </div>
+                            <span className="bg-white/20 text-white text-[11px] font-bold px-3 py-1 rounded-full">
+                              {group.couples.length} couples
+                            </span>
+                          </div>
+
+                          {/* Rationale */}
+                          <div className={`${colors.light} px-5 py-3 border-b ${colors.border}`}>
+                            <p className={`text-[11px] font-medium ${colors.text} italic`}>{group.rationale}</p>
+                          </div>
+
+                          {/* Couple List */}
+                          <div className="bg-white divide-y divide-slate-100">
+                            {group.couples.map((couple, ci) => (
+                              <div key={couple.id} className="flex items-center gap-3 px-5 py-3">
+                                <span className={`w-6 h-6 rounded-full ${colors.num} text-[11px] font-black flex items-center justify-center shrink-0`}>
+                                  {ci + 1}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-slate-900 truncate">{couple.name}</p>
+                                  <p className="text-[11px] text-slate-500">Brgy. {couple.barangay}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Print/Download Action Row */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500 font-medium">
+                      Generated {new Date(aiGroupingResult.generatedAt).toLocaleString('en-PH')} • {aiGroupingResult.groups.length} groups • {currentCouples.length} couples
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadAIGroupsHTML}
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-bold transition-all"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>Download as HTML/PDF</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => window.print()}
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white text-xs font-bold transition-all shadow-sm"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>Print Groups</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       ) : (
         /* Empty State when no CLP Program exists */

@@ -1147,16 +1147,29 @@ export default function CLPAdminPage() {
   </div>
   <div class="sheet">${cardsHtml}</div>
   <script>
-    // Auto-fit: shrink each .fit-text element until it no longer overflows its max-width
     (function() {
-      var MIN_SIZE = 6;
-      var els = document.querySelectorAll('.fit-text');
-      els.forEach(function(el) {
-        var maxW = parseFloat(el.style.maxWidth || getComputedStyle(el).maxWidth) || el.parentElement.offsetWidth * 0.92;
-        var fs = parseFloat(getComputedStyle(el).fontSize);
-        var step = 0.5;
-        while (el.scrollWidth > el.parentElement.clientWidth * 0.95 && fs > MIN_SIZE) {
-          fs -= step;
+      var DPR = window.devicePixelRatio || 1;
+      var PT_TO_PX = 96 / 72; // 1pt = 1.333px at 96dpi
+
+      // Step 1: Set initial font size for first-name based on name length
+      document.querySelectorAll('.first-name').forEach(function(el) {
+        var len = (el.textContent || '').trim().length;
+        var startPt;
+        if      (len <= 5)  startPt = 50;
+        else if (len <= 8)  startPt = 38;
+        else if (len <= 11) startPt = 30;
+        else                startPt = 24;
+        el.style.fontSize = startPt + 'pt';
+      });
+
+      // Step 2: Shrink every .fit-text until it fits within its card width
+      document.querySelectorAll('.fit-text').forEach(function(el) {
+        var MIN_PT = 6;
+        var STEP   = 0.5;
+        var parent = el.parentElement;
+        var fs = parseFloat(getComputedStyle(el).fontSize) / PT_TO_PX; // px → pt
+        while (el.scrollWidth > parent.clientWidth * 0.96 && fs > MIN_PT) {
+          fs -= STEP;
           el.style.fontSize = fs + 'pt';
         }
       });

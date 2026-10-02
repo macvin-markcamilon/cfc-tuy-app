@@ -69,16 +69,27 @@ ALTER TABLE events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE prayer_requests ENABLE ROW LEVEL SECURITY;
 
 -- Public can read active events, public households, and approved prayer requests
+DROP POLICY IF EXISTS "Public can view events" ON events;
 CREATE POLICY "Public can view events" ON events FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public can view households" ON households;
 CREATE POLICY "Public can view households" ON households FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public can view approved prayer requests" ON prayer_requests;
 CREATE POLICY "Public can view approved prayer requests" ON prayer_requests FOR SELECT USING (is_approved = true);
+
+DROP POLICY IF EXISTS "Anyone can submit prayer requests" ON prayer_requests;
 CREATE POLICY "Anyone can submit prayer requests" ON prayer_requests FOR INSERT WITH CHECK (true);
 
 -- Authenticated users can increment prayer count
+DROP POLICY IF EXISTS "Anyone can increment prayer count" ON prayer_requests;
 CREATE POLICY "Anyone can increment prayer count" ON prayer_requests FOR UPDATE USING (true) WITH CHECK (true);
 
 -- Profiles policies
+DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
 CREATE POLICY "Users can view their own profile" ON profiles FOR SELECT USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 CREATE POLICY "Users can update their own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
 -- 7. CLP Programs Table
@@ -151,15 +162,21 @@ ALTER TABLE clp_talks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clp_attendance ENABLE ROW LEVEL SECURITY;
 
 -- CLP RLS Policies (Allow full read & write for authorized portal users & admin)
+DROP POLICY IF EXISTS "Allow full access for CLP programs" ON clp_programs;
 DROP POLICY IF EXISTS "Allow public read for CLP programs" ON clp_programs;
 DROP POLICY IF EXISTS "Allow authenticated full access for CLP programs" ON clp_programs;
-DROP POLICY IF EXISTS "Allow authenticated full access for CLP couples" ON clp_couples;
-DROP POLICY IF EXISTS "Allow authenticated full access for CLP talks" ON clp_talks;
-DROP POLICY IF EXISTS "Allow authenticated full access for CLP attendance" ON clp_attendance;
-
 CREATE POLICY "Allow full access for CLP programs" ON clp_programs FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access for CLP couples" ON clp_couples;
+DROP POLICY IF EXISTS "Allow authenticated full access for CLP couples" ON clp_couples;
 CREATE POLICY "Allow full access for CLP couples" ON clp_couples FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access for CLP talks" ON clp_talks;
+DROP POLICY IF EXISTS "Allow authenticated full access for CLP talks" ON clp_talks;
 CREATE POLICY "Allow full access for CLP talks" ON clp_talks FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow full access for CLP attendance" ON clp_attendance;
+DROP POLICY IF EXISTS "Allow authenticated full access for CLP attendance" ON clp_attendance;
 CREATE POLICY "Allow full access for CLP attendance" ON clp_attendance FOR ALL USING (true) WITH CHECK (true);
 
 -- 11. Main Admin User Provisioning

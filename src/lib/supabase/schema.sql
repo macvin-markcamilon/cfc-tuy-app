@@ -80,3 +80,78 @@ CREATE POLICY "Anyone can increment prayer count" ON prayer_requests FOR UPDATE 
 -- Profiles policies
 CREATE POLICY "Users can view their own profile" ON profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update their own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+
+-- 7. CLP Programs Table
+CREATE TABLE IF NOT EXISTS clp_programs (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  name TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'Upcoming' CHECK (status IN ('Upcoming', 'Ongoing', 'Completed')),
+  batch_number TEXT,
+  team_leader TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 8. CLP Couples Table
+CREATE TABLE IF NOT EXISTS clp_couples (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  clp_id UUID REFERENCES clp_programs(id) ON DELETE CASCADE,
+  husband_first_name TEXT NOT NULL,
+  husband_last_name TEXT NOT NULL,
+  husband_birthday DATE,
+  husband_occupation TEXT,
+  husband_contact TEXT,
+  wife_first_name TEXT NOT NULL,
+  wife_last_name TEXT NOT NULL,
+  wife_birthday DATE,
+  wife_occupation TEXT,
+  wife_contact TEXT,
+  wedding_anniversary DATE,
+  address TEXT NOT NULL,
+  barangay TEXT NOT NULL,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  status TEXT DEFAULT 'Active' CHECK (status IN ('Active', 'Graduated', 'Dropped')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 9. CLP Talks Table
+CREATE TABLE IF NOT EXISTS clp_talks (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  clp_id UUID REFERENCES clp_programs(id) ON DELETE CASCADE,
+  talk_number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  speaker TEXT NOT NULL,
+  venue TEXT NOT NULL,
+  talk_date DATE,
+  talk_time TEXT,
+  module_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. CLP Attendance Table
+CREATE TABLE IF NOT EXISTS clp_attendance (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  talk_id UUID REFERENCES clp_talks(id) ON DELETE CASCADE,
+  couple_id UUID REFERENCES clp_couples(id) ON DELETE CASCADE,
+  husband_present BOOLEAN DEFAULT false,
+  wife_present BOOLEAN DEFAULT false,
+  remarks TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(talk_id, couple_id)
+);
+
+ALTER TABLE clp_programs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clp_couples ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clp_talks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE clp_attendance ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read for CLP programs" ON clp_programs FOR SELECT USING (true);
+CREATE POLICY "Allow authenticated full access for CLP programs" ON clp_programs FOR ALL USING (auth.role() = 'authenticated');
+
+CREATE POLICY "Allow authenticated full access for CLP couples" ON clp_couples FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Allow authenticated full access for CLP talks" ON clp_talks FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Allow authenticated full access for CLP attendance" ON clp_attendance FOR ALL USING (auth.role() = 'authenticated');
+

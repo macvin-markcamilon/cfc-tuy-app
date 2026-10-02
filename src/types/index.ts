@@ -65,3 +65,61 @@ export interface MinistryInfo {
   meetingInfo: string;
   coordinator: string;
 }
+
+// =====================================
+// Christian Life Program (CLP) Interfaces
+// =====================================
+
+export interface CLPCouple {
+  id: string;
+  clpId: string;
+  husbandFirstName: string;
+  husbandLastName: string;
+  husbandBirthday: string;
+  husbandOccupation: string;
+  husbandContact?: string;
+  wifeFirstName: string;
+  wifeLastName: string;
+  wifeBirthday: string;
+  wifeOccupation: string;
+  wifeContact?: string;
+  weddingAnniversary: string;
+  address: string;
+  barangay: string;
+  coordinates: [number, number]; // [longitude, latitude]
+  status: 'Active' | 'Graduated' | 'Dropped';
+}
+
+export interface CLPTalk {
+  id: string;
+  clpId: string;
+  talkNumber: number;
+  title: string;
+  speaker: string;
+  venue: string;
+  date: string;
+  time: string;
+  moduleName?: string;
+}
+
+export interface CLPAttendance {
+  id: string;
+  talkId: string;
+  coupleId: string;
+  husbandPresent: boolean;
+  wifePresent: boolean;
+  remarks?: string;
+}
+
+export interface CLPProgram {
+  id: string;
+  name: string;
+  venue: string;
+  startDate: string;
+  endDate: string;
+  status: 'Upcoming' | 'Ongoing' | 'Completed';
+  batchNumber: string;
+  teamLeader: string;
+  couplesCount?: number;
+  talksCount?: number;
+}

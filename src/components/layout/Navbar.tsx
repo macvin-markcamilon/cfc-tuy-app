@@ -3,11 +3,16 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, MapPin, HeartHandshake, Calendar, Users, Shield, Sparkles, BookOpen } from 'lucide-react';
+import { Menu, X, MapPin, HeartHandshake, Calendar, Users, Shield, Sparkles, BookOpen, LogIn } from 'lucide-react';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
+
+  // Hide public navbar on admin pages
+  if (pathname?.startsWith('/admin')) {
+    return null;
+  }
 
   const navLinks = [
     { name: 'Home', href: '/', icon: Sparkles },
@@ -69,10 +74,19 @@ export default function Navbar() {
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
               href="/events#clp"
-              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-800 hover:to-indigo-900 text-white font-semibold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all duration-150 active:scale-95"
+              className="hidden lg:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-gradient-to-r from-blue-700 to-indigo-800 hover:from-blue-800 hover:to-indigo-900 text-white font-semibold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all duration-150 active:scale-95"
             >
               <BookOpen className="w-4 h-4" />
               <span>Join Next CLP</span>
+            </Link>
+
+            {/* Admin Login Button */}
+            <Link
+              href="/admin/login"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-slate-300 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 hover:bg-blue-50 hover:border-blue-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95"
+            >
+              <LogIn className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span>Admin Login</span>
             </Link>
 
             {/* Mobile Hamburger Button */}
@@ -114,14 +128,23 @@ export default function Navbar() {
             );
           })}
           
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
             <Link
               href="/events#clp"
               onClick={() => setIsOpen(false)}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-800 text-white font-semibold text-sm shadow-md"
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-800 text-white font-semibold text-sm shadow-md"
             >
               <BookOpen className="w-4 h-4" />
               <span>Join Christian Life Program (CLP)</span>
+            </Link>
+
+            <Link
+              href="/admin/login"
+              onClick={() => setIsOpen(false)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 font-bold text-sm shadow-xs"
+            >
+              <LogIn className="w-4 h-4 text-blue-600" />
+              <span>Admin Portal Login</span>
             </Link>
           </div>
         </div>

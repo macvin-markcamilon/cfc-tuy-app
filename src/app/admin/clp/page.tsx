@@ -1029,7 +1029,7 @@ export default function CLPAdminPage() {
   };
 
   // ---------------------------------------------------------------------------
-  // Print Name IDs (A4 sheet, 90×60 mm per card)
+  // Print Name IDs (A4 sheet, 90×60 mm per card, one card per individual)
   // ---------------------------------------------------------------------------
   const handlePrintIDs = () => {
     if (!currentCouples.length || !currentClp) {
@@ -1037,21 +1037,31 @@ export default function CLPAdminPage() {
       return;
     }
 
-    // Encode logo as absolute URL so the popup window can load it
     const logoUrl = `${window.location.origin}/images/cfc_logo_only_blue.png`;
+    const totalCards = currentCouples.length * 2;
 
+    // Build one card per individual (husband, then wife)
     const cardsHtml = currentCouples
-      .map(
-        (c) => `
-      <div class="id-card">
-        <div class="id-inner">
-          <div class="last-name">${(c.husbandLastName || '').toUpperCase()}</div>
-          <div class="first-name">${(c.husbandFirstName || '').toUpperCase()}</div>
-          <div class="spouse">${(c.wifeFirstName || '').toUpperCase()} ${(c.wifeLastName || c.husbandLastName || '').toUpperCase()}</div>
-          <img class="logo" src="${logoUrl}" alt="CFC" />
-        </div>
-      </div>`
-      )
+      .flatMap((c) => [
+        // Husband card
+        `<div class="id-card">
+          <div class="id-inner">
+            <div class="last-name fit-text">${(c.husbandLastName || '').toUpperCase()}</div>
+            <div class="first-name fit-text">${(c.husbandFirstName || '').toUpperCase()}</div>
+            <div class="spouse fit-text">${(c.wifeFirstName || '').toUpperCase()}</div>
+            <img class="logo" src="${logoUrl}" alt="CFC" />
+          </div>
+        </div>`,
+        // Wife card — spouse line shows husband's first name only
+        `<div class="id-card">
+          <div class="id-inner">
+            <div class="last-name fit-text">${(c.husbandLastName || '').toUpperCase()}</div>
+            <div class="first-name fit-text">${(c.wifeFirstName || '').toUpperCase()}</div>
+            <div class="spouse fit-text">${(c.husbandFirstName || '').toUpperCase()}</div>
+            <img class="logo" src="${logoUrl}" alt="CFC" />
+          </div>
+        </div>`,
+      ])
       .join('');
 
     const html = `<!DOCTYPE html>
@@ -1060,18 +1070,14 @@ export default function CLPAdminPage() {
   <meta charset="utf-8" />
   <title>Name IDs – ${currentClp.name}</title>
   <style>
-    /* A4 page, no margins for tight card layout */
     @page { size: A4 portrait; margin: 10mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #fff;
-      font-family: Arial, Helvetica, sans-serif;
-    }
+    body { background: #fff; font-family: Arial, Helvetica, sans-serif; }
     .sheet {
       display: flex;
       flex-wrap: wrap;
       gap: 4mm;
-      width: 190mm; /* A4 width minus 2×10mm margins */
+      width: 190mm;
     }
     .id-card {
       width: 90mm;
@@ -1089,7 +1095,7 @@ export default function CLPAdminPage() {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 3mm 4mm;
+      padding: 3mm 5mm;
       gap: 1.5mm;
     }
     .last-name {
@@ -1099,14 +1105,18 @@ export default function CLPAdminPage() {
       letter-spacing: 0.04em;
       text-align: center;
       line-height: 1.1;
+      white-space: nowrap;
+      max-width: 80mm;
     }
     .first-name {
-      font-size: 18pt;
+      font-size: 20pt;
       font-weight: 900;
       color: #000;
       letter-spacing: 0.02em;
       text-align: center;
       line-height: 1;
+      white-space: nowrap;
+      max-width: 80mm;
     }
     .spouse {
       font-size: 9pt;
@@ -1115,9 +1125,11 @@ export default function CLPAdminPage() {
       text-align: center;
       letter-spacing: 0.03em;
       line-height: 1.2;
+      white-space: nowrap;
+      max-width: 80mm;
     }
     .logo {
-      width: 14mm;
+      width: 13mm;
       height: auto;
       margin-top: 2mm;
       object-fit: contain;
@@ -1130,10 +1142,26 @@ export default function CLPAdminPage() {
 </head>
 <body>
   <div class="no-print" style="padding:12px 16px;background:#1e3a8a;color:#fff;font-family:Arial;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-    <span><strong>${currentClp.name}</strong> — Name IDs (90×60 mm) · ${currentCouples.length} cards</span>
+    <span><strong>${currentClp.name}</strong> — Name IDs (90×60 mm) · ${totalCards} cards (${currentCouples.length} couples)</span>
     <button onclick="window.print()" style="background:#fff;color:#1e3a8a;border:none;padding:6px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">🖨 Print / Save as PDF</button>
   </div>
   <div class="sheet">${cardsHtml}</div>
+  <script>
+    // Auto-fit: shrink each .fit-text element until it no longer overflows its max-width
+    (function() {
+      var MIN_SIZE = 6;
+      var els = document.querySelectorAll('.fit-text');
+      els.forEach(function(el) {
+        var maxW = parseFloat(el.style.maxWidth || getComputedStyle(el).maxWidth) || el.parentElement.offsetWidth * 0.92;
+        var fs = parseFloat(getComputedStyle(el).fontSize);
+        var step = 0.5;
+        while (el.scrollWidth > el.parentElement.clientWidth * 0.95 && fs > MIN_SIZE) {
+          fs -= step;
+          el.style.fontSize = fs + 'pt';
+        }
+      });
+    })();
+  </script>
 </body>
 </html>`;
 

@@ -189,16 +189,22 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
     }
 
     // Parse the JSON from Gemini's response
+    // Strategy: find the first '{' and last '}' in the raw text — more robust
+    // than stripping markdown fences alone, since some models add prose around the JSON.
     let parsed: { groups: { groupNumber: number; groupName: string; rationale: string; coupleIds: string[] }[]; summary: string };
     try {
-      // Strip markdown code fences if present
-      const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
-      parsed = JSON.parse(cleaned);
+      const firstBrace = rawText.indexOf('{');
+      const lastBrace = rawText.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+        throw new Error('No JSON object found in AI response');
+      }
+      const jsonSlice = rawText.slice(firstBrace, lastBrace + 1);
+      parsed = JSON.parse(jsonSlice);
       if (!parsed?.groups || !Array.isArray(parsed.groups)) {
         throw new Error('Missing "groups" array in AI response');
       }
     } catch (e: any) {
-      console.error('[ai-group] Failed to parse Gemini JSON output:', rawText, e?.message);
+      console.error('[ai-group] Failed to parse Gemini JSON output:', rawText.slice(0, 500), e?.message);
       return NextResponse.json(
         { error: `The AI returned an unexpected format: ${e?.message || 'parse error'}. Please try again.` },
         { status: 500 }

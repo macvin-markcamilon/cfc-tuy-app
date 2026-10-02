@@ -37,7 +37,6 @@ export function purgeLegacySampleData(): void {
   try {
     const hasPurged = localStorage.getItem(STORAGE_KEYS.LEGACY_PURGED);
     if (!hasPurged) {
-      // Remove any previous keys that had mock records
       localStorage.removeItem('cfc_tuy_clp_programs');
       localStorage.removeItem('cfc_tuy_clp_couples');
       localStorage.removeItem('cfc_tuy_clp_talks');
@@ -50,6 +49,114 @@ export function purgeLegacySampleData(): void {
     }
   } catch (err) {
     console.error('Error purging legacy sample data:', err);
+  }
+}
+
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function isValidUUID(id?: string | null): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+// ---------------------------------------------------------------------------
+// Local Cache Accessors (Synchronous & Safe)
+// ---------------------------------------------------------------------------
+
+function getLocalPrograms(): CLPProgram[] {
+  if (!isBrowser()) return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.PROGRAMS);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as CLPProgram[];
+    return list.filter((p) => !p.id.includes('b29') && !p.id.includes('b30'));
+  } catch {
+    return [];
+  }
+}
+
+function setLocalPrograms(programs: CLPProgram[]): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(programs));
+  } catch (err) {
+    console.error('Error saving local programs:', err);
+  }
+}
+
+function getLocalCouples(): CLPCouple[] {
+  if (!isBrowser()) return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.COUPLES);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as CLPCouple[];
+    return list.filter(
+      (c) =>
+        !c.id.startsWith('couple-1') &&
+        !c.id.startsWith('couple-2') &&
+        !c.id.startsWith('couple-3')
+    );
+  } catch {
+    return [];
+  }
+}
+
+function setLocalCouples(couples: CLPCouple[]): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.COUPLES, JSON.stringify(couples));
+  } catch (err) {
+    console.error('Error saving local couples:', err);
+  }
+}
+
+function getLocalTalks(): CLPTalk[] {
+  if (!isBrowser()) return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.TALKS);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as CLPTalk[];
+    return list.filter((t) => !t.id.startsWith('talk-1') && !t.id.startsWith('talk-2'));
+  } catch {
+    return [];
+  }
+}
+
+function setLocalTalks(talks: CLPTalk[]): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.TALKS, JSON.stringify(talks));
+  } catch (err) {
+    console.error('Error saving local talks:', err);
+  }
+}
+
+function getLocalAttendance(): CLPAttendance[] {
+  if (!isBrowser()) return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
+    if (!raw) return [];
+    return JSON.parse(raw) as CLPAttendance[];
+  } catch {
+    return [];
+  }
+}
+
+function setLocalAttendance(attendance: CLPAttendance[]): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(attendance));
+  } catch (err) {
+    console.error('Error saving local attendance:', err);
   }
 }
 
@@ -82,24 +189,31 @@ export async function fetchCLPPrograms(): Promise<CLPProgram[]> {
           talksCount: 8,
         }));
 
-        if (isBrowser()) {
-          localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(mapped));
-        }
+        setLocalPrograms(mapped);
         return mapped;
       }
 
-      // If Supabase is connected but empty, check if we have local programs to migrate up to cloud!
-      if (!error && data && data.length === 0 && isBrowser()) {
-        const local = localStorage.getItem(STORAGE_KEYS.PROGRAMS);
-        if (local) {
-          const parsed = JSON.parse(local) as CLPProgram[];
-          const validLocal = parsed.filter((p) => !p.id.includes('b29') && !p.id.includes('b30'));
+      // If Supabase is connected but empty, migrate local programs to cloud once
+      if (!error && data && data.length === 0) {
+        const validLocal = getLocalPrograms();
+        if (validLocal.length > 0) {
           for (const prog of validLocal) {
-            await saveCLPProgram(prog);
+            const progId = isValidUUID(prog.id) ? prog.id : generateUUID();
+            await supabase.from('clp_programs').upsert(
+              {
+                id: progId,
+                name: prog.name,
+                venue: prog.venue,
+                start_date: prog.startDate,
+                end_date: prog.endDate,
+                status: prog.status || 'Upcoming',
+                batch_number: prog.batchNumber || null,
+                team_leader: prog.teamLeader || null,
+              },
+              { onConflict: 'id' }
+            );
           }
-          if (validLocal.length > 0) {
-            return validLocal;
-          }
+          return validLocal;
         }
       }
     } catch (err) {
@@ -107,63 +221,35 @@ export async function fetchCLPPrograms(): Promise<CLPProgram[]> {
     }
   }
 
-  // Local storage fallback
-  if (isBrowser()) {
-    try {
-      const local = localStorage.getItem(STORAGE_KEYS.PROGRAMS);
-      if (local) {
-        const parsed = JSON.parse(local) as CLPProgram[];
-        // Filter out legacy mock IDs
-        return parsed.filter((p) => !p.id.includes('b29') && !p.id.includes('b30'));
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
+  return getLocalPrograms();
 }
 
 export async function saveCLPProgram(program: CLPProgram): Promise<CLPProgram> {
   const supabase = createClient();
-  let savedProgram = { ...program };
+  const progId = isValidUUID(program.id) ? program.id : generateUUID();
+  let savedProgram: CLPProgram = { ...program, id: progId };
 
-  // Always persist locally first so state is never lost
-  if (isBrowser()) {
-    try {
-      const existing = (await fetchCLPPrograms()).filter((p) => p.id !== program.id);
-      const updated = [savedProgram, ...existing];
-      localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(updated));
-    } catch (e) {
-      console.error('Local save error:', e);
-    }
-  }
+  // 1. Instantly persist locally so UI is responsive and never loses data
+  const existing = getLocalPrograms().filter((p) => p.id !== program.id && p.id !== progId);
+  setLocalPrograms([savedProgram, ...existing]);
 
-  // Sync to Supabase if configured
+  // 2. Persist to Supabase
   if (supabase) {
     try {
-      // Check if valid UUID or let Postgres generate UUID
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        program.id
-      );
-
       const payload: any = {
+        id: progId,
         name: program.name,
         venue: program.venue,
         start_date: program.startDate,
         end_date: program.endDate,
-        status: program.status,
-        batch_number: program.batchNumber,
-        team_leader: program.teamLeader,
+        status: program.status || 'Upcoming',
+        batch_number: program.batchNumber || null,
+        team_leader: program.teamLeader || null,
       };
-
-      if (isUUID) {
-        payload.id = program.id;
-      }
 
       const { data, error } = await supabase
         .from('clp_programs')
-        .upsert(payload)
+        .upsert(payload, { onConflict: 'id' })
         .select()
         .single();
 
@@ -172,17 +258,15 @@ export async function saveCLPProgram(program: CLPProgram): Promise<CLPProgram> {
           ...savedProgram,
           id: data.id,
         };
-
-        // Update local storage with real DB ID
-        if (isBrowser()) {
-          const current = (await fetchCLPPrograms()).map((p) =>
-            p.id === program.id ? savedProgram : p
-          );
-          localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(current));
-        }
+        const current = getLocalPrograms().map((p) =>
+          p.id === program.id || p.id === progId ? savedProgram : p
+        );
+        setLocalPrograms(current);
+      } else if (error) {
+        console.warn('Supabase saveCLPProgram error:', error.message || error);
       }
     } catch (err) {
-      console.warn('Supabase saveCLPProgram error, safely saved locally:', err);
+      console.warn('Supabase saveCLPProgram exception, saved locally:', err);
     }
   }
 
@@ -190,24 +274,17 @@ export async function saveCLPProgram(program: CLPProgram): Promise<CLPProgram> {
 }
 
 export async function deleteCLPProgram(id: string): Promise<void> {
-  if (isBrowser()) {
-    try {
-      const current = (await fetchCLPPrograms()).filter((p) => p.id !== id);
-      localStorage.setItem(STORAGE_KEYS.PROGRAMS, JSON.stringify(current));
+  const current = getLocalPrograms().filter((p) => p.id !== id);
+  setLocalPrograms(current);
 
-      // Also remove couples and talks belonging to this program
-      const allCouples = (await fetchCLPCouples()).filter((c) => c.clpId !== id);
-      localStorage.setItem(STORAGE_KEYS.COUPLES, JSON.stringify(allCouples));
+  const allCouples = getLocalCouples().filter((c) => c.clpId !== id);
+  setLocalCouples(allCouples);
 
-      const allTalks = (await fetchCLPTalks()).filter((t) => t.clpId !== id);
-      localStorage.setItem(STORAGE_KEYS.TALKS, JSON.stringify(allTalks));
-    } catch (e) {
-      console.error('Delete local error:', e);
-    }
-  }
+  const allTalks = getLocalTalks().filter((t) => t.clpId !== id);
+  setLocalTalks(allTalks);
 
   const supabase = createClient();
-  if (supabase) {
+  if (supabase && isValidUUID(id)) {
     try {
       await supabase.from('clp_programs').delete().eq('id', id);
     } catch (err) {
@@ -227,7 +304,7 @@ export async function fetchCLPCouples(clpId?: string): Promise<CLPCouple[]> {
   if (supabase) {
     try {
       let query = supabase.from('clp_couples').select('*');
-      if (clpId) {
+      if (clpId && isValidUUID(clpId)) {
         query = query.eq('clp_id', clpId);
       }
       query = query.order('created_at', { ascending: false });
@@ -257,74 +334,35 @@ export async function fetchCLPCouples(clpId?: string): Promise<CLPCouple[]> {
           status: row.status || 'Active',
         }));
 
-        if (isBrowser()) {
-          // Merge with local storage
-          const currentLocal = (await fetchCLPCouplesFromLocal()).filter(
-            (c) => !mapped.some((m) => m.id === c.id)
-          );
-          localStorage.setItem(
-            STORAGE_KEYS.COUPLES,
-            JSON.stringify([...mapped, ...currentLocal])
-          );
-        }
-        return clpId ? mapped.filter((c) => c.clpId === clpId) : mapped;
-      }
+        const currentLocal = getLocalCouples().filter((c) => !mapped.some((m) => m.id === c.id));
+        setLocalCouples([...mapped, ...currentLocal]);
 
-      // If Supabase is connected but empty, migrate existing local couples
-      if (!error && data && data.length === 0 && isBrowser()) {
-        const localCouples = await fetchCLPCouplesFromLocal();
-        for (const couple of localCouples) {
-          await saveCLPCouple(couple);
-        }
-        if (localCouples.length > 0) {
-          return clpId ? localCouples.filter((c) => c.clpId === clpId) : localCouples;
-        }
+        return clpId ? mapped.filter((c) => c.clpId === clpId) : mapped;
       }
     } catch (err) {
       console.warn('Supabase fetchCLPCouples fallback to local:', err);
     }
   }
 
-  const local = await fetchCLPCouplesFromLocal();
+  const local = getLocalCouples();
   return clpId ? local.filter((c) => c.clpId === clpId) : local;
-}
-
-async function fetchCLPCouplesFromLocal(): Promise<CLPCouple[]> {
-  if (!isBrowser()) return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.COUPLES);
-    if (!raw) return [];
-    const list = JSON.parse(raw) as CLPCouple[];
-    // Filter out legacy sample couples
-    return list.filter((c) => !c.id.startsWith('couple-1') && !c.id.startsWith('couple-2') && !c.id.startsWith('couple-3'));
-  } catch {
-    return [];
-  }
 }
 
 export async function saveCLPCouple(couple: CLPCouple): Promise<CLPCouple> {
   const supabase = createClient();
-  let saved = { ...couple };
+  const coupleId = isValidUUID(couple.id) ? couple.id : generateUUID();
+  let saved: CLPCouple = { ...couple, id: coupleId };
 
   // 1. Immediately store in LocalStorage
-  if (isBrowser()) {
-    try {
-      const all = (await fetchCLPCouplesFromLocal()).filter((c) => c.id !== couple.id);
-      localStorage.setItem(STORAGE_KEYS.COUPLES, JSON.stringify([saved, ...all]));
-    } catch (err) {
-      console.error('Error saving couple locally:', err);
-    }
-  }
+  const all = getLocalCouples().filter((c) => c.id !== couple.id && c.id !== coupleId);
+  setLocalCouples([saved, ...all]);
 
   // 2. Persist to Supabase if available
   if (supabase) {
     try {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        couple.id
-      );
-
       const payload: any = {
-        clp_id: couple.clpId,
+        id: coupleId,
+        clp_id: isValidUUID(couple.clpId) ? couple.clpId : null,
         husband_first_name: couple.husbandFirstName,
         husband_last_name: couple.husbandLastName,
         husband_birthday: couple.husbandBirthday || null,
@@ -340,36 +378,28 @@ export async function saveCLPCouple(couple: CLPCouple): Promise<CLPCouple> {
         wedding_anniversary: couple.weddingAnniversary || null,
         address: couple.address,
         barangay: couple.barangay,
-        latitude: couple.coordinates[1],
-        longitude: couple.coordinates[0],
-        status: couple.status,
+        latitude: couple.coordinates ? couple.coordinates[1] : null,
+        longitude: couple.coordinates ? couple.coordinates[0] : null,
+        status: couple.status || 'Active',
       };
-
-      if (isUUID) {
-        payload.id = couple.id;
-      }
 
       const { data, error } = await supabase
         .from('clp_couples')
-        .upsert(payload)
+        .upsert(payload, { onConflict: 'id' })
         .select()
         .single();
 
       if (!error && data) {
-        saved = {
-          ...saved,
-          id: data.id,
-        };
-
-        if (isBrowser()) {
-          const all = (await fetchCLPCouplesFromLocal()).map((c) =>
-            c.id === couple.id ? saved : c
-          );
-          localStorage.setItem(STORAGE_KEYS.COUPLES, JSON.stringify(all));
-        }
+        saved = { ...saved, id: data.id };
+        const updated = getLocalCouples().map((c) =>
+          c.id === couple.id || c.id === coupleId ? saved : c
+        );
+        setLocalCouples(updated);
+      } else if (error) {
+        console.warn('Supabase saveCLPCouple error:', error.message || error);
       }
     } catch (err) {
-      console.warn('Supabase saveCLPCouple error, safely stored locally:', err);
+      console.warn('Supabase saveCLPCouple exception, safely saved locally:', err);
     }
   }
 
@@ -377,17 +407,11 @@ export async function saveCLPCouple(couple: CLPCouple): Promise<CLPCouple> {
 }
 
 export async function deleteCLPCouple(id: string): Promise<void> {
-  if (isBrowser()) {
-    try {
-      const all = (await fetchCLPCouplesFromLocal()).filter((c) => c.id !== id);
-      localStorage.setItem(STORAGE_KEYS.COUPLES, JSON.stringify(all));
-    } catch (err) {
-      console.error('Error deleting couple locally:', err);
-    }
-  }
+  const all = getLocalCouples().filter((c) => c.id !== id);
+  setLocalCouples(all);
 
   const supabase = createClient();
-  if (supabase) {
+  if (supabase && isValidUUID(id)) {
     try {
       await supabase.from('clp_couples').delete().eq('id', id);
     } catch (err) {
@@ -407,7 +431,7 @@ export async function fetchCLPTalks(clpId?: string): Promise<CLPTalk[]> {
   if (supabase) {
     try {
       let query = supabase.from('clp_talks').select('*').order('talk_number', { ascending: true });
-      if (clpId) {
+      if (clpId && isValidUUID(clpId)) {
         query = query.eq('clp_id', clpId);
       }
 
@@ -425,9 +449,7 @@ export async function fetchCLPTalks(clpId?: string): Promise<CLPTalk[]> {
           moduleName: row.module_name || `Module ${Math.ceil(row.talk_number / 4)}`,
         }));
 
-        if (isBrowser()) {
-          localStorage.setItem(STORAGE_KEYS.TALKS, JSON.stringify(mapped));
-        }
+        setLocalTalks(mapped);
         return clpId ? mapped.filter((t) => t.clpId === clpId) : mapped;
       }
     } catch (err) {
@@ -435,43 +457,23 @@ export async function fetchCLPTalks(clpId?: string): Promise<CLPTalk[]> {
     }
   }
 
-  if (isBrowser()) {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.TALKS);
-      if (raw) {
-        const list = JSON.parse(raw) as CLPTalk[];
-        const filtered = list.filter((t) => !t.id.startsWith('talk-1') && !t.id.startsWith('talk-2'));
-        return clpId ? filtered.filter((t) => t.clpId === clpId) : filtered;
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
+  const list = getLocalTalks();
+  return clpId ? list.filter((t) => t.clpId === clpId) : list;
 }
 
 export async function saveCLPTalk(talk: CLPTalk): Promise<CLPTalk> {
   const supabase = createClient();
-  let saved = { ...talk };
+  const talkId = isValidUUID(talk.id) ? talk.id : generateUUID();
+  let saved: CLPTalk = { ...talk, id: talkId };
 
-  if (isBrowser()) {
-    try {
-      const current = (await fetchCLPTalks()).filter((t) => t.id !== talk.id);
-      localStorage.setItem(STORAGE_KEYS.TALKS, JSON.stringify([...current, saved]));
-    } catch (err) {
-      console.error('Error saving talk locally:', err);
-    }
-  }
+  const current = getLocalTalks().filter((t) => t.id !== talk.id && t.id !== talkId);
+  setLocalTalks([...current, saved]);
 
   if (supabase) {
     try {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        talk.id
-      );
-
       const payload: any = {
-        clp_id: talk.clpId,
+        id: talkId,
+        clp_id: isValidUUID(talk.clpId) ? talk.clpId : null,
         talk_number: talk.talkNumber,
         title: talk.title,
         speaker: talk.speaker,
@@ -481,25 +483,21 @@ export async function saveCLPTalk(talk: CLPTalk): Promise<CLPTalk> {
         module_name: talk.moduleName,
       };
 
-      if (isUUID) {
-        payload.id = talk.id;
-      }
-
       const { data, error } = await supabase
         .from('clp_talks')
-        .upsert(payload)
+        .upsert(payload, { onConflict: 'id' })
         .select()
         .single();
 
       if (!error && data) {
         saved = { ...saved, id: data.id };
-        if (isBrowser()) {
-          const current = (await fetchCLPTalks()).map((t) => (t.id === talk.id ? saved : t));
-          localStorage.setItem(STORAGE_KEYS.TALKS, JSON.stringify(current));
-        }
+        const updated = getLocalTalks().map((t) => (t.id === talk.id || t.id === talkId ? saved : t));
+        setLocalTalks(updated);
+      } else if (error) {
+        console.warn('Supabase saveCLPTalk error:', error.message || error);
       }
     } catch (err) {
-      console.warn('Supabase saveCLPTalk error:', err);
+      console.warn('Supabase saveCLPTalk exception, safely stored locally:', err);
     }
   }
 
@@ -507,17 +505,11 @@ export async function saveCLPTalk(talk: CLPTalk): Promise<CLPTalk> {
 }
 
 export async function deleteCLPTalk(id: string): Promise<void> {
-  if (isBrowser()) {
-    try {
-      const all = (await fetchCLPTalks()).filter((t) => t.id !== id);
-      localStorage.setItem(STORAGE_KEYS.TALKS, JSON.stringify(all));
-    } catch (err) {
-      console.error('Error deleting talk locally:', err);
-    }
-  }
+  const all = getLocalTalks().filter((t) => t.id !== id);
+  setLocalTalks(all);
 
   const supabase = createClient();
-  if (supabase) {
+  if (supabase && isValidUUID(id)) {
     try {
       await supabase.from('clp_talks').delete().eq('id', id);
     } catch (err) {
@@ -534,30 +526,26 @@ export async function populateStandardTalksForCLP(
   startDateStr: string,
   venue: string = 'Saint Vincent Ferrer Parish Social Hall, Tuy'
 ): Promise<CLPTalk[]> {
-  const createdTalks: CLPTalk[] = [];
   const baseDate = startDateStr ? new Date(startDateStr) : new Date();
 
-  for (let i = 0; i < CFC_STANDARD_8_TALKS.length; i++) {
-    const item = CFC_STANDARD_8_TALKS[i];
+  const talksToCreate: CLPTalk[] = CFC_STANDARD_8_TALKS.map((item, i) => {
     const talkDate = new Date(baseDate);
-    talkDate.setDate(baseDate.getDate() + i * 7); // weekly on Saturday
+    talkDate.setDate(baseDate.getDate() + i * 7); // weekly
 
-    const talk: CLPTalk = {
-      id: `talk-${clpId}-${item.talkNumber}-${Date.now() + i}`,
+    return {
+      id: generateUUID(),
       clpId,
       talkNumber: item.talkNumber,
       title: item.title,
       speaker: 'To be assigned',
       venue: venue || 'Saint Vincent Ferrer Parish Social Hall, Tuy',
-      date: talkDate.toISOString().split('T')[0],
+      date: !isNaN(talkDate.getTime()) ? talkDate.toISOString().split('T')[0] : '',
       time: '6:30 PM - 9:00 PM',
       moduleName: item.moduleName,
     };
+  });
 
-    const saved = await saveCLPTalk(talk);
-    createdTalks.push(saved);
-  }
-
+  const createdTalks = await Promise.all(talksToCreate.map((t) => saveCLPTalk(t)));
   return createdTalks;
 }
 
@@ -572,7 +560,7 @@ export async function fetchCLPAttendance(talkId?: string): Promise<CLPAttendance
   if (supabase) {
     try {
       let query = supabase.from('clp_attendance').select('*');
-      if (talkId) {
+      if (talkId && isValidUUID(talkId)) {
         query = query.eq('talk_id', talkId);
       }
 
@@ -587,9 +575,7 @@ export async function fetchCLPAttendance(talkId?: string): Promise<CLPAttendance
           remarks: row.remarks || '',
         }));
 
-        if (isBrowser()) {
-          localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(mapped));
-        }
+        setLocalAttendance(mapped);
         return talkId ? mapped.filter((a) => a.talkId === talkId) : mapped;
       }
     } catch (err) {
@@ -597,43 +583,33 @@ export async function fetchCLPAttendance(talkId?: string): Promise<CLPAttendance
     }
   }
 
-  if (isBrowser()) {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
-      if (raw) {
-        const list = JSON.parse(raw) as CLPAttendance[];
-        return talkId ? list.filter((a) => a.talkId === talkId) : list;
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
+  const list = getLocalAttendance();
+  return talkId ? list.filter((a) => a.talkId === talkId) : list;
 }
 
 export async function saveCLPAttendance(record: CLPAttendance): Promise<void> {
-  if (isBrowser()) {
-    try {
-      const current = (await fetchCLPAttendance()).filter(
-        (a) => !(a.talkId === record.talkId && a.coupleId === record.coupleId)
-      );
-      localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([...current, record]));
-    } catch (err) {
-      console.error('Local attendance save error:', err);
-    }
-  }
+  const attId = isValidUUID(record.id) ? record.id : generateUUID();
+  const savedRecord = { ...record, id: attId };
+
+  const current = getLocalAttendance().filter(
+    (a) => !(a.talkId === record.talkId && a.coupleId === record.coupleId)
+  );
+  setLocalAttendance([...current, savedRecord]);
 
   const supabase = createClient();
   if (supabase) {
     try {
-      await supabase.from('clp_attendance').upsert({
-        talk_id: record.talkId,
-        couple_id: record.coupleId,
-        husband_present: record.husbandPresent,
-        wife_present: record.wifePresent,
-        remarks: record.remarks || null,
-      });
+      await supabase.from('clp_attendance').upsert(
+        {
+          id: attId,
+          talk_id: isValidUUID(record.talkId) ? record.talkId : null,
+          couple_id: isValidUUID(record.coupleId) ? record.coupleId : null,
+          husband_present: record.husbandPresent,
+          wife_present: record.wifePresent,
+          remarks: record.remarks || null,
+        },
+        { onConflict: 'talk_id,couple_id' }
+      );
     } catch (err) {
       console.warn('Supabase attendance save error:', err);
     }

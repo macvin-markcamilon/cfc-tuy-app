@@ -17,6 +17,7 @@ import {
   populateStandardTalksForCLP,
   fetchCLPAttendance,
   saveCLPAttendance,
+  generateUUID,
 } from '@/lib/data/clp-service';
 import {
   BookOpenCheck,
@@ -133,6 +134,8 @@ export default function CLPAdminPage() {
   const [newClpEndDate, setNewClpEndDate] = useState('');
   const [newClpBatchNumber, setNewClpBatchNumber] = useState('');
   const [autoPopulateTalks, setAutoPopulateTalks] = useState(true);
+  const [isCreatingClp, setIsCreatingClp] = useState(false);
+  const [createClpError, setCreateClpError] = useState<string | null>(null);
 
   // Form states - New Couple
   const [husbandFirst, setHusbandFirst] = useState('');
@@ -251,8 +254,12 @@ export default function CLPAdminPage() {
     e.preventDefault();
     if (!newClpName || !newClpStartDate || !newClpEndDate) return;
 
+    setIsCreatingClp(true);
+    setCreateClpError(null);
+
+    const progId = generateUUID();
     const newProg: CLPProgram = {
-      id: `clp-${Date.now()}`,
+      id: progId,
       name: newClpName,
       venue: newClpVenue,
       startDate: newClpStartDate,
@@ -286,9 +293,13 @@ export default function CLPAdminPage() {
       setNewClpBatchNumber('');
 
       triggerToast(`Program "${saved.name}" successfully created!`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating CLP:', err);
-      triggerToast('Error creating program. Please try again.');
+      const msg = err?.message || 'Error creating program. Please try again.';
+      setCreateClpError(msg);
+      triggerToast(msg);
+    } finally {
+      setIsCreatingClp(false);
     }
   };
 
@@ -325,7 +336,7 @@ export default function CLPAdminPage() {
     if (!husbandFirst || !husbandLast || !wifeFirst || !wifeLast) return;
 
     const newCouple: CLPCouple = {
-      id: `couple-${Date.now()}`,
+      id: generateUUID(),
       clpId: currentClp.id,
       husbandFirstName: husbandFirst,
       husbandLastName: husbandLast,
@@ -453,7 +464,7 @@ export default function CLPAdminPage() {
     if (!currentClp || !talkTitle) return;
 
     const newTalk: CLPTalk = {
-      id: `talk-${currentClp.id}-${talkNumber}-${Date.now()}`,
+      id: generateUUID(),
       clpId: currentClp.id,
       talkNumber: Number(talkNumber),
       title: talkTitle,
@@ -1701,6 +1712,12 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 ✕
               </button>
             </div>
+            {createClpError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                <span>{createClpError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleCreateClp} className="space-y-4">
               <div>
@@ -1789,16 +1806,25 @@ Generated via Couples for Christ Tuy Chapter Portal`;
               <div className="pt-4 flex justify-end gap-2.5">
                 <button
                   type="button"
+                  disabled={isCreatingClp}
                   onClick={() => setShowAddClpModal(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white font-bold text-xs shadow-md transition-all active:scale-95"
+                  disabled={isCreatingClp}
+                  className="px-5 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Save &amp; Create Program
+                  {isCreatingClp ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Saving Program...</span>
+                    </>
+                  ) : (
+                    <span>Save &amp; Create Program</span>
+                  )}
                 </button>
               </div>
             </form>

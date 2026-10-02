@@ -1148,26 +1148,38 @@ export default function CLPAdminPage() {
   <div class="sheet">${cardsHtml}</div>
   <script>
     (function() {
-      var DPR = window.devicePixelRatio || 1;
-      var PT_TO_PX = 96 / 72; // 1pt = 1.333px at 96dpi
+      var PT_TO_PX = 96 / 72; // 1pt ≈ 1.333px at 96 dpi
 
-      // Step 1: Set initial font size for first-name based on name length
+      // Dynamic sizing table: [maxLen, firstNamePt, otherPt (-5)]
+      function calcPt(len, offset) {
+        var pt;
+        if      (len <= 5)  pt = 50;
+        else if (len <= 8)  pt = 38;
+        else if (len <= 11) pt = 30;
+        else                pt = 24;
+        return pt - (offset || 0);
+      }
+
+      // Step 1: Set initial font sizes based on name length
       document.querySelectorAll('.first-name').forEach(function(el) {
         var len = (el.textContent || '').trim().length;
-        var startPt;
-        if      (len <= 5)  startPt = 50;
-        else if (len <= 8)  startPt = 38;
-        else if (len <= 11) startPt = 30;
-        else                startPt = 24;
-        el.style.fontSize = startPt + 'pt';
+        el.style.fontSize = calcPt(len, 0) + 'pt';
+      });
+      document.querySelectorAll('.last-name').forEach(function(el) {
+        var len = (el.textContent || '').trim().length;
+        el.style.fontSize = calcPt(len, 5) + 'pt';
+      });
+      document.querySelectorAll('.spouse').forEach(function(el) {
+        var len = (el.textContent || '').trim().length;
+        el.style.fontSize = calcPt(len, 5) + 'pt';
       });
 
-      // Step 2: Shrink every .fit-text until it fits within its card width
+      // Step 2: Shrink every .fit-text until it no longer overflows its card width
       document.querySelectorAll('.fit-text').forEach(function(el) {
         var MIN_PT = 6;
         var STEP   = 0.5;
         var parent = el.parentElement;
-        var fs = parseFloat(getComputedStyle(el).fontSize) / PT_TO_PX; // px → pt
+        var fs = parseFloat(getComputedStyle(el).fontSize) / PT_TO_PX;
         while (el.scrollWidth > parent.clientWidth * 0.96 && fs > MIN_PT) {
           fs -= STEP;
           el.style.fontSize = fs + 'pt';

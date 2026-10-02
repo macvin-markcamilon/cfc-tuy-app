@@ -1167,11 +1167,11 @@ export default function CLPAdminPage() {
       });
       document.querySelectorAll('.last-name').forEach(function(el) {
         var len = (el.textContent || '').trim().length;
-        el.style.fontSize = calcPt(len, 5) + 'pt';
+        el.style.fontSize = calcPt(len, 10) + 'pt';
       });
       document.querySelectorAll('.spouse').forEach(function(el) {
         var len = (el.textContent || '').trim().length;
-        el.style.fontSize = calcPt(len, 5) + 'pt';
+        el.style.fontSize = calcPt(len, 10) + 'pt';
       });
 
       // Step 2: Shrink every .fit-text until it no longer overflows its card width

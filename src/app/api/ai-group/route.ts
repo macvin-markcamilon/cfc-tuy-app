@@ -24,60 +24,50 @@ export interface AIGroupingResult {
   generatedAt: string;
 }
 
-// Priority-ordered list of Gemini models to try
+// Priority-ordered list of Gemini models to try.
+// The API itself has been recommending gemini-3.5-flash for Tier 1 keys.
 const CANDIDATE_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-1.5-flash-latest',
   'gemini-1.5-pro',
-  'gemini-1.5-pro-latest',
   'gemini-1.0-pro',
   'gemini-pro',
 ];
 
 /**
- * Discover the first available generateContent-capable model for this API key.
- * Falls back to the candidate list if ListModels fails.
+ * Find the first model that actually responds to generateContent with this key.
+ * We probe each candidate with a minimal request to skip deprecated/unavailable ones.
  */
 async function resolveModel(apiKey: string): Promise<string> {
-  try {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
-      { method: 'GET', headers: { 'Content-Type': 'application/json' } }
-    );
-    if (resp.ok) {
-      const data = await resp.json();
-      const models: { name: string; supportedGenerationMethods?: string[] }[] =
-        data.models || [];
-      // Prefer our priority list if available
-      for (const candidate of CANDIDATE_MODELS) {
-        const found = models.find(
-          (m) =>
-            (m.name === `models/${candidate}` || m.name === candidate) &&
-            m.supportedGenerationMethods?.includes('generateContent')
-        );
-        if (found) {
-          const modelId = found.name.replace('models/', '');
-          console.log(`[ai-group] Using model from ListModels: ${modelId}`);
-          return modelId;
-        }
-      }
-      // Pick any model that supports generateContent
-      const any = models.find((m) =>
-        m.supportedGenerationMethods?.includes('generateContent')
+  const probe = JSON.stringify({
+    contents: [{ parts: [{ text: 'hi' }] }],
+    generationConfig: { maxOutputTokens: 1 },
+  });
+
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: probe }
       );
-      if (any) {
-        const modelId = any.name.replace('models/', '');
-        console.log(`[ai-group] Using fallback model from ListModels: ${modelId}`);
-        return modelId;
+      if (resp.ok) {
+        console.log(`[ai-group] Using model: ${model}`);
+        return model;
       }
+      const err = await resp.text().catch(() => '');
+      console.warn(`[ai-group] Model ${model} rejected (${resp.status}):`, err.slice(0, 120));
+    } catch (e) {
+      console.warn(`[ai-group] Model ${model} probe failed:`, e);
     }
-  } catch (e) {
-    console.warn('[ai-group] ListModels failed, using default candidate list:', e);
   }
-  // Hard fallback — first in our priority list
-  console.log(`[ai-group] Defaulting to candidate model: ${CANDIDATE_MODELS[0]}`);
-  return CANDIDATE_MODELS[0];
+
+  // Absolute last resort — return gemini-3.5-flash and let the real call surface any error
+  console.error('[ai-group] All model probes failed, falling back to gemini-3.5-flash');
+  return 'gemini-3.5-flash';
 }
+
 
 export async function POST(req: NextRequest) {
   try {

@@ -60,6 +60,8 @@ import {
   FileDown,
   AlertTriangle,
   CheckCheck,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 
 export default function CLPAdminPage() {
@@ -165,6 +167,9 @@ export default function CLPAdminPage() {
   const [searchCoupleQuery, setSearchCoupleQuery] = useState('');
   const [filterBarangay, setFilterBarangay] = useState('ALL');
   const [reportFilterStatus, setReportFilterStatus] = useState<'ALL' | 'Graduation' | 'Returnee' | 'At-Risk'>('ALL');
+
+  // View Mode: 'grid' | 'list'
+  const [coupleViewMode, setCoupleViewMode] = useState<'grid' | 'list'>('grid');
 
   // Form states - New CLP
   const [newClpName, setNewClpName] = useState('');
@@ -1219,6 +1224,33 @@ Generated via Couples for Christ Tuy Chapter Portal`;
 
                 {/* View on Map All + Add Couple Buttons */}
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                  {/* Grid / List Toggle */}
+                  <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setCoupleViewMode('grid')}
+                      title="Grid view"
+                      className={`p-2 rounded-lg transition-all ${
+                        coupleViewMode === 'grid'
+                          ? 'bg-white shadow-xs text-[#243c81]'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCoupleViewMode('list')}
+                      title="List view"
+                      className={`p-2 rounded-lg transition-all ${
+                        coupleViewMode === 'list'
+                          ? 'bg-white shadow-xs text-[#243c81]'
+                          : 'text-slate-400 hover:text-slate-600'
+                      }`}
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -1267,41 +1299,245 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 </div>
               </div>
 
-              {/* Couples Cards Grid - High Contrast Crisp White Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredCouples.map((couple) => (
-                  <div
-                    key={couple.id}
-                    className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-md transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          {couple.status}
-                        </span>
-                        <span className="text-xs font-bold text-[#243c81] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5 text-red-500" />
-                          Brgy. {couple.barangay}
-                        </span>
+              {/* Couples View: Grid or List */}
+              {coupleViewMode === 'grid' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {filteredCouples.map((couple) => (
+                    <div
+                      key={couple.id}
+                      className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-md transition-all flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            {couple.status}
+                          </span>
+                          <span className="text-xs font-bold text-[#243c81] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-red-500" />
+                            Brgy. {couple.barangay}
+                          </span>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-extrabold text-base sm:text-lg text-slate-900 leading-snug">
+                            Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName}{' '}
+                            {couple.husbandLastName}
+                          </h3>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Edit Couple Button */}
+                            <button
+                              onClick={() => handleOpenEditCouple(couple)}
+                              title="Edit couple details"
+                              className="text-slate-400 hover:text-blue-700 p-1.5 rounded-lg hover:bg-blue-50 transition-all"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+
+                            {/* Delete Couple Button */}
+                            <button
+                              onClick={() =>
+                                handleDeleteCouple(
+                                  couple.id,
+                                  `Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName} ${couple.husbandLastName}`
+                                )
+                              }
+                              title="Remove couple"
+                              className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-all"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Anniversary */}
+                        {couple.weddingAnniversary && (
+                          <div className="inline-flex items-center gap-1.5 text-xs text-rose-800 bg-rose-50 border border-rose-200 font-bold px-2.5 py-0.5 rounded-md mt-2">
+                            <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
+                            <span>Married: {couple.weddingAnniversary}</span>
+                          </div>
+                        )}
+
+                        {/* Details section - High contrast readable text */}
+                        <div className="mt-4 pt-3 border-t border-slate-100 space-y-2 text-xs">
+                          {/* Husband Box */}
+                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <div className="font-bold text-slate-900">
+                              Husband:{' '}
+                              <span className="font-medium text-slate-800">
+                                {couple.husbandFirstName}
+                              </span>
+                              {couple.husbandBirthday && (
+                                <span className="text-slate-600 font-normal">
+                                  {' '}
+                                  • Bday: {couple.husbandBirthday}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-slate-600 mt-0.5">
+                              Occ: <strong className="text-slate-700">{couple.husbandOccupation || 'N/A'}</strong>
+                              {couple.husbandContact && (
+                                <span className="text-slate-600"> • 📞 {couple.husbandContact}</span>
+                              )}
+                            </div>
+                            {couple.husbandEmail && (
+                              <div className="text-slate-600 flex items-center gap-1.5 mt-1 font-medium">
+                                <Mail className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                <span className="truncate">{couple.husbandEmail}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Wife Box */}
+                          <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <div className="font-bold text-slate-900">
+                              Wife:{' '}
+                              <span className="font-medium text-slate-800">
+                                {couple.wifeFirstName}
+                              </span>
+                              {couple.wifeBirthday && (
+                                <span className="text-slate-600 font-normal">
+                                  {' '}
+                                  • Bday: {couple.wifeBirthday}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-slate-600 mt-0.5">
+                              Occ: <strong className="text-slate-700">{couple.wifeOccupation || 'N/A'}</strong>
+                              {couple.wifeContact && (
+                                <span className="text-slate-600"> • 📞 {couple.wifeContact}</span>
+                              )}
+                            </div>
+                            {couple.wifeEmail && (
+                              <div className="text-slate-600 flex items-center gap-1.5 mt-1 font-medium">
+                                <Mail className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                <span className="truncate">{couple.wifeEmail}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="pt-2 flex items-start gap-1.5 text-xs text-slate-700">
+                            <Compass className="w-4 h-4 text-[#243c81] shrink-0 mt-0.5" />
+                            <span className="font-medium">{couple.address}</span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-extrabold text-base sm:text-lg text-slate-900 leading-snug">
-                          Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName}{' '}
-                          {couple.husbandLastName}
-                        </h3>
+                      {/* Bottom Card Footer: GPS and In-App Google Maps View Button */}
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span className="font-mono text-[11px]">
+                          GPS: {couple.coordinates[1].toFixed(4)}, {couple.coordinates[0].toFixed(4)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMapModalFocusedCoupleId(couple.id);
+                            setMapModalTitle(`Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName}'s Tuy Location`);
+                            setShowCouplesMapModal(true);
+                          }}
+                          className="text-[#243c81] hover:text-blue-700 font-bold hover:underline inline-flex items-center gap-1"
+                        >
+                          <MapPin className="w-3.5 h-3.5 text-red-500" />
+                          <span>View on Map →</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* ---- LIST VIEW ---- */
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                  {/* List Header */}
+                  <div className="grid grid-cols-[2fr_1.5fr_1.5fr_1fr_auto] gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                    <span>Couple</span>
+                    <span>Husband</span>
+                    <span>Wife</span>
+                    <span>Barangay</span>
+                    <span>Actions</span>
+                  </div>
+                  {/* List Rows */}
+                  <div className="divide-y divide-slate-100">
+                    {filteredCouples.map((couple, idx) => (
+                      <div
+                        key={couple.id}
+                        className={`grid grid-cols-[2fr_1.5fr_1.5fr_1fr_auto] gap-3 px-4 py-3 items-center hover:bg-slate-50 transition-colors ${
+                          idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
+                        }`}
+                      >
+                        {/* Col 1: Name + Status + Anniversary */}
+                        <div className="min-w-0">
+                          <p className="font-extrabold text-sm text-slate-900 truncate">
+                            Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName}{' '}
+                            {couple.husbandLastName}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              couple.status === 'Active'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : couple.status === 'Graduated'
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-red-50 text-red-700 border-red-200'
+                            }`}>
+                              {couple.status}
+                            </span>
+                            {couple.weddingAnniversary && (
+                              <span className="text-[10px] text-rose-600 font-semibold flex items-center gap-0.5">
+                                <Heart className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
+                                {couple.weddingAnniversary}
+                              </span>
+                            )}
+                          </div>
+                        </div>
 
+                        {/* Col 2: Husband info */}
+                        <div className="min-w-0 text-xs text-slate-600 space-y-0.5">
+                          <p className="font-semibold text-slate-800 truncate">{couple.husbandFirstName} {couple.husbandLastName}</p>
+                          {couple.husbandOccupation && (
+                            <p className="truncate text-slate-500">{couple.husbandOccupation}</p>
+                          )}
+                          {couple.husbandContact && (
+                            <p className="truncate text-slate-500">📞 {couple.husbandContact}</p>
+                          )}
+                        </div>
+
+                        {/* Col 3: Wife info */}
+                        <div className="min-w-0 text-xs text-slate-600 space-y-0.5">
+                          <p className="font-semibold text-rose-700 truncate">{couple.wifeFirstName} {couple.husbandLastName}</p>
+                          {couple.wifeOccupation && (
+                            <p className="truncate text-slate-500">{couple.wifeOccupation}</p>
+                          )}
+                          {couple.wifeContact && (
+                            <p className="truncate text-slate-500">📞 {couple.wifeContact}</p>
+                          )}
+                        </div>
+
+                        {/* Col 4: Barangay + Address */}
+                        <div className="min-w-0 text-xs">
+                          <p className="font-bold text-[#243c81] truncate">Brgy. {couple.barangay}</p>
+                          <p className="text-slate-400 truncate text-[11px] mt-0.5">{couple.address}</p>
+                        </div>
+
+                        {/* Col 5: Actions */}
                         <div className="flex items-center gap-1 shrink-0">
-                          {/* Edit Couple Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMapModalFocusedCoupleId(couple.id);
+                              setMapModalTitle(`Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName}'s Tuy Location`);
+                              setShowCouplesMapModal(true);
+                            }}
+                            title="View on map"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                          >
+                            <MapPin className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => handleOpenEditCouple(couple)}
-                            title="Edit couple details"
-                            className="text-slate-400 hover:text-blue-700 p-1.5 rounded-lg hover:bg-blue-50 transition-all"
+                            title="Edit couple"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-all"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
-
-                          {/* Delete Couple Button */}
                           <button
                             onClick={() =>
                               handleDeleteCouple(
@@ -1310,107 +1546,16 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                               )
                             }
                             title="Remove couple"
-                            className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-all"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-
-                      {/* Anniversary */}
-                      {couple.weddingAnniversary && (
-                        <div className="inline-flex items-center gap-1.5 text-xs text-rose-800 bg-rose-50 border border-rose-200 font-bold px-2.5 py-0.5 rounded-md mt-2">
-                          <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
-                          <span>Married: {couple.weddingAnniversary}</span>
-                        </div>
-                      )}
-
-                      {/* Details section - High contrast readable text */}
-                      <div className="mt-4 pt-3 border-t border-slate-100 space-y-2 text-xs">
-                        {/* Husband Box */}
-                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <div className="font-bold text-slate-900">
-                            Husband:{' '}
-                            <span className="font-medium text-slate-800">
-                              {couple.husbandFirstName}
-                            </span>
-                            {couple.husbandBirthday && (
-                              <span className="text-slate-600 font-normal">
-                                {' '}
-                                • Bday: {couple.husbandBirthday}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-slate-600 mt-0.5">
-                            Occ: <strong className="text-slate-700">{couple.husbandOccupation || 'N/A'}</strong>
-                            {couple.husbandContact && (
-                              <span className="text-slate-600"> • 📞 {couple.husbandContact}</span>
-                            )}
-                          </div>
-                          {couple.husbandEmail && (
-                            <div className="text-slate-600 flex items-center gap-1.5 mt-1 font-medium">
-                              <Mail className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                              <span className="truncate">{couple.husbandEmail}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Wife Box */}
-                        <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                          <div className="font-bold text-slate-900">
-                            Wife:{' '}
-                            <span className="font-medium text-slate-800">
-                              {couple.wifeFirstName}
-                            </span>
-                            {couple.wifeBirthday && (
-                              <span className="text-slate-600 font-normal">
-                                {' '}
-                                • Bday: {couple.wifeBirthday}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-slate-600 mt-0.5">
-                            Occ: <strong className="text-slate-700">{couple.wifeOccupation || 'N/A'}</strong>
-                            {couple.wifeContact && (
-                              <span className="text-slate-600"> • 📞 {couple.wifeContact}</span>
-                            )}
-                          </div>
-                          {couple.wifeEmail && (
-                            <div className="text-slate-600 flex items-center gap-1.5 mt-1 font-medium">
-                              <Mail className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                              <span className="truncate">{couple.wifeEmail}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="pt-2 flex items-start gap-1.5 text-xs text-slate-700">
-                          <Compass className="w-4 h-4 text-[#243c81] shrink-0 mt-0.5" />
-                          <span className="font-medium">{couple.address}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bottom Card Footer: GPS and In-App Google Maps View Button */}
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                      <span className="font-mono text-[11px]">
-                        GPS: {couple.coordinates[1].toFixed(4)}, {couple.coordinates[0].toFixed(4)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMapModalFocusedCoupleId(couple.id);
-                          setMapModalTitle(`Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName}'s Tuy Location`);
-                          setShowCouplesMapModal(true);
-                        }}
-                        className="text-[#243c81] hover:text-blue-700 font-bold hover:underline inline-flex items-center gap-1"
-                      >
-                        <MapPin className="w-3.5 h-3.5 text-red-500" />
-                        <span>View on Map →</span>
-                      </button>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
 
               {filteredCouples.length === 0 && (
                 <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 text-slate-500 text-sm space-y-3">

@@ -80,6 +80,7 @@ export default function TuyMapPicker({
     initialAddress || `Brgy. ${initialBarangay}, Tuy, Batangas`
   );
 
+  const [hasPin, setHasPin] = useState<boolean>(true);
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerInstance = useRef<google.maps.Marker | null>(null);
@@ -94,6 +95,76 @@ export default function TuyMapPicker({
 
   const isGoogleMapsActive = isGoogleMapsKeyValid();
 
+  // Custom high-visibility SVG Pin Icon
+  const createPinIcon = (googleObj: typeof google) => {
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="38" height="50" viewBox="0 0 38 50">
+        <defs>
+          <filter id="pShadow" x="-30%" y="-20%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="3.5" stdDeviation="3" flood-color="#000000" flood-opacity="0.45"/>
+          </filter>
+        </defs>
+        <path d="M19 48 C19 48, 35 30, 35 19 A16 16 0 0 0 3 19 C3 30, 19 48, 19 48 Z" fill="#2563EB" stroke="#FFFFFF" stroke-width="2.5" filter="url(#pShadow)"/>
+        <circle cx="19" cy="19" r="7.5" fill="#FFFFFF"/>
+        <circle cx="19" cy="19" r="4.5" fill="#F59E0B"/>
+      </svg>
+    `;
+    return {
+      url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+      scaledSize: new googleObj.maps.Size(38, 50),
+      anchor: new googleObj.maps.Point(19, 48),
+    };
+  };
+
+  // Helper to safely instantiate a marker
+  const createOrUpdateMarker = (
+    map: google.maps.Map,
+    position: google.maps.LatLng | google.maps.LatLngLiteral,
+    googleObj: typeof google
+  ) => {
+    if (!markerInstance.current) {
+      const MarkerClass =
+        googleObj?.maps?.Marker ||
+        (window as unknown as { google?: { maps?: { Marker: typeof google.maps.Marker } } })?.google?.maps?.Marker;
+
+      if (!MarkerClass) {
+        console.warn('google.maps.Marker class not found');
+        return null;
+      }
+
+      const marker = new MarkerClass({
+        position,
+        map,
+        draggable: true,
+        title: 'Tuy Pinpoint (Drag to adjust or click map to move)',
+        icon: createPinIcon(googleObj),
+        animation: googleObj.maps.Animation.DROP,
+        zIndex: 9999,
+      });
+
+      marker.addListener('dragend', () => {
+        const pos = marker.getPosition();
+        if (pos) {
+          const lng = Number(pos.lng().toFixed(6));
+          const lat = Number(pos.lat().toFixed(6));
+          const detected = getClosestTuyBarangay(lng, lat);
+          setCoords([lng, lat]);
+          setHasPin(true);
+          setBarangay(detected);
+          setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
+        }
+      });
+
+      markerInstance.current = marker;
+    } else {
+      markerInstance.current.setPosition(position);
+      markerInstance.current.setMap(map);
+    }
+
+    setHasPin(true);
+    return markerInstance.current;
+  };
+
   // Initialize Google Maps if key is valid
   useEffect(() => {
     if (!isGoogleMapsActive || !mapContainer.current) return;
@@ -104,11 +175,17 @@ export default function TuyMapPicker({
       .then(({ maps }) => {
         if (!isMounted || !mapContainer.current) return;
 
+        const googleObj = window.google;
+        if (!googleObj || !googleObj.maps) {
+          console.error('Google Maps global object not available');
+          return;
+        }
+
         const center = toLatLngLiteral(coords);
 
         const map = new maps.Map(mapContainer.current, {
           center,
-          zoom: 14,
+          zoom: 15,
           mapTypeId: maps.MapTypeId.ROADMAP,
           streetViewControl: false,
           mapTypeControl: false,
@@ -117,42 +194,35 @@ export default function TuyMapPicker({
           gestureHandling: 'greedy',
         });
 
-        // Draggable pin
-        const marker = new maps.Marker({
-          position: center,
-          map,
-          draggable: true,
-          title: 'Drag me to adjust Tuy pinpoint',
-          animation: maps.Animation.DROP,
-        });
+        mapInstance.current = map;
 
-        // When marker is dragged
-        marker.addListener('dragend', () => {
-          const pos = marker.getPosition();
-          if (pos) {
-            const lng = Number(pos.lng().toFixed(6));
-            const lat = Number(pos.lat().toFixed(6));
-            const detected = getClosestTuyBarangay(lng, lat);
-            setCoords([lng, lat]);
-            setBarangay(detected);
-            setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
+        // Force resize trigger after container layout is painted
+        setTimeout(() => {
+          if (mapInstance.current && googleObj.maps.event) {
+            googleObj.maps.event.trigger(mapInstance.current, 'resize');
+            mapInstance.current.setCenter(center);
           }
-        });
+        }, 150);
 
-        // When map is clicked
+        // Create initial marker if enabled
+        if (hasPin) {
+          createOrUpdateMarker(map, center, googleObj);
+        }
+
+        // When map is clicked: Place or move marker to clicked spot
         map.addListener('click', (e: google.maps.MapMouseEvent) => {
           if (!e.latLng) return;
-          marker.setPosition(e.latLng);
-          const lng = Number(e.latLng.lng().toFixed(6));
-          const lat = Number(e.latLng.lat().toFixed(6));
+          const pos = e.latLng;
+          createOrUpdateMarker(map, pos, googleObj);
+
+          const lng = Number(pos.lng().toFixed(6));
+          const lat = Number(pos.lat().toFixed(6));
           const detected = getClosestTuyBarangay(lng, lat);
           setCoords([lng, lat]);
+          setHasPin(true);
           setBarangay(detected);
           setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
         });
-
-        mapInstance.current = map;
-        markerInstance.current = marker;
       })
       .catch((err) => {
         console.error('Error initializing Google Maps in picker:', err);
@@ -170,11 +240,32 @@ export default function TuyMapPicker({
     setCoords(targetCoords);
     setStreetAddress(`Brgy. ${brgyName}, Tuy, Batangas`);
 
-    if (mapInstance.current && markerInstance.current) {
+    if (mapInstance.current && typeof window !== 'undefined' && window.google) {
       const pos = toLatLngLiteral(targetCoords);
-      markerInstance.current.setPosition(pos);
+      if (hasPin) {
+        createOrUpdateMarker(mapInstance.current, pos, window.google);
+      }
       mapInstance.current.panTo(pos);
       mapInstance.current.setZoom(15);
+    }
+  };
+
+  // Toggle or Clear Pin (No Marker mode)
+  const handleTogglePin = () => {
+    if (hasPin) {
+      // Remove marker
+      if (markerInstance.current) {
+        markerInstance.current.setMap(null);
+      }
+      setHasPin(false);
+    } else {
+      // Place marker at current coordinates / barangay center
+      if (mapInstance.current && typeof window !== 'undefined' && window.google) {
+        const pos = toLatLngLiteral(coords);
+        createOrUpdateMarker(mapInstance.current, pos, window.google);
+        mapInstance.current.panTo(pos);
+      }
+      setHasPin(true);
     }
   };
 
@@ -190,6 +281,7 @@ export default function TuyMapPicker({
 
     const detected = getClosestTuyBarangay(lng, lat);
     setCoords([lng, lat]);
+    setHasPin(true);
     setBarangay(detected);
     setStreetAddress(`Brgy. ${detected}, Tuy, Batangas`);
   };
@@ -197,7 +289,7 @@ export default function TuyMapPicker({
   const handleConfirm = () => {
     const finalAddress = streetAddress.trim() || `Brgy. ${barangay}, Tuy, Batangas`;
     onSelectLocation({
-      coordinates: coords,
+      coordinates: hasPin ? coords : [0, 0],
       address: finalAddress,
       barangay,
     });
@@ -274,6 +366,35 @@ export default function TuyMapPicker({
         </div>
       )}
       <div className="relative h-64 sm:h-72 w-full bg-slate-900 overflow-hidden cursor-crosshair">
+        {/* Floating Pin Status & Quick Controls Overlay */}
+        <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between gap-2 pointer-events-none">
+          <div className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 shadow-lg text-[11px] font-bold text-white flex items-center gap-1.5 pointer-events-auto">
+            {hasPin ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Pin Active • Click map to move or drag</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span className="text-amber-200">No Pin Set • Click map to place marker</span>
+              </>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleTogglePin}
+            className={`pointer-events-auto px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg transition-all active:scale-95 border ${
+              hasPin
+                ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-500'
+                : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500'
+            }`}
+          >
+            {hasPin ? 'Clear Pin (No Marker)' : 'Drop Pin Here'}
+          </button>
+        </div>
+
         {isGoogleMapsActive && !authError ? (
           <div ref={mapContainer} className="w-full h-full" />
         ) : (
@@ -285,30 +406,37 @@ export default function TuyMapPicker({
             <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
 
             {/* Top Bar with detected location */}
-            <div className="relative z-10 flex items-center justify-between text-xs text-blue-200 bg-black/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-white/10 pointer-events-none">
+            <div className="relative z-10 flex items-center justify-between text-xs text-blue-200 bg-black/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-white/10 pointer-events-none mt-8">
               <span className="flex items-center gap-1.5">
                 <Crosshair className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span className="font-bold text-amber-300">Auto-detected: Brgy. {barangay}</span>
               </span>
               <span className="font-mono text-[11px] text-slate-300">
-                {coords[1].toFixed(4)}° N, {coords[0].toFixed(4)}° E
+                {hasPin ? `${coords[1].toFixed(4)}° N, ${coords[0].toFixed(4)}° E` : 'No Pin'}
               </span>
             </div>
 
             {/* Visual Pinpoint at center of active selection */}
             <div className="relative z-10 my-auto text-center pointer-events-none">
-              <div className="inline-flex flex-col items-center animate-bounce">
-                <div className="w-11 h-11 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-2xl border-2 border-white">
-                  <MapPin className="w-6 h-6" />
+              {hasPin ? (
+                <div className="inline-flex flex-col items-center animate-bounce">
+                  <div className="w-11 h-11 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-2xl border-2 border-white">
+                    <MapPin className="w-6 h-6" />
+                  </div>
+                  <div className="w-3 h-1 bg-black/60 rounded-full blur-xs mt-1"></div>
+                  <p className="text-sm text-amber-300 font-extrabold mt-2 drop-shadow-md">
+                    Brgy. {barangay}, Tuy, Batangas
+                  </p>
+                  <p className="text-[11px] text-blue-200/90 font-medium">
+                    Tap anywhere on the map to place pin &amp; auto-update address
+                  </p>
                 </div>
-                <div className="w-3 h-1 bg-black/60 rounded-full blur-xs mt-1"></div>
-              </div>
-              <p className="text-sm text-amber-300 font-extrabold mt-2 drop-shadow-md">
-                Brgy. {barangay}, Tuy, Batangas
-              </p>
-              <p className="text-[11px] text-blue-200/90 font-medium">
-                Tap anywhere on the map to place pin &amp; auto-update address
-              </p>
+              ) : (
+                <div className="p-4 bg-slate-900/80 rounded-2xl border border-white/10 max-w-xs mx-auto">
+                  <p className="text-sm text-amber-300 font-bold">No Marker Placed</p>
+                  <p className="text-xs text-slate-400 mt-1">Tap anywhere to place a pin marker</p>
+                </div>
+              )}
             </div>
 
             <div className="relative z-10 text-[11px] text-slate-400 text-center font-medium pointer-events-none flex items-center justify-center gap-1">
@@ -340,14 +468,23 @@ export default function TuyMapPicker({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Pinpoint Coordinates (Lng, Lat)
+            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+              <span>Pinpoint Coordinates (Lng, Lat)</span>
+              <button
+                type="button"
+                onClick={handleTogglePin}
+                className="text-[11px] font-bold text-blue-600 hover:underline"
+              >
+                {hasPin ? 'Clear Pin' : 'Add Pin'}
+              </button>
             </label>
             <input
               type="text"
               readOnly
-              value={`${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}`}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-xs font-mono text-slate-700 font-medium"
+              value={hasPin ? `${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}` : 'No Pinpoint Placed'}
+              className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-medium ${
+                hasPin ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-amber-200 bg-amber-50 text-amber-800'
+              }`}
             />
           </div>
         </div>

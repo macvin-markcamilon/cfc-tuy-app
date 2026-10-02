@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -14,7 +15,7 @@ import {
   ExternalLink,
   ShieldCheck,
   ChevronRight,
-  Bell,
+  Sparkles,
 } from 'lucide-react';
 
 export default function AdminLayout({
@@ -25,7 +26,7 @@ export default function AdminLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [userEmail, setUserEmail] = useState('servant@cfctuy.com');
+  const [userEmail, setUserEmail] = useState('markcamilon@gmail.com');
 
   // If on login page, just render children without sidebar
   const isLoginPage = pathname === '/admin/login';
@@ -33,7 +34,11 @@ export default function AdminLayout({
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('cfc_tuy_admin_user');
-      if (stored) setUserEmail(stored);
+      if (stored) {
+        setUserEmail(stored);
+      } else {
+        localStorage.setItem('cfc_tuy_admin_user', 'markcamilon@gmail.com');
+      }
     }
   }, []);
 
@@ -77,7 +82,7 @@ export default function AdminLayout({
   ];
 
   return (
-    <div className="min-h-screen flex bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen flex bg-[#FFFFFF] text-slate-900">
       
       {/* Mobile Sidebar Backdrop */}
       {sidebarOpen && (
@@ -87,32 +92,38 @@ export default function AdminLayout({
         />
       )}
 
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation with Brand Color #243c81 */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed top-0 bottom-0 left-0 z-50 w-72 bg-[#243c81] text-white border-r border-[#1a2c60] flex flex-col justify-between transition-transform duration-300 lg:translate-x-0 shadow-xl ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div>
-          {/* Brand & Chapter Header */}
-          <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            <Link href="/admin" className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-700 via-blue-600 to-amber-500 flex items-center justify-center font-black text-white text-lg shadow-md">
-                CFC
+          {/* Brand Logo & Chapter Header */}
+          <div className="p-5 border-b border-white/10 flex items-center justify-between">
+            <Link href="/admin" className="flex flex-col gap-2 w-full">
+              {/* Image 1: White Horizontal Couples For Christ Logo */}
+              <div className="relative w-full max-w-[210px] h-12">
+                <Image
+                  src="/images/cfc-logo-white-banner.png"
+                  alt="Couples For Christ Logo"
+                  fill
+                  className="object-contain object-left"
+                  priority
+                />
               </div>
-              <div>
-                <span className="font-extrabold text-base text-slate-900 dark:text-white tracking-tight block">
-                  Tuy Chapter
-                </span>
-                <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-                  Admin Console
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-widest text-amber-300 bg-white/15 px-2 py-0.5 rounded-md border border-white/10">
+                  Tuy Chapter • Admin Console
                 </span>
               </div>
             </Link>
 
             <button
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-slate-400 hover:text-slate-600 p-1"
+              className="lg:hidden text-white/70 hover:text-white p-1"
+              aria-label="Close sidebar"
             >
               <X className="w-5 h-5" />
             </button>
@@ -120,7 +131,7 @@ export default function AdminLayout({
 
           {/* Nav Items */}
           <div className="p-4 space-y-1.5">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2 block">
+            <span className="text-[10px] font-bold text-white/50 uppercase tracking-wider px-3 mb-2 block">
               Menu Navigation
             </span>
 
@@ -138,24 +149,24 @@ export default function AdminLayout({
                   onClick={() => setSidebarOpen(false)}
                   className={`flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
                     isActive
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-white/20 text-white shadow-md border border-white/20'
+                      : 'text-white/80 hover:bg-white/10 hover:text-white'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <Icon className={`w-5 h-5 ${isActive ? 'text-amber-300' : 'text-white/70'}`} />
                     <div>
                       <span className="block leading-snug">{item.name}</span>
                       <span
                         className={`text-[10px] font-normal block ${
-                          isActive ? 'text-blue-100' : 'text-slate-400'
+                          isActive ? 'text-blue-100' : 'text-white/60'
                         }`}
                       >
                         {item.description}
                       </span>
                     </div>
                   </div>
-                  {isActive && <ChevronRight className="w-4 h-4 text-blue-200" />}
+                  {isActive && <ChevronRight className="w-4 h-4 text-amber-300" />}
                 </Link>
               );
             })}
@@ -163,36 +174,41 @@ export default function AdminLayout({
         </div>
 
         {/* Bottom Profile & Actions */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+        <div className="p-4 border-t border-white/10 space-y-3">
           
-          {/* User badge */}
-          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-300 flex items-center justify-center font-bold text-sm">
+          {/* Main Admin user badge */}
+          <div className="p-3 rounded-2xl bg-white/10 border border-white/15 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-400 text-[#243c81] flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div className="overflow-hidden">
-              <span className="font-bold text-xs text-slate-900 dark:text-white block truncate">
-                Bro. Mark Camilon
-              </span>
-              <span className="text-[11px] text-slate-400 block truncate">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-xs text-white block truncate">
+                  Bro. Mark Camilon
+                </span>
+                <span className="text-[9px] font-extrabold uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.2 rounded">
+                  Admin
+                </span>
+              </div>
+              <span className="text-[11px] text-white/70 block truncate">
                 {userEmail}
               </span>
             </div>
           </div>
 
-          {/* Quick Exit to Public */}
+          {/* Quick Exit to Public Website */}
           <Link
             href="/"
-            className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all"
+            className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-all border border-white/10"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
+            <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
             <span>Go to Public Website</span>
           </Link>
 
           {/* Logout */}
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/60 text-red-600 dark:text-red-300 text-xs font-bold transition-all"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-400/20 text-xs font-bold transition-all"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Sign Out</span>
@@ -200,37 +216,37 @@ export default function AdminLayout({
         </div>
       </aside>
 
-      {/* Main Content Viewport */}
-      <div className="flex-1 lg:pl-72 flex flex-col min-h-screen">
+      {/* Main Content Viewport with Background #FFFFFF */}
+      <div className="flex-1 lg:pl-72 flex flex-col min-h-screen bg-[#FFFFFF]">
         
         {/* Top Header Bar */}
-        <header className="sticky top-0 z-30 h-16 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+        <header className="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="lg:hidden p-2 rounded-xl text-slate-700 hover:bg-slate-100"
               aria-label="Open sidebar"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-6 h-6 text-[#243c81]" />
             </button>
 
             <div>
-              <span className="text-xs text-slate-400 font-medium hidden sm:inline-block">
-                Couples for Christ • Tuy Chapter Administration
+              <span className="text-xs text-slate-500 font-semibold hidden sm:inline-block">
+                Couples for Christ • Tuy Chapter Main Admin Portal
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 text-xs font-bold border border-emerald-300 dark:border-emerald-800">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-[#243c81] text-xs font-bold border border-blue-200">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Tuy Chapter Server Online
+              Tuy Chapter Active • Main Admin
             </span>
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-[#FFFFFF]">{children}</main>
 
       </div>
 

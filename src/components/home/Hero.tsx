@@ -1,10 +1,11 @@
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { MapPin, Heart, BookOpen, ArrowRight, ShieldCheck, Sparkles, Users } from 'lucide-react';
 
 export default function Hero() {
   return (
-    <section className="relative overflow-hidden pt-8 pb-16 sm:pt-16 sm:pb-24 lg:pt-20 lg:pb-32 bg-gradient-to-b from-blue-50 via-slate-50 to-white dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <section className="relative overflow-hidden pt-8 pb-16 sm:pt-16 sm:pb-24 lg:pt-20 lg:pb-32 bg-gradient-to-b from-blue-50/50 via-white to-white">
       
       {/* Decorative background glows */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-tr from-blue-400/20 to-amber-300/20 blur-3xl pointer-events-none rounded-full" />
@@ -13,10 +14,24 @@ export default function Hero() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="text-center max-w-3xl mx-auto">
           
+          {/* Official Blue Logo Image 2 */}
+          <div className="flex justify-center mb-6">
+            <div className="p-3 sm:p-4 rounded-3xl bg-white shadow-xl border border-slate-100/80 hover:scale-105 transition-transform duration-200">
+              <Image
+                src="/images/cfc_logo_only_blue.png"
+                alt="Couples For Christ Logo"
+                width={72}
+                height={72}
+                className="w-16 h-16 sm:w-20 sm:h-20 object-contain"
+                priority
+              />
+            </div>
+          </div>
+
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-100/80 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-300 text-xs sm:text-sm font-semibold shadow-xs mb-6 backdrop-blur-xs">
-            <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 animate-ping" />
-            <span>Welcome to CFC Tuy Chapter • Batangas</span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[#243c81] text-xs sm:text-sm font-bold shadow-xs mb-4">
+            <span className="w-2 h-2 rounded-full bg-[#243c81] animate-ping" />
+            <span>Couples for Christ • Tuy Chapter, Batangas</span>
           </div>
 
           {/* Main Title */}

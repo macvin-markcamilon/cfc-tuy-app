@@ -3,86 +3,134 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles, AlertCircle, ArrowLeft, KeyRound } from 'lucide-react';
+import Image from 'next/image';
+import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft, KeyRound } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('markcamilon@gmail.com');
+  const [password, setPassword] = useState('weakPassword');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    // Simple authentication check with demo support
+    const supabase = createClient();
+
+    // If Supabase is connected, attempt real Supabase Auth
+    if (supabase) {
+      try {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password.trim(),
+        });
+
+        if (authError) {
+          // If error is invalid credentials, but matches main admin offline preset
+          if (email.trim() === 'markcamilon@gmail.com' && password.trim() === 'weakPassword') {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('cfc_tuy_admin_auth', 'true');
+              localStorage.setItem('cfc_tuy_admin_user', 'markcamilon@gmail.com');
+            }
+            router.push('/admin/clp');
+            return;
+          }
+          setError(authError.message || 'Invalid login credentials.');
+          setLoading(false);
+          return;
+        }
+
+        if (data.session) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('cfc_tuy_admin_auth', 'true');
+            localStorage.setItem('cfc_tuy_admin_user', data.user?.email || email);
+          }
+          router.push('/admin/clp');
+          return;
+        }
+      } catch (err: any) {
+        console.error('Supabase auth error:', err);
+      }
+    }
+
+    // Local / Offline authentication fallback
     setTimeout(() => {
-      if (email.trim() && password.trim()) {
-        // Set authenticated token in localStorage
+      if (
+        (email.trim() === 'markcamilon@gmail.com' && password.trim() === 'weakPassword') ||
+        (email.trim().length > 3 && password.trim().length >= 4)
+      ) {
         if (typeof window !== 'undefined') {
           localStorage.setItem('cfc_tuy_admin_auth', 'true');
-          localStorage.setItem('cfc_tuy_admin_user', email);
+          localStorage.setItem('cfc_tuy_admin_user', email.trim());
         }
         router.push('/admin/clp');
       } else {
-        setError('Please provide a valid email and password.');
+        setError('Invalid credentials. Use markcamilon@gmail.com / weakPassword');
         setLoading(false);
       }
-    }, 600);
+    }, 400);
   };
 
-  const handleDemoLogin = () => {
-    setEmail('servant@cfctuy.com');
-    setPassword('cfctuy2026');
+  const handleQuickMainAdminLogin = () => {
+    setEmail('markcamilon@gmail.com');
+    setPassword('weakPassword');
     setLoading(true);
 
     setTimeout(() => {
       if (typeof window !== 'undefined') {
         localStorage.setItem('cfc_tuy_admin_auth', 'true');
-        localStorage.setItem('cfc_tuy_admin_user', 'servant@cfctuy.com');
+        localStorage.setItem('cfc_tuy_admin_user', 'markcamilon@gmail.com');
       }
       router.push('/admin/clp');
-    }, 400);
+    }, 300);
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white relative overflow-hidden">
+    <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gradient-to-br from-[#101c42] via-[#243c81] to-[#12224d] text-white relative overflow-hidden">
       
       {/* Background ambient lighting */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-tr from-blue-600/20 to-amber-500/10 blur-3xl pointer-events-none rounded-full" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-tr from-blue-500/20 to-amber-500/10 blur-3xl pointer-events-none rounded-full" />
       
       {/* Back to Home Button */}
       <div className="absolute top-6 left-6 z-20">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-xs font-semibold text-slate-200 transition-all backdrop-blur-xs"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/10 hover:bg-white/20 text-xs font-semibold text-slate-200 transition-all backdrop-blur-xs"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to CFC Tuy</span>
+          <span>Back to CFC Tuy Public Site</span>
         </Link>
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4">
         {/* Brand header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-blue-500 to-amber-400 font-black text-white text-2xl shadow-xl mb-3">
-            CFC
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center p-3 rounded-3xl bg-white shadow-2xl mb-3">
+            <Image
+              src="/images/cfc_logo_only_blue.png"
+              alt="Couples for Christ Logo"
+              width={56}
+              height={56}
+              className="w-14 h-14 object-contain"
+            />
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            Servants & Admin Portal
+            Main Admin Portal
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-400">
-            Couples for Christ • Tuy Chapter Leadership Console
+          <p className="mt-1 text-xs sm:text-sm text-blue-200">
+            Couples for Christ • Tuy Chapter Administration
           </p>
         </div>
 
         {/* Login Card */}
-        <div className="bg-white dark:bg-slate-900 py-8 px-6 sm:px-10 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
+        <div className="bg-white py-8 px-6 sm:px-10 rounded-3xl shadow-2xl border border-slate-100 text-slate-900">
           
           {error && (
-            <div className="mb-5 p-3.5 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
+            <div className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
@@ -90,24 +138,24 @@ export default function AdminLoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Servant Email Address
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Main Admin Email
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="email"
                   required
-                  placeholder="servant@cfctuy.com"
+                  placeholder="markcamilon@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-[#243c81]"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
                 Password
               </label>
               <div className="relative">
@@ -118,17 +166,17 @@ export default function AdminLoginPage() {
                   placeholder="••••••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-[#243c81]"
                 />
               </div>
             </div>
 
             <div className="flex items-center justify-between text-xs text-slate-500">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" defaultChecked className="rounded text-blue-600 focus:ring-blue-500" />
+                <input type="checkbox" defaultChecked className="rounded text-[#243c81] focus:ring-[#243c81]" />
                 <span>Keep me signed in</span>
               </label>
-              <span className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer">
+              <span className="text-[#243c81] font-semibold hover:underline cursor-pointer">
                 Forgot password?
               </span>
             </div>
@@ -136,34 +184,34 @@ export default function AdminLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
+              className="w-full py-3 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-50"
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>{loading ? 'Authenticating...' : 'Sign In to Admin Portal'}</span>
+              <span>{loading ? 'Authenticating...' : 'Sign In as Main Admin'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
 
-          {/* Quick Demo Login Option */}
-          <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800">
-            <span className="text-[11px] text-slate-400 font-semibold block text-center mb-2">
-              For Chapter Leaders & Testing:
+          {/* Quick 1-Click Main Admin Login Button */}
+          <div className="mt-6 pt-5 border-t border-slate-200">
+            <span className="text-[11px] text-slate-500 font-semibold block text-center mb-2">
+              Preset Main Admin Credentials:
             </span>
             <button
               type="button"
-              onClick={handleDemoLogin}
-              className="w-full py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+              onClick={handleQuickMainAdminLogin}
+              className="w-full py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#243c81] border border-blue-200 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
             >
               <KeyRound className="w-3.5 h-3.5" />
-              <span>1-Click Servant Demo Sign-in</span>
+              <span>1-Click Sign-in as markcamilon@gmail.com</span>
             </button>
           </div>
 
         </div>
 
         {/* Parish Note */}
-        <p className="mt-6 text-center text-xs text-slate-400">
-          Under San Nicolas de Tolentino Parish • Tuy, Batangas
+        <p className="mt-6 text-center text-xs text-blue-200">
+          San Nicolas de Tolentino Parish • Tuy Chapter, Batangas
         </p>
 
       </div>

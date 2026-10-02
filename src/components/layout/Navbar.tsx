@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { Menu, X, MapPin, HeartHandshake, Calendar, Users, Shield, Sparkles, BookOpen, LogIn } from 'lucide-react';
 
@@ -28,14 +29,21 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           
-          {/* Brand Logo & Name */}
+          {/* Brand Logo & Name with Image 2 (cfc_logo_only_blue) */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-tr from-blue-900 via-blue-700 to-amber-500 flex items-center justify-center shadow-md group-hover:scale-105 transition-transform duration-200">
-              <span className="text-white font-black text-lg tracking-wider">CFC</span>
+            <div className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+              <Image
+                src="/images/cfc_logo_only_blue.png"
+                alt="Couples for Christ Logo"
+                width={44}
+                height={44}
+                className="w-10 h-10 sm:w-11 sm:h-11 object-contain"
+                priority
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">
+                <span className="font-extrabold text-base sm:text-lg text-[#243c81] tracking-tight">
                   Couples for Christ
                 </span>
                 <span className="bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700">

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { Heart, MapPin, Mail, Phone, ExternalLink, ShieldCheck } from 'lucide-react';
 
@@ -20,8 +21,14 @@ export default function Footer() {
           {/* Column 1: Chapter Brand & Mission */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-amber-400 flex items-center justify-center font-black text-white text-lg shadow-md">
-                CFC
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center p-1 shadow-md">
+                <Image
+                  src="/images/cfc_logo_only_blue.png"
+                  alt="Couples for Christ Logo"
+                  width={36}
+                  height={36}
+                  className="w-8 h-8 object-contain"
+                />
               </div>
               <div>
                 <span className="font-extrabold text-white text-base tracking-tight block">

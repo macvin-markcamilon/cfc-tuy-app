@@ -155,3 +155,59 @@ CREATE POLICY "Allow authenticated full access for CLP couples" ON clp_couples F
 CREATE POLICY "Allow authenticated full access for CLP talks" ON clp_talks FOR ALL USING (auth.role() = 'authenticated');
 CREATE POLICY "Allow authenticated full access for CLP attendance" ON clp_attendance FOR ALL USING (auth.role() = 'authenticated');
 
+-- 11. Main Admin User Provisioning
+-- Creates markcamilon@gmail.com with password 'weakPassword' in auth.users and profiles
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+DO $$
+DECLARE
+  admin_id UUID := gen_random_uuid();
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email = 'markcamilon@gmail.com') THEN
+    INSERT INTO auth.users (
+      id,
+      instance_id,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at,
+      role,
+      aud
+    ) VALUES (
+      admin_id,
+      '00000000-0000-0000-0000-000000000000',
+      'markcamilon@gmail.com',
+      crypt('weakPassword', gen_salt('bf')),
+      NOW(),
+      '{"provider":"email","providers":["email"]}',
+      '{"full_name":"Bro. Mark Camilon","role":"admin"}',
+      NOW(),
+      NOW(),
+      'authenticated',
+      'authenticated'
+    );
+
+    INSERT INTO profiles (
+      id,
+      full_name,
+      email,
+      barangay,
+      ministry,
+      role,
+      created_at
+    ) VALUES (
+      admin_id,
+      'Bro. Mark Camilon',
+      'markcamilon@gmail.com',
+      'Poblacion 1',
+      'CFC',
+      'admin',
+      NOW()
+    ) ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
+
+

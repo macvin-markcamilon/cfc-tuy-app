@@ -87,6 +87,21 @@ export async function fetchCLPPrograms(): Promise<CLPProgram[]> {
         }
         return mapped;
       }
+
+      // If Supabase is connected but empty, check if we have local programs to migrate up to cloud!
+      if (!error && data && data.length === 0 && isBrowser()) {
+        const local = localStorage.getItem(STORAGE_KEYS.PROGRAMS);
+        if (local) {
+          const parsed = JSON.parse(local) as CLPProgram[];
+          const validLocal = parsed.filter((p) => !p.id.includes('b29') && !p.id.includes('b30'));
+          for (const prog of validLocal) {
+            await saveCLPProgram(prog);
+          }
+          if (validLocal.length > 0) {
+            return validLocal;
+          }
+        }
+      }
     } catch (err) {
       console.warn('Supabase fetchCLPPrograms fallback to local:', err);
     }
@@ -253,6 +268,17 @@ export async function fetchCLPCouples(clpId?: string): Promise<CLPCouple[]> {
           );
         }
         return clpId ? mapped.filter((c) => c.clpId === clpId) : mapped;
+      }
+
+      // If Supabase is connected but empty, migrate existing local couples
+      if (!error && data && data.length === 0 && isBrowser()) {
+        const localCouples = await fetchCLPCouplesFromLocal();
+        for (const couple of localCouples) {
+          await saveCLPCouple(couple);
+        }
+        if (localCouples.length > 0) {
+          return clpId ? localCouples.filter((c) => c.clpId === clpId) : localCouples;
+        }
       }
     } catch (err) {
       console.warn('Supabase fetchCLPCouples fallback to local:', err);

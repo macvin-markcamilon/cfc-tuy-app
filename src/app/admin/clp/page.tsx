@@ -56,6 +56,10 @@ import {
   Download,
   Loader2,
   RefreshCw,
+  Upload,
+  FileDown,
+  AlertTriangle,
+  CheckCheck,
 } from 'lucide-react';
 
 export default function CLPAdminPage() {
@@ -142,6 +146,14 @@ export default function CLPAdminPage() {
   const [showCouplesMapModal, setShowCouplesMapModal] = useState(false);
   const [mapModalFocusedCoupleId, setMapModalFocusedCoupleId] = useState<string | null>(null);
   const [mapModalTitle, setMapModalTitle] = useState('All Invited Couples Tuy Map');
+
+  // Bulk Upload State
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [bulkUploadFile, setBulkUploadFile] = useState<File | null>(null);
+  const [bulkUploadPreview, setBulkUploadPreview] = useState<Partial<CLPCouple>[]>([]);
+  const [bulkUploadErrors, setBulkUploadErrors] = useState<string[]>([]);
+  const [isBulkUploading, setIsBulkUploading] = useState(false);
+  const [bulkUploadResult, setBulkUploadResult] = useState<{ success: number; failed: number } | null>(null);
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -481,6 +493,191 @@ export default function CLPAdminPage() {
         console.error('Error deleting couple:', err);
       }
     }
+  };
+
+  // -------------------------------------------------------------------------
+  // Handlers: Bulk Upload Invitees (CSV)
+  // -------------------------------------------------------------------------
+
+  /** Generates and triggers download of the invitee CSV template */
+  const handleDownloadTemplate = () => {
+    const headers = [
+      'husband_first_name',
+      'husband_last_name',
+      'husband_birthday',
+      'husband_occupation',
+      'husband_contact',
+      'husband_email',
+      'wife_first_name',
+      'wife_last_name',
+      'wife_birthday',
+      'wife_occupation',
+      'wife_contact',
+      'wife_email',
+      'wedding_anniversary',
+      'address',
+      'barangay',
+    ];
+    const exampleRow = [
+      'Juan',
+      'dela Cruz',
+      '1985-06-15',
+      'Engineer',
+      '09171234567',
+      'juan@email.com',
+      'Maria',
+      'dela Cruz',
+      '1988-03-22',
+      'Teacher',
+      '09187654321',
+      'maria@email.com',
+      '2010-09-18',
+      'Brgy. Rizal (Pob.), Tuy, Batangas',
+      'Rizal (Pob.)',
+    ];
+    const csvContent = [headers.join(','), exampleRow.join(',')].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'clp_invitees_template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+    triggerToast('Template downloaded!');
+  };
+
+  /** Parses the selected CSV file and populates the preview */
+  const handleBulkFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkUploadFile(file);
+    setBulkUploadResult(null);
+    setBulkUploadErrors([]);
+    setBulkUploadPreview([]);
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      if (!text) return;
+
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) {
+        setBulkUploadErrors(['CSV file must have a header row and at least one data row.']);
+        return;
+      }
+
+      const rawHeaders = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''));
+
+      const expectedHeaders = [
+        'husband_first_name', 'husband_last_name', 'wife_first_name', 'wife_last_name',
+        'address', 'barangay',
+      ];
+      const missingHeaders = expectedHeaders.filter((h) => !rawHeaders.includes(h));
+      if (missingHeaders.length > 0) {
+        setBulkUploadErrors([`Missing required columns: ${missingHeaders.join(', ')}`]);
+        return;
+      }
+
+      const parsed: Partial<CLPCouple>[] = [];
+      const errors: string[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Handle comma-separated values (basic CSV parse; no embedded commas in fields)
+        const values = line.split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+        const row: Record<string, string> = {};
+        rawHeaders.forEach((h, idx) => {
+          row[h] = values[idx] || '';
+        });
+
+        const husbFirst = row['husband_first_name'];
+        const husbLast = row['husband_last_name'];
+        const wifeFirst = row['wife_first_name'];
+        const wifeLast = row['wife_last_name'];
+        const address = row['address'];
+        const barangay = row['barangay'];
+
+        if (!husbFirst || !husbLast || !wifeFirst || !wifeLast) {
+          errors.push(`Row ${i}: Missing required name fields.`);
+          continue;
+        }
+        if (!address || !barangay) {
+          errors.push(`Row ${i}: Missing address or barangay.`);
+          continue;
+        }
+
+        parsed.push({
+          husbandFirstName: husbFirst,
+          husbandLastName: husbLast,
+          husbandBirthday: row['husband_birthday'] || '',
+          husbandOccupation: row['husband_occupation'] || '',
+          husbandContact: row['husband_contact'] || '',
+          husbandEmail: row['husband_email'] || '',
+          wifeFirstName: wifeFirst,
+          wifeLastName: wifeLast,
+          wifeBirthday: row['wife_birthday'] || '',
+          wifeOccupation: row['wife_occupation'] || '',
+          wifeContact: row['wife_contact'] || '',
+          wifeEmail: row['wife_email'] || '',
+          weddingAnniversary: row['wedding_anniversary'] || '',
+          address,
+          barangay,
+          coordinates: [120.7289, 14.0228] as [number, number],
+          status: 'Active' as const,
+        });
+      }
+
+      setBulkUploadPreview(parsed);
+      setBulkUploadErrors(errors);
+    };
+    reader.readAsText(file);
+  };
+
+  /** Saves all previewed couples to the current CLP */
+  const handleBulkUploadSubmit = async () => {
+    if (!currentClp || bulkUploadPreview.length === 0) return;
+    setIsBulkUploading(true);
+    let success = 0;
+    let failed = 0;
+
+    for (const partial of bulkUploadPreview) {
+      try {
+        const newCouple: CLPCouple = {
+          id: generateUUID(),
+          clpId: currentClp.id,
+          husbandFirstName: partial.husbandFirstName || '',
+          husbandLastName: partial.husbandLastName || '',
+          husbandBirthday: partial.husbandBirthday || '',
+          husbandOccupation: partial.husbandOccupation || '',
+          husbandContact: partial.husbandContact || '',
+          husbandEmail: partial.husbandEmail || '',
+          wifeFirstName: partial.wifeFirstName || '',
+          wifeLastName: partial.wifeLastName || '',
+          wifeBirthday: partial.wifeBirthday || '',
+          wifeOccupation: partial.wifeOccupation || '',
+          wifeContact: partial.wifeContact || '',
+          wifeEmail: partial.wifeEmail || '',
+          weddingAnniversary: partial.weddingAnniversary || '',
+          address: partial.address || '',
+          barangay: partial.barangay || '',
+          coordinates: partial.coordinates || [120.7289, 14.0228],
+          status: 'Active',
+        };
+        const saved = await saveCLPCouple(newCouple);
+        setCouples((prev) => [saved, ...prev.filter((c) => c.id !== saved.id)]);
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+
+    setIsBulkUploading(false);
+    setBulkUploadResult({ success, failed });
+    setBulkUploadPreview([]);
+    setBulkUploadFile(null);
+    triggerToast(`Bulk upload complete: ${success} added, ${failed} failed.`);
   };
 
   // -------------------------------------------------------------------------
@@ -1021,7 +1218,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 </div>
 
                 {/* View on Map All + Add Couple Buttons */}
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
                   <button
                     type="button"
                     onClick={() => {
@@ -1032,7 +1229,32 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-[#243c81] font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95"
                   >
                     <Map className="w-4 h-4 text-blue-700" />
-                    <span>View All Couples on Map</span>
+                    <span>View All on Map</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadTemplate}
+                    title="Download CSV template for bulk upload"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95"
+                  >
+                    <FileDown className="w-4 h-4" />
+                    <span>Template</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkUploadFile(null);
+                      setBulkUploadPreview([]);
+                      setBulkUploadErrors([]);
+                      setBulkUploadResult(null);
+                      setShowBulkUploadModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Bulk Upload</span>
                   </button>
 
                   <button
@@ -1040,7 +1262,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Add Couple with Map Picker</span>
+                    <span>Add Couple</span>
                   </button>
                 </div>
               </div>
@@ -2223,6 +2445,193 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: BULK UPLOAD INVITEES (CSV)                                          */}
+      {/* ========================================================================= */}
+      {showBulkUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-3xl w-full border border-slate-200 shadow-2xl my-8">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between mb-5 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <span className="p-2 rounded-xl bg-violet-50 border border-violet-200">
+                  <Upload className="w-5 h-5 text-violet-600" />
+                </span>
+                <div>
+                  <h3 className="font-black text-lg text-slate-900">Bulk Upload Invitees</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Import multiple invitee couples at once via CSV
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBulkUploadModal(false)}
+                className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Step 1: Download Template hint */}
+            <div className="mb-5 p-4 rounded-2xl bg-violet-50 border border-violet-200 flex items-start gap-3">
+              <FileDown className="w-5 h-5 text-violet-500 shrink-0 mt-0.5" />
+              <div className="text-sm text-violet-800">
+                <p className="font-bold">Don&apos;t have a template yet?</p>
+                <p className="text-xs mt-0.5 text-violet-600">
+                  Download the CSV template first, fill in your invitees, then upload it here.
+                  Required columns:{' '}
+                  <span className="font-mono font-bold">
+                    husband_first_name, husband_last_name, wife_first_name, wife_last_name, address, barangay
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-100 hover:bg-violet-200 text-violet-700 font-bold text-xs transition-colors"
+                >
+                  <FileDown className="w-3.5 h-3.5" />
+                  Download Template CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Step 2: File Upload */}
+            <div className="mb-5">
+              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-2">
+                Select CSV File
+              </label>
+              <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-violet-300 rounded-2xl bg-violet-50 hover:bg-violet-100 cursor-pointer transition-colors group">
+                <Upload className="w-7 h-7 text-violet-400 group-hover:text-violet-600 mb-1 transition-colors" />
+                <span className="text-sm font-bold text-violet-600 group-hover:text-violet-700">
+                  {bulkUploadFile ? bulkUploadFile.name : 'Click to choose a CSV file'}
+                </span>
+                <span className="text-xs text-slate-400 mt-0.5">
+                  {bulkUploadFile ? `${(bulkUploadFile.size / 1024).toFixed(1)} KB` : 'Only .csv files accepted'}
+                </span>
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleBulkFileChange}
+                />
+              </label>
+            </div>
+
+            {/* Errors */}
+            {bulkUploadErrors.length > 0 && (
+              <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border border-red-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                  <span className="font-bold text-sm text-red-700">
+                    {bulkUploadErrors.length} issue{bulkUploadErrors.length !== 1 ? 's' : ''} found
+                  </span>
+                </div>
+                <ul className="space-y-0.5 max-h-24 overflow-y-auto">
+                  {bulkUploadErrors.map((err, i) => (
+                    <li key={i} className="text-xs text-red-600 font-mono">
+                      • {err}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Preview Table */}
+            {bulkUploadPreview.length > 0 && (
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCheck className="w-4 h-4 text-emerald-500" />
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                    Preview — {bulkUploadPreview.length} couple{bulkUploadPreview.length !== 1 ? 's' : ''} ready to import
+                  </span>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-56">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 sticky top-0">
+                      <tr>
+                        <th className="text-left px-3 py-2 font-bold text-slate-600">#</th>
+                        <th className="text-left px-3 py-2 font-bold text-slate-600">Husband</th>
+                        <th className="text-left px-3 py-2 font-bold text-slate-600">Wife</th>
+                        <th className="text-left px-3 py-2 font-bold text-slate-600">Barangay</th>
+                        <th className="text-left px-3 py-2 font-bold text-slate-600">Address</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {bulkUploadPreview.map((c, i) => (
+                        <tr key={i} className="hover:bg-slate-50">
+                          <td className="px-3 py-2 text-slate-400 font-mono">{i + 1}</td>
+                          <td className="px-3 py-2 font-semibold text-slate-800">
+                            Bro. {c.husbandFirstName} {c.husbandLastName}
+                          </td>
+                          <td className="px-3 py-2 font-semibold text-rose-700">
+                            Sis. {c.wifeFirstName} {c.wifeLastName}
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{c.barangay}</td>
+                          <td className="px-3 py-2 text-slate-500 truncate max-w-[140px]">{c.address}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Result after upload */}
+            {bulkUploadResult && (
+              <div className={`mb-4 p-4 rounded-2xl border flex items-start gap-3 ${
+                bulkUploadResult.failed === 0
+                  ? 'bg-emerald-50 border-emerald-200'
+                  : 'bg-amber-50 border-amber-200'
+              }`}>
+                <CheckCheck className={`w-5 h-5 shrink-0 mt-0.5 ${
+                  bulkUploadResult.failed === 0 ? 'text-emerald-500' : 'text-amber-500'
+                }`} />
+                <div>
+                  <p className="font-bold text-sm text-slate-800">Upload Complete</p>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    <span className="text-emerald-600 font-bold">{bulkUploadResult.success} added successfully</span>
+                    {bulkUploadResult.failed > 0 && (
+                      <span className="text-red-600 font-bold ml-2">• {bulkUploadResult.failed} failed</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowBulkUploadModal(false)}
+                className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm hover:bg-slate-50 transition-colors"
+              >
+                {bulkUploadResult ? 'Close' : 'Cancel'}
+              </button>
+              {bulkUploadPreview.length > 0 && !bulkUploadResult && (
+                <button
+                  type="button"
+                  onClick={handleBulkUploadSubmit}
+                  disabled={isBulkUploading}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white font-bold text-sm shadow-xs transition-all active:scale-95"
+                >
+                  {isBulkUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      <span>Import {bulkUploadPreview.length} Couples</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -62,6 +62,7 @@ import {
   CheckCheck,
   LayoutGrid,
   List,
+  IdCard,
 } from 'lucide-react';
 
 export default function CLPAdminPage() {
@@ -1027,6 +1028,124 @@ export default function CLPAdminPage() {
     triggerToast('Downloaded! Open the file in browser and press Ctrl+P to save as PDF.');
   };
 
+  // ---------------------------------------------------------------------------
+  // Print Name IDs (A4 sheet, 90×60 mm per card)
+  // ---------------------------------------------------------------------------
+  const handlePrintIDs = () => {
+    if (!currentCouples.length || !currentClp) {
+      triggerToast('No invitees to print IDs for.');
+      return;
+    }
+
+    // Encode logo as absolute URL so the popup window can load it
+    const logoUrl = `${window.location.origin}/images/cfc_logo_only_blue.png`;
+
+    const cardsHtml = currentCouples
+      .map(
+        (c) => `
+      <div class="id-card">
+        <div class="id-inner">
+          <div class="last-name">${(c.husbandLastName || '').toUpperCase()}</div>
+          <div class="first-name">${(c.husbandFirstName || '').toUpperCase()}</div>
+          <div class="spouse">${(c.wifeFirstName || '').toUpperCase()} ${(c.wifeLastName || c.husbandLastName || '').toUpperCase()}</div>
+          <img class="logo" src="${logoUrl}" alt="CFC" />
+        </div>
+      </div>`
+      )
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Name IDs – ${currentClp.name}</title>
+  <style>
+    /* A4 page, no margins for tight card layout */
+    @page { size: A4 portrait; margin: 10mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .sheet {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4mm;
+      width: 190mm; /* A4 width minus 2×10mm margins */
+    }
+    .id-card {
+      width: 90mm;
+      height: 60mm;
+      border: 2px solid #1e3a8a;
+      border-radius: 3mm;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .id-inner {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3mm 4mm;
+      gap: 1.5mm;
+    }
+    .last-name {
+      font-size: 13pt;
+      font-weight: 700;
+      color: #111;
+      letter-spacing: 0.04em;
+      text-align: center;
+      line-height: 1.1;
+    }
+    .first-name {
+      font-size: 18pt;
+      font-weight: 900;
+      color: #000;
+      letter-spacing: 0.02em;
+      text-align: center;
+      line-height: 1;
+    }
+    .spouse {
+      font-size: 9pt;
+      font-weight: 700;
+      color: #334155;
+      text-align: center;
+      letter-spacing: 0.03em;
+      line-height: 1.2;
+    }
+    .logo {
+      width: 14mm;
+      height: auto;
+      margin-top: 2mm;
+      object-fit: contain;
+    }
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="padding:12px 16px;background:#1e3a8a;color:#fff;font-family:Arial;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+    <span><strong>${currentClp.name}</strong> — Name IDs (90×60 mm) · ${currentCouples.length} cards</span>
+    <button onclick="window.print()" style="background:#fff;color:#1e3a8a;border:none;padding:6px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">🖨 Print / Save as PDF</button>
+  </div>
+  <div class="sheet">${cardsHtml}</div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      triggerToast('Pop-up blocked. Please allow pop-ups and try again.');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+  };
+
   // Copy report summary text
   const handleCopyReportSummary = () => {
     if (!currentClp) return;
@@ -1287,6 +1406,16 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                   >
                     <Upload className="w-4 h-4" />
                     <span>Bulk Upload</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePrintIDs}
+                    title="Print name IDs (90×60 mm) on A4 paper"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs sm:text-sm shadow-xs transition-all active:scale-95"
+                  >
+                    <IdCard className="w-4 h-4" />
+                    <span>Print IDs</span>
                   </button>
 
                   <button

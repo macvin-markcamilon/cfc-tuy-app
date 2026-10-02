@@ -96,7 +96,7 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
 
     // Call Gemini API
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,6 +111,7 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
           generationConfig: {
             temperature: 0.4,
             maxOutputTokens: 4096,
+            responseMimeType: 'application/json',
           },
         }),
       }
@@ -133,16 +134,27 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
     const geminiData = await geminiResponse.json();
     const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
+    if (!rawText) {
+      console.error('Empty Gemini response:', JSON.stringify(geminiData));
+      return NextResponse.json(
+        { error: 'The AI returned an empty response. Please try again.' },
+        { status: 500 }
+      );
+    }
+
     // Parse the JSON from Gemini's response
     let parsed: { groups: { groupNumber: number; groupName: string; rationale: string; coupleIds: string[] }[]; summary: string };
     try {
-      // Strip markdown code fences if any
+      // Strip markdown code fences if any (belt-and-suspenders since we request JSON MIME)
       const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
       parsed = JSON.parse(cleaned);
-    } catch (e) {
-      console.error('Failed to parse Gemini JSON output:', rawText);
+      if (!parsed?.groups || !Array.isArray(parsed.groups)) {
+        throw new Error('Missing "groups" array in AI response');
+      }
+    } catch (e: any) {
+      console.error('Failed to parse Gemini JSON output:', rawText, e?.message);
       return NextResponse.json(
-        { error: 'The AI returned an unexpected response format. Please try again.' },
+        { error: `The AI returned an unexpected format: ${e?.message || 'parse error'}. Please try again.` },
         { status: 500 }
       );
     }

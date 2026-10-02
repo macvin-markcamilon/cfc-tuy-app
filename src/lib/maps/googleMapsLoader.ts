@@ -2,11 +2,44 @@
 
 import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 
+declare global {
+  interface Window {
+    gm_authFailure?: () => void;
+  }
+}
+
 let isConfigured = false;
 let mapsLibraryPromise: Promise<{
   maps: typeof google.maps;
   marker?: typeof google.maps.marker;
 }> | null = null;
+
+let authFailed = false;
+let authErrorListeners: Array<() => void> = [];
+
+if (typeof window !== 'undefined') {
+  window.gm_authFailure = () => {
+    console.warn(
+      'Google Maps Authentication Failure: This usually indicates that Billing is not enabled on your Google Cloud Project or API Key restrictions mismatch.'
+    );
+    authFailed = true;
+    authErrorListeners.forEach((fn) => fn());
+  };
+}
+
+export function hasGoogleMapsAuthFailed(): boolean {
+  return authFailed;
+}
+
+export function onGoogleMapsAuthError(callback: () => void): () => void {
+  authErrorListeners.push(callback);
+  if (authFailed) {
+    callback();
+  }
+  return () => {
+    authErrorListeners = authErrorListeners.filter((cb) => cb !== callback);
+  };
+}
 
 export function getGoogleMapsApiKey(): string {
   return process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';

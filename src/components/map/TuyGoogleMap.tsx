@@ -19,6 +19,7 @@ import {
   toLatLngLiteral,
   isGoogleMapsKeyValid,
   getGoogleMapsApiKey,
+  onGoogleMapsAuthError,
 } from '@/lib/maps/googleMapsLoader';
 
 interface TuyMapProps {
@@ -70,7 +71,14 @@ export default function TuyGoogleMap({
   const [mapStyle, setMapStyle] = useState<'streets' | 'satellite' | 'terrain'>('streets');
   const [isMapReady, setIsMapReady] = useState<boolean>(false);
   const [hasValidKey, setHasValidKey] = useState<boolean>(() => isGoogleMapsKeyValid());
+  const [authError, setAuthError] = useState<boolean>(false);
   const [locatingUser, setLocatingUser] = useState<boolean>(false);
+
+  useEffect(() => {
+    return onGoogleMapsAuthError(() => {
+      setAuthError(true);
+    });
+  }, []);
 
   // Filter pins based on selected ministry
   const filteredPins = useMemo(() => {
@@ -228,7 +236,7 @@ export default function TuyGoogleMap({
 
       {/* Main Map Container */}
       <div className={`relative w-full ${height} bg-slate-100 dark:bg-slate-950`}>
-        {hasValidKey ? (
+        {hasValidKey && !authError ? (
           <>
             <div ref={mapContainer} className="w-full h-full" />
 
@@ -285,16 +293,34 @@ export default function TuyGoogleMap({
             <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
 
             {/* Notice Banner */}
-            <div className="relative z-10 max-w-xl mx-auto glass-panel border-blue-500/30 bg-blue-950/70 p-3 sm:p-4 rounded-2xl shadow-xl flex items-start gap-3 text-xs sm:text-sm">
+            <div className="relative z-10 max-w-xl mx-auto glass-panel border-amber-500/30 bg-amber-950/70 p-3 sm:p-4 rounded-2xl shadow-xl flex items-start gap-3 text-xs sm:text-sm">
               <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold text-amber-300">Google Maps Setup Ready:</span>
+                <span className="font-bold text-amber-300">
+                  {authError ? 'Google Cloud Billing Required:' : 'Google Maps Setup Ready:'}
+                </span>
                 <p className="text-slate-300 text-xs mt-0.5">
-                  Interactive community pins below are fully clickable. To load live high-res Google Maps satellite and road imagery, configure{' '}
-                  <code className="bg-black/40 px-1.5 py-0.5 rounded text-blue-200">
-                    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-                  </code>{' '}
-                  in your environment.
+                  {authError ? (
+                    <>
+                      Google Maps requires an active billing account linked in your Google Cloud Console (Google provides $200 free monthly credit). Click below to link billing or enjoy the active interactive Tuy vector map.
+                      <a
+                        href="https://console.cloud.google.com/billing"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block mt-1 font-bold text-amber-300 underline"
+                      >
+                        Open Google Cloud Billing Settings →
+                      </a>
+                    </>
+                  ) : (
+                    <>
+                      Interactive community pins below are fully clickable. To load live high-res Google Maps satellite and road imagery, configure{' '}
+                      <code className="bg-black/40 px-1.5 py-0.5 rounded text-blue-200">
+                        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+                      </code>{' '}
+                      in your environment.
+                    </>
+                  )}
                 </p>
               </div>
             </div>

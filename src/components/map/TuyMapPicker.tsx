@@ -7,6 +7,7 @@ import {
   loadGoogleMaps,
   toLatLngLiteral,
   isGoogleMapsKeyValid,
+  onGoogleMapsAuthError,
 } from '@/lib/maps/googleMapsLoader';
 
 interface TuyMapPickerProps {
@@ -82,6 +83,14 @@ export default function TuyMapPicker({
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerInstance = useRef<google.maps.Marker | null>(null);
+
+  const [authError, setAuthError] = useState(false);
+
+  useEffect(() => {
+    return onGoogleMapsAuthError(() => {
+      setAuthError(true);
+    });
+  }, []);
 
   const isGoogleMapsActive = isGoogleMapsKeyValid();
 
@@ -248,8 +257,24 @@ export default function TuyMapPicker({
       </div>
 
       {/* Interactive Map Visual Area */}
+      {authError && (
+        <div className="px-4 py-2.5 bg-amber-500 text-slate-950 text-xs font-semibold flex items-center justify-between gap-2 border-b border-amber-600 animate-in fade-in">
+          <span className="flex items-center gap-1.5">
+            <span>⚠️</span>
+            <span>Google Maps billing is required on your GCP project. Interactive vector mode is active below.</span>
+          </span>
+          <a
+            href="https://console.cloud.google.com/billing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline font-bold shrink-0 hover:text-black"
+          >
+            Enable GCP Billing
+          </a>
+        </div>
+      )}
       <div className="relative h-64 sm:h-72 w-full bg-slate-900 overflow-hidden cursor-crosshair">
-        {isGoogleMapsActive ? (
+        {isGoogleMapsActive && !authError ? (
           <div ref={mapContainer} className="w-full h-full" />
         ) : (
           /* Interactive High-Fidelity Vector Canvas for Tuy */

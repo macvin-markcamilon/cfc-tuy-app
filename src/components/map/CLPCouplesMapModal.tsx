@@ -19,6 +19,7 @@ import {
   loadGoogleMaps,
   toLatLngLiteral,
   isGoogleMapsKeyValid,
+  onGoogleMapsAuthError,
 } from '@/lib/maps/googleMapsLoader';
 
 interface CLPCouplesMapModalProps {
@@ -61,6 +62,14 @@ export default function CLPCouplesMapModal({
   const [mapStyle, setMapStyle] = useState<'streets' | 'satellite' | 'terrain'>('streets');
   const [searchQuery, setSearchQuery] = useState('');
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+
+  const [authError, setAuthError] = useState(false);
+
+  useEffect(() => {
+    return onGoogleMapsAuthError(() => {
+      setAuthError(true);
+    });
+  }, []);
 
   const isGoogleMapsActive = isGoogleMapsKeyValid();
 
@@ -392,7 +401,7 @@ export default function CLPCouplesMapModal({
 
           {/* Right Area: Interactive Google Map */}
           <div className="flex-1 relative bg-slate-950 overflow-hidden">
-            {isGoogleMapsActive ? (
+            {isGoogleMapsActive && !authError ? (
               <div ref={mapContainer} className="w-full h-full" />
             ) : (
               /* Fallback Interactive Vector Canvas */

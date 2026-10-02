@@ -66,7 +66,7 @@ export default function AdminDashboardPage() {
           <p className="mt-1 text-xs sm:text-sm text-slate-200 max-w-xl">
             {activeCLP ? (
               <>
-                Active CLP: <strong className="text-white font-bold">{activeCLP.name}</strong> is currently registered with {activeCouples.length} enrolled couples.
+                Active CLP: <strong className="text-white font-bold">{activeCLP.name}</strong> is currently registered with {activeCouples.length} invited couples.
               </>
             ) : (
               'All sample data has been cleared. Ready to add and manage your production CLP batches.'
@@ -91,7 +91,7 @@ export default function AdminDashboardPage() {
         <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-              Enrolled CLP Couples
+              Invited CLP Couples
             </span>
             <div className="p-2.5 rounded-xl bg-blue-50 text-[#243c81] border border-blue-200">
               <BookOpenCheck className="w-5 h-5" />
@@ -210,7 +210,7 @@ export default function AdminDashboardPage() {
               </div>
             ) : (
               <div className="py-8 text-center text-slate-500 text-xs bg-slate-50 rounded-xl border border-slate-200">
-                No couples enrolled yet in this CLP batch. Click &quot;Manage Couples &amp; Attendance&quot; to enroll couples.
+                No invited couples registered yet in this CLP batch. Click &quot;Manage Couples &amp; Attendance&quot; to register couples.
               </div>
             )}
           </>

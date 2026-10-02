@@ -17,36 +17,38 @@ interface TuyMapPickerProps {
   onClose?: () => void;
 }
 
-// Approximate coordinate centroids for all Tuy barangays
+// Approximate coordinate centroids for all 23 official Tuy barangays
 export const BARANGAY_COORDINATES: Record<string, [number, number]> = {
-  'Poblacion 1': [120.7289, 14.0228],
-  'Poblacion 2': [120.7298, 14.0235],
-  'Poblacion 3': [120.7275, 14.0221],
-  'Poblacion 4': [120.7282, 14.0212],
-  'Burgos': [120.7270, 14.0245],
-  'Luna': [120.7305, 14.0215],
-  'Rillo': [120.7320, 14.0390],
-  'Putol': [120.7360, 14.0310],
-  'Luntal': [120.7410, 14.0150],
-  'Malibu': [120.7180, 14.0120],
-  'Obispo': [120.7210, 14.0320],
-  'Guinhawa': [120.7480, 14.0250],
-  'Talon': [120.7150, 14.0260],
-  'Toong': [120.7250, 14.0080],
-  'Dao': [120.7510, 14.0180],
+  'Acle': [120.7490, 14.0420],
   'Bayudbud': [120.7380, 14.0450],
-  'Bolocboc': [120.7550, 14.0300],
+  'Bolboc (Maligas)': [120.7550, 14.0300],
+  'Burgos (Pob.)': [120.7270, 14.0245],
+  'Dalima': [120.7100, 14.0160],
+  'Dao': [120.7510, 14.0180],
+  'Guinhawa': [120.7480, 14.0250],
+  'Lumbangan': [120.7420, 14.0050],
+  'Luna (Pob.)': [120.7305, 14.0215],
+  'Luntal': [120.7410, 14.0150],
+  'Magahis': [120.7200, 14.0480],
+  'Malibu': [120.7180, 14.0120],
   'Mataywanac': [120.7120, 14.0400],
+  'Palincaro': [120.7080, 14.0200],
+  'Putol': [120.7360, 14.0310],
+  'Rillo (Pob.)': [120.7320, 14.0390],
+  'Rizal (Pob.)': [120.7289, 14.0228],
   'Sabang': [120.7440, 14.0380],
   'San Jose': [120.7350, 14.0110],
-  'Tuyon-tuyon': [120.7240, 14.0350],
+  'San Jose (Putic)': [120.7390, 14.0130],
+  'Talon': [120.7150, 14.0260],
+  'Toong': [120.7250, 14.0080],
+  'Tuyon-tuyon (Obispo)': [120.7240, 14.0350],
 };
 
 /**
  * Automatically determine the closest Tuy Barangay to any [longitude, latitude] pinpoint.
  */
 export function getClosestTuyBarangay(lng: number, lat: number): string {
-  let closest = 'Poblacion 1';
+  let closest = 'Rizal (Pob.)';
   let minDistance = Infinity;
 
   for (const [brgy, [bLng, bLat]] of Object.entries(BARANGAY_COORDINATES)) {
@@ -63,7 +65,7 @@ export function getClosestTuyBarangay(lng: number, lat: number): string {
 export default function TuyMapPicker({
   initialCoordinates = TUY_CENTER_COORDINATES,
   initialAddress = '',
-  initialBarangay = 'Poblacion 1',
+  initialBarangay = 'Rizal (Pob.)',
   onSelectLocation,
   onClose,
 }: TuyMapPickerProps) {

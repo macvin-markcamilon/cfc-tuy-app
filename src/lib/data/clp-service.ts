@@ -480,6 +480,26 @@ export async function saveCLPTalk(talk: CLPTalk): Promise<CLPTalk> {
   return saved;
 }
 
+export async function deleteCLPTalk(id: string): Promise<void> {
+  if (isBrowser()) {
+    try {
+      const all = (await fetchCLPTalks()).filter((t) => t.id !== id);
+      localStorage.setItem(STORAGE_KEYS.TALKS, JSON.stringify(all));
+    } catch (err) {
+      console.error('Error deleting talk locally:', err);
+    }
+  }
+
+  const supabase = createClient();
+  if (supabase) {
+    try {
+      await supabase.from('clp_talks').delete().eq('id', id);
+    } catch (err) {
+      console.warn('Supabase delete talk error:', err);
+    }
+  }
+}
+
 /**
  * Automatically creates the 8 revised CFC CLP Talks for a program.
  */

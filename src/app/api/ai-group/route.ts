@@ -143,25 +143,57 @@ Please group these couples according to the instruction above. Remember to use t
 ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
 
     // Call Gemini API with the resolved model
+    // Try with JSON mode enforced first; fall back to plain if unsupported.
     console.log(`[ai-group] Calling model: ${model}`);
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: systemPrompt + '\n\n' + userMessage }],
+
+    const makeGeminiCall = async (enforceJson: boolean) => {
+      const generationConfig: Record<string, unknown> = {
+        temperature: 0.4,
+        maxOutputTokens: 4096,
+      };
+      if (enforceJson) {
+        generationConfig.responseMimeType = 'application/json';
+        generationConfig.responseSchema = {
+          type: 'object',
+          properties: {
+            groups: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  groupNumber: { type: 'integer' },
+                  groupName: { type: 'string' },
+                  rationale: { type: 'string' },
+                  coupleIds: { type: 'array', items: { type: 'string' } },
+                },
+                required: ['groupNumber', 'groupName', 'rationale', 'coupleIds'],
+              },
             },
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 4096,
+            summary: { type: 'string' },
           },
-        }),
+          required: ['groups', 'summary'],
+        };
       }
-    );
+      return fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: systemPrompt + '\n\n' + userMessage }] }],
+            generationConfig,
+          }),
+        }
+      );
+    };
+
+    let geminiResponse = await makeGeminiCall(true);
+    // If model doesn't support JSON mode (400), retry without it
+    if (geminiResponse.status === 400 || geminiResponse.status === 404) {
+      console.warn(`[ai-group] JSON mode rejected (${geminiResponse.status}), retrying without it`);
+      geminiResponse = await makeGeminiCall(false);
+    }
+
 
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();

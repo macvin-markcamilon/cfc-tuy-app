@@ -746,7 +746,7 @@ export default function CLPAdminPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'AI grouping failed. Please try again.');
       setAiGroupingResult(data);
-      triggerToast(`✨ AI created ${data.groups.length} groups successfully!`);
+      triggerToast(`✨ Created ${data.groups.length} groups successfully!`);
     } catch (err: any) {
       setAiGroupError(err?.message || 'An error occurred during AI grouping.');
     } finally {
@@ -760,7 +760,7 @@ export default function CLPAdminPage() {
     const printContent = `<!DOCTYPE html>
 <html>
 <head>
-  <title>AI Groups – ${currentClp.name}</title>
+  <title>Holy Spirit Groupings – ${currentClp.name}</title>
   <meta charset="utf-8"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -787,7 +787,7 @@ export default function CLPAdminPage() {
   </style>
 </head>
 <body>
-  <h1>AI Couple Groupings</h1>
+  <h1>Groupings with the Guide of the Holy Spirit</h1>
   <span class="badge">${currentClp.name}</span>
   <div class="meta">
     <div class="meta-label">Grouping Instruction</div>
@@ -817,7 +817,7 @@ export default function CLPAdminPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `AI-Groups-${currentClp.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.html`;
+    a.download = `HolySpirit-Groupings-${currentClp.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -979,7 +979,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
               }`}
             >
               <Brain className="w-4 h-4" />
-              <span>AI Group by Gemini</span>
+              <span>Groupings with the Guide of the Holy Spirit</span>
               <span className="hidden sm:inline text-[9px] font-black uppercase bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-md border border-violet-200">
                 NEW
               </span>
@@ -1841,9 +1841,9 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       <Brain className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-black">AI Group by Gemini</h2>
+                      <h2 className="text-xl font-black">Groupings with the Guide of the Holy Spirit</h2>
                       <p className="text-violet-200 text-xs mt-0.5">
-                        {currentCouples.length} couples in {currentClp.name} • Powered by Google Gemini
+                        {currentCouples.length} couples in {currentClp.name} • AI-assisted pastoral grouping tool
                       </p>
                     </div>
                   </div>
@@ -1920,12 +1920,12 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                   {isAiGrouping ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Gemini is thinking...</span>
+                      <span>Generating groupings...</span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4" />
-                      <span>Generate AI Groups</span>
+                      <span>Generate Groupings</span>
                     </>
                   )}
                 </button>
@@ -1948,8 +1948,8 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       <Brain className="w-4 h-4 text-violet-600 animate-pulse" />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-violet-900">Gemini AI is analyzing {currentCouples.length} couples...</p>
-                      <p className="text-xs text-violet-600">Creating thoughtful groups based on your instruction</p>
+                      <p className="text-sm font-bold text-violet-900">Generating prayerful groupings for {currentCouples.length} couples...</p>
+                      <p className="text-xs text-violet-600">Placing couples according to the Holy Spirit's guidance</p>
                     </div>
                   </div>
                 )}
@@ -1966,7 +1966,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       </div>
                       <div>
                         <p className="text-sm font-black text-slate-900">
-                          {aiGroupingResult.groups.length} groups created from {currentCouples.length} couples
+                          {aiGroupingResult.groups.length} groupings created from {currentCouples.length} couples
                         </p>
                         <p className="text-xs text-slate-500 mt-0.5 italic">"{aiGroupingResult.prompt}"</p>
                       </div>
@@ -2050,7 +2050,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                         className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-bold transition-all"
                       >
                         <Download className="w-4 h-4" />
-                        <span>Download as HTML/PDF</span>
+                        <span>Download Groupings</span>
                       </button>
                       <button
                         type="button"
@@ -2058,7 +2058,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                         className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white text-xs font-bold transition-all shadow-sm"
                       >
                         <Printer className="w-4 h-4" />
-                        <span>Print Groups</span>
+                        <span>Print Groupings</span>
                       </button>
                     </div>
                   </div>

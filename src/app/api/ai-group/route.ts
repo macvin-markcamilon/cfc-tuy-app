@@ -96,7 +96,7 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
 
     // Call Gemini API
     const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -119,8 +119,13 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
       console.error('Gemini API error:', errorText);
+      let detail = geminiResponse.statusText;
+      try {
+        const errJson = JSON.parse(errorText);
+        detail = errJson?.error?.message || detail;
+      } catch {}
       return NextResponse.json(
-        { error: `Gemini API error: ${geminiResponse.status} - ${geminiResponse.statusText}` },
+        { error: `Gemini API error ${geminiResponse.status}: ${detail}` },
         { status: 502 }
       );
     }

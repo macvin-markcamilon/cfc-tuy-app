@@ -143,13 +143,12 @@ Please group these couples according to the instruction above. Remember to use t
 ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
 
     // Call Gemini API with the resolved model
-    // Try with JSON mode enforced first; fall back to plain if unsupported.
     console.log(`[ai-group] Calling model: ${model}`);
 
     const makeGeminiCall = async (enforceJson: boolean) => {
       const generationConfig: Record<string, unknown> = {
         temperature: 0.4,
-        maxOutputTokens: 4096,
+        maxOutputTokens: 8192,
       };
       if (enforceJson) {
         generationConfig.responseMimeType = 'application/json';
@@ -187,58 +186,99 @@ ${couples.map((c, i) => `${i + 1}. ID: ${c.id} | ${c.name}`).join('\n')}`;
       );
     };
 
-    let geminiResponse = await makeGeminiCall(true);
-    // If model doesn't support JSON mode (400), retry without it
-    if (geminiResponse.status === 400 || geminiResponse.status === 404) {
-      console.warn(`[ai-group] JSON mode rejected (${geminiResponse.status}), retrying without it`);
-      geminiResponse = await makeGeminiCall(false);
-    }
-
-
-    if (!geminiResponse.ok) {
-      const errorText = await geminiResponse.text();
-      console.error(`[ai-group] Gemini API error (model=${model}):`, errorText);
-      let detail = geminiResponse.statusText;
-      try {
-        const errJson = JSON.parse(errorText);
-        detail = errJson?.error?.message || detail;
-      } catch {}
-      return NextResponse.json(
-        { error: `Gemini API error ${geminiResponse.status}: ${detail}` },
-        { status: 502 }
-      );
-    }
-
-    const geminiData = await geminiResponse.json();
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    if (!rawText) {
-      console.error('[ai-group] Empty Gemini response:', JSON.stringify(geminiData));
-      return NextResponse.json(
-        { error: 'The AI returned an empty response. Please try again.' },
-        { status: 500 }
-      );
-    }
-
-    // Parse the JSON from Gemini's response
-    // Strategy: find the first '{' and last '}' in the raw text — more robust
-    // than stripping markdown fences alone, since some models add prose around the JSON.
-    let parsed: { groups: { groupNumber: number; groupName: string; rationale: string; coupleIds: string[] }[]; summary: string };
-    try {
+    /**
+     * Resilient JSON extraction and repair function
+     */
+    const cleanAndParseJSON = (rawText: string) => {
       const firstBrace = rawText.indexOf('{');
       const lastBrace = rawText.lastIndexOf('}');
       if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
         throw new Error('No JSON object found in AI response');
       }
       const jsonSlice = rawText.slice(firstBrace, lastBrace + 1);
-      parsed = JSON.parse(jsonSlice);
-      if (!parsed?.groups || !Array.isArray(parsed.groups)) {
-        throw new Error('Missing "groups" array in AI response');
+
+      // Attempt 1: Direct JSON.parse
+      try {
+        return JSON.parse(jsonSlice);
+      } catch (initialErr) {
+        // Attempt 2: Clean comments, trailing commas, missing commas between elements
+        try {
+          const cleaned = jsonSlice
+            .replace(/\/\/.*$/gm, '')
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/,\s*([\]}])/g, '$1')
+            .replace(/"\s*\n\s*"/g, '",\n"')
+            .replace(/}\s*\n\s*{/g, '},\n{');
+          return JSON.parse(cleaned);
+        } catch {
+          // Attempt 3: Fix unclosed brackets/braces from potential token truncation
+          try {
+            let fixed = jsonSlice.replace(/,\s*([\]}])/g, '$1');
+            const openBrackets = (fixed.match(/\[/g) || []).length;
+            const closeBrackets = (fixed.match(/\]/g) || []).length;
+            const openBraces = (fixed.match(/\{/g) || []).length;
+            const closeBraces = (fixed.match(/\}/g) || []).length;
+
+            for (let i = 0; i < openBrackets - closeBrackets; i++) fixed += ']';
+            for (let i = 0; i < openBraces - closeBraces; i++) fixed += '}';
+
+            return JSON.parse(fixed);
+          } catch {
+            throw initialErr;
+          }
+        }
       }
-    } catch (e: any) {
-      console.error('[ai-group] Failed to parse Gemini JSON output:', rawText.slice(0, 500), e?.message);
+    };
+
+    // Execute call with up to 1 retry on parse failure
+    let parsed: { groups: { groupNumber: number; groupName: string; rationale: string; coupleIds: string[] }[]; summary: string } | null = null;
+    let lastError: string = '';
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      let geminiResponse = await makeGeminiCall(true);
+      if (geminiResponse.status === 400 || geminiResponse.status === 404) {
+        console.warn(`[ai-group] JSON mode rejected (${geminiResponse.status}), retrying without it`);
+        geminiResponse = await makeGeminiCall(false);
+      }
+
+      if (!geminiResponse.ok) {
+        const errorText = await geminiResponse.text();
+        console.error(`[ai-group] Gemini API error (model=${model}):`, errorText);
+        let detail = geminiResponse.statusText;
+        try {
+          const errJson = JSON.parse(errorText);
+          detail = errJson?.error?.message || detail;
+        } catch {}
+        return NextResponse.json(
+          { error: `Gemini API error ${geminiResponse.status}: ${detail}` },
+          { status: 502 }
+        );
+      }
+
+      const geminiData = await geminiResponse.json();
+      const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      if (!rawText) {
+        lastError = 'The AI returned an empty response.';
+        continue;
+      }
+
+      try {
+        const result = cleanAndParseJSON(rawText);
+        if (!result?.groups || !Array.isArray(result.groups)) {
+          throw new Error('Missing "groups" array in AI response');
+        }
+        parsed = result;
+        break; // Successfully parsed!
+      } catch (e: any) {
+        console.warn(`[ai-group] Parse attempt ${attempt} failed:`, e?.message);
+        lastError = e?.message || 'Parse error';
+      }
+    }
+
+    if (!parsed) {
       return NextResponse.json(
-        { error: `The AI returned an unexpected format: ${e?.message || 'parse error'}. Please try again.` },
+        { error: `The AI returned an unexpected format: ${lastError}. Please try again.` },
         { status: 500 }
       );
     }

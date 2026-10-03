@@ -251,14 +251,14 @@ export default function AdminLayout({
                         : 'text-white/80 hover:bg-white/10 hover:text-white'
                     }`}
                   >
-                    <div className={`flex items-center gap-2.5 ${isCollapsed ? 'justify-center' : 'truncate'}`}>
+                    <div className={`flex items-center gap-3 min-w-0 ${isCollapsed ? 'justify-center' : ''}`}>
                       <Icon
-                        className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${
+                        className={`w-[18px] h-[18px] shrink-0 transition-transform group-hover:scale-110 ${
                           isActive ? 'text-amber-300' : 'text-white/70'
                         }`}
                       />
                       {!isCollapsed && (
-                        <div className="truncate">
+                        <div className="min-w-0">
                           <span className="block leading-snug truncate">{item.name}</span>
                           <span
                             className={`text-[10px] font-normal block truncate ${
@@ -272,7 +272,7 @@ export default function AdminLayout({
                     </div>
 
                     {!isCollapsed && isActive && (
-                      <ChevronRight className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <ChevronRight className="w-3.5 h-3.5 text-amber-300 shrink-0 ml-1" />
                     )}
 
                     {/* Active bar indicator for collapsed state */}

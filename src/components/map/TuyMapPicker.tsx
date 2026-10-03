@@ -19,7 +19,13 @@ interface TuyMapPickerProps {
     address: string;
     barangay: string;
   }) => void;
+  onChange?: (data: {
+    coordinates: [number, number];
+    address: string;
+    barangay: string;
+  }) => void;
   onClose?: () => void;
+  isEmbedded?: boolean;
 }
 
 // Approximate coordinate centroids for all 23 official Tuy barangays
@@ -72,7 +78,9 @@ export default function TuyMapPicker({
   initialAddress = '',
   initialBarangay = 'Rizal (Pob.)',
   onSelectLocation,
+  onChange,
   onClose,
+  isEmbedded = false,
 }: TuyMapPickerProps) {
   const [coords, setCoords] = useState<[number, number]>(initialCoordinates);
   const [barangay, setBarangay] = useState<string>(initialBarangay);
@@ -85,6 +93,20 @@ export default function TuyMapPicker({
   const [isAddressDirty, setIsAddressDirty] = useState<boolean>(
     Boolean(initialAddress && initialAddress !== `Brgy. ${initialBarangay}, Tuy, Batangas`)
   );
+
+  useEffect(() => {
+    if (onChange) {
+      const finalAddress =
+        addressChoice === 'barangay'
+          ? `Brgy. ${barangay}, Tuy, Batangas`
+          : (streetAddress.trim() || `Brgy. ${barangay}, Tuy, Batangas`);
+      onChange({
+        coordinates: hasPin ? coords : [0, 0],
+        address: finalAddress,
+        barangay,
+      });
+    }
+  }, [coords, barangay, streetAddress, addressChoice, hasPin]);
 
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -313,33 +335,41 @@ export default function TuyMapPicker({
   };
 
   return (
-    <div className="flex flex-col bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 max-w-2xl w-full">
+    <div
+      className={`flex flex-col bg-white overflow-hidden ${
+        isEmbedded
+          ? 'w-full h-full rounded-none border-0 shadow-none'
+          : 'rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full'
+      }`}
+    >
       {/* Header */}
-      <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
-            <Compass className="w-5 h-5" />
+      {!isEmbedded && (
+        <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-blue-100 text-blue-700">
+              <Compass className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                Tuy Address &amp; Google Map Pinpoint Picker
+              </h3>
+              <p className="text-xs text-slate-500 font-medium">
+                Click anywhere on the map or drag the pin to auto-detect and populate the Tuy address.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
-              Tuy Address &amp; Google Map Pinpoint Picker
-            </h3>
-            <p className="text-xs text-slate-500 font-medium">
-              Click anywhere on the map or drag the pin to auto-detect and populate the Tuy address.
-            </p>
-          </div>
-        </div>
 
-        {onClose && (
-          <button
-            onClick={onClose}
-            type="button"
-            className="text-slate-400 hover:text-slate-700 text-sm font-bold px-2 py-1"
-          >
-            ✕
-          </button>
-        )}
-      </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              type="button"
+              className="text-slate-400 hover:text-slate-700 text-sm font-bold px-2 py-1"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Quick Barangay Buttons */}
       <div className="p-3 bg-slate-50 border-b border-slate-200">
@@ -384,7 +414,11 @@ export default function TuyMapPicker({
           </a>
         </div>
       )}
-      <div className="relative h-64 sm:h-72 w-full bg-slate-900 overflow-hidden cursor-crosshair">
+      <div
+        className={`relative w-full bg-slate-900 overflow-hidden cursor-crosshair ${
+          isEmbedded ? 'flex-1 min-h-[300px]' : 'h-64 sm:h-72'
+        }`}
+      >
         {/* Floating Pin Status & Quick Controls Overlay */}
         <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between gap-2 pointer-events-none">
           <div className="bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/20 shadow-lg text-[11px] font-bold text-white flex items-center gap-1.5 pointer-events-auto">

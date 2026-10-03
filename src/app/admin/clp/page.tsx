@@ -1510,6 +1510,424 @@ export default function CLPAdminPage() {
     win.document.close();
   };
 
+  // ---------------------------------------------------------------------------
+  // Helper: Compute Age from Birthday String
+  // ---------------------------------------------------------------------------
+  const computeAge = (birthdateStr?: string): string => {
+    if (!birthdateStr || typeof birthdateStr !== 'string') return '—';
+    const clean = birthdateStr.trim();
+    if (!clean) return '—';
+
+    let birth: Date;
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) {
+      const parts = clean.split('/').map(Number);
+      birth = new Date(parts[2], parts[0] - 1, parts[1]);
+    } else {
+      birth = new Date(clean);
+    }
+
+    if (isNaN(birth.getTime())) return '—';
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age >= 0 && age < 130 ? String(age) : '—';
+  };
+
+  // ---------------------------------------------------------------------------
+  // Download Invitee Couples List (CSV)
+  // Fields: Husband Name, Age, Wife's Name, Age, Address
+  // ---------------------------------------------------------------------------
+  const handleDownloadCouplesList = () => {
+    const targetCouples =
+      searchCoupleQuery.trim() || filterBarangay !== 'ALL'
+        ? filteredCouples
+        : currentCouples;
+
+    if (!targetCouples.length || !currentClp) {
+      triggerToast('No invitee couples to download.');
+      return;
+    }
+
+    const headers = [
+      '#',
+      'Husband Name',
+      'Husband Age',
+      "Wife's Name",
+      "Wife's Age",
+      'Address',
+      'Barangay',
+      'Status',
+    ];
+
+    const escapeCSV = (val: string | number) =>
+      `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    const rows = targetCouples.map((c, index) => {
+      const hName = `${c.husbandFirstName || ''} ${c.husbandLastName || ''}`.trim();
+      const hAge = computeAge(c.husbandBirthday);
+      const wName = `${c.wifeFirstName || ''} ${c.wifeLastName || ''}`.trim();
+      const wAge = computeAge(c.wifeBirthday);
+      const address = c.address || `Brgy. ${c.barangay}, Tuy, Batangas`;
+      const barangay = c.barangay || '';
+      const status = c.status || 'Active';
+
+      return [
+        index + 1,
+        escapeCSV(hName),
+        escapeCSV(hAge),
+        escapeCSV(wName),
+        escapeCSV(wAge),
+        escapeCSV(address),
+        escapeCSV(barangay),
+        escapeCSV(status),
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const clpNameSanitized = currentClp.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    link.href = url;
+    link.download = `CFC_Tuy_${clpNameSanitized}_Invitees_List.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    triggerToast(`Downloaded CSV for ${targetCouples.length} couples!`);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Print Invitee Couples List
+  // Fields: Husband Name, Age, Wife's Name, Age, Address
+  // ---------------------------------------------------------------------------
+  const handlePrintCouplesList = () => {
+    const targetCouples =
+      searchCoupleQuery.trim() || filterBarangay !== 'ALL'
+        ? filteredCouples
+        : currentCouples;
+
+    if (!targetCouples.length || !currentClp) {
+      triggerToast('No invitee couples to print.');
+      return;
+    }
+
+    const logoUrl = `${window.location.origin}/images/cfc_logo_only_blue.png`;
+    const genDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const rowsHtml = targetCouples
+      .map((c, idx) => {
+        const hName = `${c.husbandFirstName || ''} ${c.husbandLastName || ''}`.trim();
+        const hAge = computeAge(c.husbandBirthday);
+        const wName = `${c.wifeFirstName || ''} ${c.wifeLastName || ''}`.trim();
+        const wAge = computeAge(c.wifeBirthday);
+        const address = c.address || `Brgy. ${c.barangay}, Tuy, Batangas`;
+
+        return `
+          <tr>
+            <td class="text-center font-bold text-muted">${idx + 1}</td>
+            <td class="font-bold text-dark">
+              <span class="prefix">Bro.</span> ${hName}
+            </td>
+            <td class="text-center font-semibold text-accent">${hAge}</td>
+            <td class="font-bold text-dark">
+              <span class="prefix">Sis.</span> ${wName}
+            </td>
+            <td class="text-center font-semibold text-accent">${wAge}</td>
+            <td class="text-address">${address}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Invitee Couples Directory – ${currentClp.name}</title>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 10mm 12mm;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #0f172a;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .no-print-bar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: #1e3a8a;
+      color: #fff;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+    .no-print-bar .title {
+      font-size: 13.5px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .no-print-bar .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn-print { background: #fff; color: #1e3a8a; }
+    .btn-close { background: rgba(255,255,255,0.2); color: #fff; }
+
+    .page-wrap {
+      max-width: 1120px;
+      margin: 20px auto;
+      background: #fff;
+      padding: 28px 36px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    /* Official Document Header */
+    .doc-header {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding-bottom: 16px;
+      border-bottom: 2.5px solid #1e3a8a;
+      margin-bottom: 16px;
+    }
+    .doc-header img {
+      width: 58px;
+      height: 58px;
+      object-fit: contain;
+    }
+    .doc-header-text h1 {
+      font-size: 18px;
+      font-weight: 900;
+      color: #1e3a8a;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .doc-header-text h2 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #334155;
+      margin-top: 2px;
+    }
+    .doc-header-text p {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 1px;
+    }
+    .doc-header-meta {
+      margin-left: auto;
+      text-align: right;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 700;
+    }
+    .gen-date {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    /* Table Styling */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    thead {
+      display: table-header-group;
+    }
+    th {
+      background: #f1f5f9;
+      color: #1e293b;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 10.5px;
+      letter-spacing: 0.5px;
+      padding: 9px 10px;
+      border-top: 1px solid #cbd5e1;
+      border-bottom: 2px solid #94a3b8;
+      text-align: left;
+    }
+    th.text-center { text-align: center; }
+    td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      vertical-align: middle;
+    }
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+    .text-center { text-align: center; }
+    .text-dark { color: #0f172a; }
+    .text-muted { color: #64748b; }
+    .text-accent { color: #1e3a8a; font-weight: 700; }
+    .text-address { color: #334155; font-size: 11.5px; }
+    .prefix { color: #64748b; font-weight: 600; font-size: 10px; margin-right: 2px; }
+
+    /* Signatures Footer */
+    .signatures {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 36px;
+      padding-top: 16px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .sig-box {
+      width: 28%;
+      text-align: center;
+    }
+    .sig-line {
+      border-top: 1px solid #94a3b8;
+      margin-top: 32px;
+      padding-top: 4px;
+      font-weight: 700;
+      font-size: 11px;
+      color: #1e293b;
+    }
+    .sig-role {
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    .doc-footer {
+      margin-top: 24px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 10px;
+      color: #94a3b8;
+    }
+
+    @media print {
+      body { background: #fff; }
+      .no-print-bar { display: none !important; }
+      .page-wrap {
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      tr {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-bar">
+    <div class="title">
+      <span>📄 ${currentClp.name} — Invitee Couples Roster (${targetCouples.length} couples)</span>
+    </div>
+    <div class="actions">
+      <button class="btn btn-print" onclick="window.print()">🖨 Print / Save as PDF</button>
+      <button class="btn btn-close" onclick="window.close()">✕ Close</button>
+    </div>
+  </div>
+
+  <div class="page-wrap">
+    <div class="doc-header">
+      <img src="${logoUrl}" alt="CFC Tuy" />
+      <div class="doc-header-text">
+        <h1>Couples for Christ • Municipality of Tuy</h1>
+        <h2>${currentClp.name} — Invitee Couples Directory</h2>
+        <p>Saint Vincent Ferrer Parish • Venue: ${currentClp.venue}</p>
+      </div>
+      <div class="doc-header-meta">
+        <span class="badge">${targetCouples.length} Invitee Couples</span>
+        <div class="gen-date">Generated: ${genDate}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 5%;" class="text-center">#</th>
+          <th style="width: 25%;">Husband Name</th>
+          <th style="width: 7%;" class="text-center">Age</th>
+          <th style="width: 25%;">Wife's Name</th>
+          <th style="width: 7%;" class="text-center">Age</th>
+          <th style="width: 31%;">Address</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+
+    <div class="signatures">
+      <div class="sig-box">
+        <div class="sig-line">Prepared By</div>
+        <div class="sig-role">CLP Secretariat</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line">${currentClp.teamLeader || 'CLP Team Leader'}</div>
+        <div class="sig-role">CLP Team Leader</div>
+      </div>
+      <div class="sig-box">
+        <div class="sig-line">Chapter Servant</div>
+        <div class="sig-role">CFC Tuy Chapter Head</div>
+      </div>
+    </div>
+
+    <div class="doc-footer">
+      Couples for Christ Tuy Chapter • "Building the Church of the Home and Building the Church of the Poor"
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      triggerToast('Pop-up blocked. Please allow pop-ups and try again.');
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+  };
+
   // Copy report summary text
   const handleCopyReportSummary = () => {
     if (!currentClp) return;
@@ -1751,6 +2169,26 @@ Generated via Couples for Christ Tuy Chapter Portal`;
 
                   <button
                     type="button"
+                    onClick={handleDownloadCouplesList}
+                    title="Download invitee couples list as CSV (Husband Name, Age, Wife's Name, Age, Address)"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-[#243c81] font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download List</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handlePrintCouplesList}
+                    title="Print official list of invitee couples (Husband Name, Age, Wife's Name, Age, Address)"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print List</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleDownloadTemplate}
                     title="Download CSV template for bulk upload"
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
@@ -1865,7 +2303,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                               {couple.husbandBirthday && (
                                 <span className="text-slate-600 font-normal">
                                   {' '}
-                                  • Bday: {couple.husbandBirthday}
+                                  • Age: <strong className="text-slate-900 font-semibold">{computeAge(couple.husbandBirthday)}</strong>
                                 </span>
                               )}
                             </div>
@@ -1893,7 +2331,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                               {couple.wifeBirthday && (
                                 <span className="text-slate-600 font-normal">
                                   {' '}
-                                  • Bday: {couple.wifeBirthday}
+                                  • Age: <strong className="text-slate-900 font-semibold">{computeAge(couple.wifeBirthday)}</strong>
                                 </span>
                               )}
                             </div>
@@ -1986,7 +2424,14 @@ Generated via Couples for Christ Tuy Chapter Portal`;
 
                         {/* Col 2: Husband info */}
                         <div className="min-w-0 text-xs text-slate-600 space-y-0.5">
-                          <p className="font-semibold text-slate-800 truncate">{couple.husbandFirstName} {couple.husbandLastName}</p>
+                          <p className="font-semibold text-slate-800 truncate flex items-center gap-1.5">
+                            <span>{couple.husbandFirstName} {couple.husbandLastName}</span>
+                            {couple.husbandBirthday && (
+                              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-200 shrink-0">
+                                Age {computeAge(couple.husbandBirthday)}
+                              </span>
+                            )}
+                          </p>
                           {couple.husbandOccupation && (
                             <p className="truncate text-slate-500">{couple.husbandOccupation}</p>
                           )}
@@ -1997,7 +2442,14 @@ Generated via Couples for Christ Tuy Chapter Portal`;
 
                         {/* Col 3: Wife info */}
                         <div className="min-w-0 text-xs text-slate-600 space-y-0.5">
-                          <p className="font-semibold text-rose-700 truncate">{couple.wifeFirstName} {couple.husbandLastName}</p>
+                          <p className="font-semibold text-rose-700 truncate flex items-center gap-1.5">
+                            <span>{couple.wifeFirstName} {couple.husbandLastName}</span>
+                            {couple.wifeBirthday && (
+                              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-200 shrink-0">
+                                Age {computeAge(couple.wifeBirthday)}
+                              </span>
+                            )}
+                          </p>
                           {couple.wifeOccupation && (
                             <p className="truncate text-slate-500">{couple.wifeOccupation}</p>
                           )}

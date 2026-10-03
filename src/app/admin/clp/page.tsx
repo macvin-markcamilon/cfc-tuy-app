@@ -50,7 +50,7 @@ import {
   BarChart3,
   Printer,
   Copy,
-  Map,
+  Map as MapIcon,
   Award,
   TrendingUp,
   UserPlus,
@@ -67,11 +67,13 @@ import {
   List,
   IdCard,
   ArrowLeft,
+  ArrowRight,
   Save,
   Edit3,
   SlidersHorizontal,
   FolderOpen,
   ArrowRightLeft,
+  Phone,
   PlusCircle,
 } from 'lucide-react';
 
@@ -190,8 +192,14 @@ export default function CLPAdminPage() {
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Selected Talk for Attendance View
+  // Selected Talk for Attendance View & Maximized Attendance Sheet
   const [selectedTalkId, setSelectedTalkId] = useState<string>('');
+  const [openedAttendanceTalkId, setOpenedAttendanceTalkId] = useState<string | null>(null);
+
+  // Attendance Sheet Filter & Search States
+  const [attendanceSearchQuery, setAttendanceSearchQuery] = useState('');
+  const [attendanceFilterStatus, setAttendanceFilterStatus] = useState<'all' | 'present' | 'absent' | 'partial'>('all');
+  const [attendanceFilterBarangay, setAttendanceFilterBarangay] = useState('ALL');
 
   // Search & Filter
   const [searchCoupleQuery, setSearchCoupleQuery] = useState('');
@@ -347,6 +355,11 @@ export default function CLPAdminPage() {
   const activeTalk = useMemo(() => {
     return currentTalks.find((t) => t.id === selectedTalkId) || currentTalks[0] || null;
   }, [currentTalks, selectedTalkId]);
+
+  const activeOpenedTalk = useMemo(() => {
+    if (!openedAttendanceTalkId) return null;
+    return currentTalks.find((t) => t.id === openedAttendanceTalkId) || null;
+  }, [currentTalks, openedAttendanceTalkId]);
 
   // Filtered couples in directory
   const filteredCouples = useMemo(() => {
@@ -895,6 +908,267 @@ export default function CLPAdminPage() {
     totalPossibleIndividuals > 0
       ? Math.round((totalPresentIndividuals / totalPossibleIndividuals) * 100)
       : 0;
+
+  // Computations for active opened talk attendance sheet
+  const openedTalkAttendance = useMemo(() => {
+    if (!activeOpenedTalk) return [];
+    return attendance.filter((a) => a.talkId === activeOpenedTalk.id);
+  }, [attendance, activeOpenedTalk]);
+
+  const openedTalkPresentHusbands = useMemo(() => {
+    return openedTalkAttendance.filter((a) => a.husbandPresent).length;
+  }, [openedTalkAttendance]);
+
+  const openedTalkPresentWives = useMemo(() => {
+    return openedTalkAttendance.filter((a) => a.wifePresent).length;
+  }, [openedTalkAttendance]);
+
+  const openedTalkTotalPresentIndividuals = openedTalkPresentHusbands + openedTalkPresentWives;
+  const openedTalkTotalPossibleIndividuals = totalInvitedCouples * 2;
+  const openedTalkAttendancePercentage =
+    openedTalkTotalPossibleIndividuals > 0
+      ? Math.round((openedTalkTotalPresentIndividuals / openedTalkTotalPossibleIndividuals) * 100)
+      : 0;
+
+  const openedTalkBothPresentCouples = useMemo(() => {
+    return currentCouples.filter((c) => {
+      const att = openedTalkAttendance.find((a) => a.coupleId === c.id);
+      return Boolean(att?.husbandPresent && att?.wifePresent);
+    }).length;
+  }, [currentCouples, openedTalkAttendance]);
+
+  // Filtered couples in attendance sheet
+  const attendanceCouples = useMemo(() => {
+    if (!activeOpenedTalk) return [];
+    return currentCouples.filter((c) => {
+      const matchesSearch =
+        attendanceSearchQuery.trim() === '' ||
+        c.husbandFirstName.toLowerCase().includes(attendanceSearchQuery.toLowerCase()) ||
+        c.husbandLastName.toLowerCase().includes(attendanceSearchQuery.toLowerCase()) ||
+        c.wifeFirstName.toLowerCase().includes(attendanceSearchQuery.toLowerCase()) ||
+        c.wifeLastName.toLowerCase().includes(attendanceSearchQuery.toLowerCase()) ||
+        c.barangay.toLowerCase().includes(attendanceSearchQuery.toLowerCase());
+
+      const matchesBarangay =
+        attendanceFilterBarangay === 'ALL' || c.barangay === attendanceFilterBarangay;
+
+      const att = openedTalkAttendance.find((a) => a.coupleId === c.id);
+      const hp = Boolean(att?.husbandPresent);
+      const wp = Boolean(att?.wifePresent);
+
+      let matchesStatus = true;
+      if (attendanceFilterStatus === 'present') {
+        matchesStatus = hp && wp;
+      } else if (attendanceFilterStatus === 'absent') {
+        matchesStatus = !hp && !wp;
+      } else if (attendanceFilterStatus === 'partial') {
+        matchesStatus = (hp && !wp) || (!hp && wp);
+      }
+
+      return matchesSearch && matchesBarangay && matchesStatus;
+    });
+  }, [currentCouples, openedTalkAttendance, activeOpenedTalk, attendanceSearchQuery, attendanceFilterBarangay, attendanceFilterStatus]);
+
+  // Mark all filtered couples present
+  const handleMarkFilteredPresent = async (talkId: string) => {
+    if (!attendanceCouples.length) return;
+    const newRecords: CLPAttendance[] = [];
+    const updatedMap = new Map(attendance.map((a) => [`${a.talkId}-${a.coupleId}`, a]));
+
+    for (const c of attendanceCouples) {
+      const key = `${talkId}-${c.id}`;
+      const existing = updatedMap.get(key);
+      const updated: CLPAttendance = {
+        id: existing?.id || `att-${talkId}-${c.id}`,
+        talkId,
+        coupleId: c.id,
+        husbandPresent: true,
+        wifePresent: true,
+        remarks: existing?.remarks || '',
+      };
+      updatedMap.set(key, updated);
+      newRecords.push(updated);
+    }
+
+    setAttendance(Array.from(updatedMap.values()));
+    triggerToast(`Marked ${attendanceCouples.length} couples present!`);
+
+    for (const rec of newRecords) {
+      try {
+        await saveCLPAttendance(rec);
+      } catch (err) {
+        console.error('Error batch saving attendance:', err);
+      }
+    }
+  };
+
+  // Clear attendance for all filtered couples
+  const handleClearFilteredAttendance = async (talkId: string) => {
+    if (!attendanceCouples.length) return;
+    const newRecords: CLPAttendance[] = [];
+    const updatedMap = new Map(attendance.map((a) => [`${a.talkId}-${a.coupleId}`, a]));
+
+    for (const c of attendanceCouples) {
+      const key = `${talkId}-${c.id}`;
+      const existing = updatedMap.get(key);
+      const updated: CLPAttendance = {
+        id: existing?.id || `att-${talkId}-${c.id}`,
+        talkId,
+        coupleId: c.id,
+        husbandPresent: false,
+        wifePresent: false,
+        remarks: existing?.remarks || '',
+      };
+      updatedMap.set(key, updated);
+      newRecords.push(updated);
+    }
+
+    setAttendance(Array.from(updatedMap.values()));
+    triggerToast(`Cleared attendance for ${attendanceCouples.length} couples.`);
+
+    for (const rec of newRecords) {
+      try {
+        await saveCLPAttendance(rec);
+      } catch (err) {
+        console.error('Error saving attendance:', err);
+      }
+    }
+  };
+
+  // Update remarks
+  const handleUpdateRemarks = async (talkId: string, coupleId: string, remarks: string) => {
+    const existing = attendance.find((a) => a.talkId === talkId && a.coupleId === coupleId);
+    const updatedRecord: CLPAttendance = existing
+      ? { ...existing, remarks }
+      : {
+          id: `att-${talkId}-${coupleId}`,
+          talkId,
+          coupleId,
+          husbandPresent: false,
+          wifePresent: false,
+          remarks,
+        };
+
+    setAttendance((prev) => {
+      const filtered = prev.filter((a) => !(a.talkId === talkId && a.coupleId === coupleId));
+      return [...filtered, updatedRecord];
+    });
+
+    try {
+      await saveCLPAttendance(updatedRecord);
+    } catch (err) {
+      console.error('Error saving remarks:', err);
+    }
+  };
+
+  // Print individual talk attendance sheet
+  const handlePrintTalkAttendance = (talk: CLPTalk) => {
+    if (!currentCouples.length) {
+      triggerToast('No invited couples to print attendance sheet for.');
+      return;
+    }
+
+    const logoUrl = `${window.location.origin}/images/cfc_logo_only_blue.png`;
+    const genDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    const talkAtt = attendance.filter((a) => a.talkId === talk.id);
+
+    const rowsHtml = currentCouples
+      .map((c, idx) => {
+        const att = talkAtt.find((a) => a.coupleId === c.id);
+        const hp = att?.husbandPresent ? '✓ PRESENT' : '[   ]';
+        const wp = att?.wifePresent ? '✓ PRESENT' : '[   ]';
+
+        return `
+          <tr>
+            <td style="text-align:center;font-weight:bold;color:#64748b;">${idx + 1}</td>
+            <td style="font-weight:bold;">
+              ${c.husbandLastName}, ${c.husbandFirstName} & ${c.wifeFirstName}
+            </td>
+            <td>Brgy. ${c.barangay}</td>
+            <td style="text-align:center;font-weight:bold;${att?.husbandPresent ? 'color:#1e3a8a;' : 'color:#94a3b8;'}">${hp}</td>
+            <td style="text-align:center;font-weight:bold;${att?.wifePresent ? 'color:#be123c;' : 'color:#94a3b8;'}">${wp}</td>
+            <td style="color:#64748b;font-size:11px;">${att?.remarks || ''}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Attendance Sheet – Talk ${talk.talkNumber}: ${talk.title}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm 12mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; padding: 20px; }
+    .no-print { display: flex; justify-content: space-between; align-items: center; background: #1e3a8a; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 20px; }
+    .btn { background: #fff; color: #1e3a8a; border: none; padding: 6px 14px; font-weight: 700; border-radius: 6px; cursor: pointer; }
+    .header { display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 16px; }
+    .header img { width: 50px; height: 50px; }
+    .header h1 { font-size: 16px; font-weight: 900; color: #1e3a8a; }
+    .header h2 { font-size: 13px; font-weight: 700; color: #334155; }
+    .header p { font-size: 11px; color: #64748b; }
+    .meta { margin-left: auto; text-align: right; font-size: 11px; color: #64748b; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: #f1f5f9; padding: 8px; border-bottom: 2px solid #94a3b8; text-align: left; font-size: 10.5px; text-transform: uppercase; }
+    td { padding: 7px 8px; border-bottom: 1px solid #e2e8f0; }
+    tr:nth-child(even) { background: #f8fafc; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+      tr { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <span>Talk #${talk.talkNumber}: ${talk.title} • Attendance Sheet</span>
+    <button class="btn" onclick="window.print()">🖨 Print / Save PDF</button>
+  </div>
+  <div class="header">
+    <img src="${logoUrl}" alt="CFC" />
+    <div>
+      <h1>Couples for Christ • Tuy Chapter</h1>
+      <h2>Talk #${talk.talkNumber}: ${talk.title} (${talk.moduleName || 'CLP Curriculum'})</h2>
+      <p>Speaker: ${talk.speaker} • Venue: ${talk.venue} • Date: ${talk.date || 'TBD'} ${talk.time || ''}</p>
+    </div>
+    <div class="meta">
+      <div>Total Couples: ${currentCouples.length}</div>
+      <div>Date: ${genDate}</div>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:5%;text-align:center;">#</th>
+        <th style="width:35%;">Invited Couple</th>
+        <th style="width:18%;">Barangay</th>
+        <th style="width:14%;text-align:center;">Husband</th>
+        <th style="width:14%;text-align:center;">Wife</th>
+        <th style="width:14%;">Remarks / Signature</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    } else {
+      triggerToast('Pop-up blocked. Please allow pop-ups and try again.');
+    }
+  };
 
   // Report calculations across all talks
   const reportAnalytics = useMemo(() => {
@@ -2050,7 +2324,10 @@ Generated via Couples for Christ Tuy Chapter Portal`;
             </button>
 
             <button
-              onClick={() => setActiveTab('talks')}
+              onClick={() => {
+                setActiveTab('talks');
+                setOpenedAttendanceTalkId(null);
+              }}
               className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all ${
                 activeTab === 'talks'
                   ? 'bg-[#243c81] text-white shadow-xs'
@@ -2163,7 +2440,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-[#243c81] font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
                   >
-                    <Map className="w-3.5 h-3.5 text-blue-700" />
+                    <MapIcon className="w-3.5 h-3.5 text-blue-700" />
                     <span>View All on Map</span>
                   </button>
 
@@ -2556,271 +2833,514 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     </button>
                   </div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                  {/* Left Column: Talks List */}
-                  <div className="lg:col-span-4 space-y-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-black text-xs text-slate-900 uppercase tracking-wider">
-                        CLP Talks Curriculum ({currentTalks.length})
-                      </h3>
+              ) : !openedAttendanceTalkId ? (
+                /* ========================================================================= */
+                /* TALKS GRID VIEW                                                           */
+                /* ========================================================================= */
+                <div className="space-y-6">
+                  {/* Header bar */}
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="p-2 rounded-xl bg-blue-100 text-[#243c81]">
+                          <Calendar className="w-5 h-5" />
+                        </span>
+                        <h3 className="text-xl font-black text-slate-900">
+                          CLP Talks Curriculum
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                          {currentTalks.length} Talks
+                        </span>
+                      </div>
+                      <p className="text-slate-500 text-xs sm:text-sm">
+                        Click any talk card below to open its Attendance Sheet and track attendee participation.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      {currentTalks.length < 8 && (
+                        <button
+                          type="button"
+                          onClick={handlePopulateStandardTalks}
+                          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-xs transition-all"
+                        >
+                          <Sparkles className="w-4 h-4 text-emerald-200" />
+                          <span>Auto-populate 8 Talks</span>
+                        </button>
+                      )}
                       <button
+                        type="button"
                         onClick={() => setShowAddTalkModal(true)}
-                        className="inline-flex items-center gap-1 text-xs font-bold text-[#243c81] hover:text-blue-700"
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-blue-800 text-white font-bold text-xs sm:text-sm shadow-xs transition-all"
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-4 h-4" />
                         <span>Add Talk</span>
                       </button>
                     </div>
+                  </div>
 
-                    <div className="space-y-2.5 max-h-[620px] overflow-y-auto pr-1">
-                      {currentTalks.map((talk) => {
-                        const isSelected = talk.id === selectedTalkId;
-                        const talkAtt = attendance.filter((a) => a.talkId === talk.id);
-                        const countPresent = talkAtt.reduce(
-                          (acc, a) => acc + (a.husbandPresent ? 1 : 0) + (a.wifePresent ? 1 : 0),
-                          0
-                        );
+                  {/* Responsive Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    {currentTalks.map((talk) => {
+                      const talkAtt = attendance.filter((a) => a.talkId === talk.id);
+                      const countPresentIndividuals = talkAtt.reduce(
+                        (acc, a) => acc + (a.husbandPresent ? 1 : 0) + (a.wifePresent ? 1 : 0),
+                        0
+                      );
+                      const bothPresentCouples = currentCouples.filter((c) => {
+                        const a = talkAtt.find((att) => att.coupleId === c.id);
+                        return Boolean(a?.husbandPresent && a?.wifePresent);
+                      }).length;
+                      const totalPossibleIndividuals = currentCouples.length * 2;
+                      const pct =
+                        totalPossibleIndividuals > 0
+                          ? Math.round((countPresentIndividuals / totalPossibleIndividuals) * 100)
+                          : 0;
 
-                        return (
-                          <div
-                            key={talk.id}
-                            onClick={() => setSelectedTalkId(talk.id)}
-                            className={`p-4 rounded-xl cursor-pointer transition-all border ${
-                              isSelected
-                                ? 'bg-[#243c81] text-white border-[#1a2c60] shadow-md'
-                                : 'bg-white text-slate-900 border-slate-200 hover:bg-slate-50 shadow-2xs'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between text-xs mb-1.5">
-                              <span
-                                className={`font-black uppercase tracking-wider text-[10px] px-2 py-0.5 rounded-full ${
-                                  isSelected
-                                    ? 'bg-white/20 text-white'
-                                    : 'bg-blue-50 text-[#243c81] border border-blue-200'
-                                }`}
-                              >
+                      return (
+                        <div
+                          key={talk.id}
+                          onClick={() => {
+                            setSelectedTalkId(talk.id);
+                            setOpenedAttendanceTalkId(talk.id);
+                          }}
+                          className="group relative bg-white border border-slate-200 hover:border-[#243c81] rounded-3xl p-5 shadow-xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between"
+                        >
+                          <div>
+                            {/* Top row: badge & action icons */}
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-blue-50 text-[#243c81] border border-blue-200">
                                 Talk #{talk.talkNumber}
                               </span>
-                              <div className="flex items-center gap-1.5">
-                                <span
-                                  className={`text-[11px] font-medium ${
-                                    isSelected ? 'text-blue-100' : 'text-slate-500'
-                                  }`}
-                                >
-                                  {talk.date || 'TBD'}
-                                </span>
-                                {/* Quick edit talk button */}
+
+                              <div className="flex items-center gap-1">
                                 <button
                                   type="button"
+                                  title="Print Attendance Sheet"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePrintTalkAttendance(talk);
+                                  }}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-[#243c81] hover:bg-blue-50 transition-colors"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Edit Talk Details"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleOpenEditTalk(talk);
                                   }}
-                                  title="Edit talk details"
-                                  className={`p-1 rounded-md transition-all ${
-                                    isSelected ? 'hover:bg-white/20 text-white' : 'hover:bg-slate-200 text-slate-400 hover:text-slate-700'
-                                  }`}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                                 >
-                                  <Pencil className="w-3.5 h-3.5" />
+                                  <Pencil className="w-4 h-4" />
                                 </button>
                               </div>
                             </div>
 
-                            <h4 className="font-extrabold text-sm line-clamp-1">{talk.title}</h4>
-
-                            <p
-                              className={`text-xs mt-0.5 line-clamp-1 font-medium ${
-                                isSelected ? 'text-blue-100' : 'text-slate-600'
-                              }`}
-                            >
-                              Speaker: {talk.speaker}
-                            </p>
-
-                            <div className="mt-2.5 pt-2 border-t border-slate-100/30 flex items-center justify-between text-[11px]">
-                              <span className={isSelected ? 'text-blue-200' : 'text-slate-500 font-medium'}>
-                                Attendance:
-                              </span>
-                              <span className={`font-bold ${isSelected ? 'text-amber-300' : 'text-[#243c81]'}`}>
-                                {countPresent} attendees
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Right Column: Active Talk Details & Attendance Sheet */}
-                  <div className="lg:col-span-8 space-y-5">
-                    {activeTalk ? (
-                      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
-                        {/* Talk Header with Edit Button */}
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-5 border-b border-slate-100">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <span className="text-xs font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
-                                Talk {activeTalk.talkNumber} • Attendance Sheet
-                              </span>
-                              <span className="text-xs text-slate-500 font-medium">
-                                {activeTalk.moduleName}
-                              </span>
+                            {/* Talk Title & Module */}
+                            <h4 className="font-black text-slate-900 group-hover:text-[#243c81] text-base leading-snug mb-1 transition-colors line-clamp-2">
+                              {talk.title}
+                            </h4>
+                            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">
+                              {talk.moduleName || 'CLP Curriculum'}
                             </div>
 
-                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                              {activeTalk.title}
-                            </h2>
-
-                            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-600 mt-2 font-medium">
-                              <span>
-                                Speaker: <strong className="text-slate-800">{activeTalk.speaker}</strong>
-                              </span>
-                              <span>•</span>
-                              <span>
-                                Venue: <strong className="text-slate-800">{activeTalk.venue}</strong>
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            {/* Edit Talk Details Button */}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditTalk(activeTalk)}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-2xs"
-                            >
-                              <Pencil className="w-3.5 h-3.5 text-blue-700" />
-                              <span>Edit Talk</span>
-                            </button>
-
-                            <div className="text-right text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                              <div className="flex items-center gap-1 font-semibold text-slate-800">
-                                <Calendar className="w-3.5 h-3.5 text-blue-700" />
-                                <span>{activeTalk.date || 'Date TBD'}</span>
+                            {/* Meta Info */}
+                            <div className="space-y-2 pt-3 border-t border-slate-100 text-xs text-slate-600">
+                              <div className="flex items-start gap-2">
+                                <Users className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" />
+                                <span className="truncate font-medium">
+                                  {talk.speaker || 'Speaker: To be assigned'}
+                                </span>
                               </div>
-                              <span className="text-[11px] block mt-0.5 font-medium">
-                                {activeTalk.time || '6:30 PM - 9:00 PM'}
+                              <div className="flex items-start gap-2">
+                                <MapPin className="w-3.5 h-3.5 text-rose-500 mt-0.5 shrink-0" />
+                                <span className="truncate">
+                                  {talk.venue || 'Parish Hall, Tuy'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <span>{talk.date || 'Date: TBA'}</span>
+                                {talk.time && (
+                                  <>
+                                    <span className="text-slate-300">•</span>
+                                    <Clock className="w-3 h-3 text-slate-400" />
+                                    <span>{talk.time}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Attendance summary footer */}
+                          <div className="mt-5 pt-4 border-t border-slate-100">
+                            <div className="flex items-center justify-between text-xs mb-1.5">
+                              <span className="text-slate-500 font-semibold">Attendance</span>
+                              <span className="font-black text-[#243c81]">
+                                {countPresentIndividuals} / {totalPossibleIndividuals} ({pct}%)
+                              </span>
+                            </div>
+
+                            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-3">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  pct >= 80 ? 'bg-emerald-500' : pct >= 50 ? 'bg-blue-600' : 'bg-amber-500'
+                                }`}
+                                style={{ width: `${Math.min(pct, 100)}%` }}
+                              />
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-slate-500 font-medium">
+                                {bothPresentCouples} couples present
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-xs font-bold text-[#243c81] group-hover:translate-x-1 transition-transform">
+                                <span>Open Sheet</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
                               </span>
                             </div>
                           </div>
                         </div>
-
-                        {/* Attendance Counter Card */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-blue-50/60 border border-blue-100">
-                          <div>
-                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                              Overall Attendance
-                            </span>
-                            <span className="text-xl font-black text-[#243c81]">
-                              {totalPresentIndividuals} / {totalPossibleIndividuals} ({attendancePercentage}%)
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                              Husbands Present
-                            </span>
-                            <span className="text-lg font-bold text-blue-700">
-                              {presentHusbands} / {totalInvitedCouples}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                              Wives Present
-                            </span>
-                            <span className="text-lg font-bold text-rose-700">
-                              {presentWives} / {totalInvitedCouples}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Couples Attendance Checklist Table */}
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-xs">
-                            <thead>
-                              <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                                <th className="py-3 px-3">Invited Couple</th>
-                                <th className="py-3 px-3">Barangay</th>
-                                <th className="py-3 px-3 text-center">Husband Status</th>
-                                <th className="py-3 px-3 text-center">Wife Status</th>
-                                <th className="py-3 px-3">Remarks</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium">
-                              {currentCouples.map((c) => {
-                                const att = attendance.find(
-                                  (a) => a.talkId === activeTalk.id && a.coupleId === c.id
-                                );
-                                const hp = Boolean(att?.husbandPresent);
-                                const wp = Boolean(att?.wifePresent);
-
-                                return (
-                                  <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                                    <td className="py-3 px-3">
-                                      <span className="font-bold text-slate-900 block text-sm">
-                                        {c.husbandLastName}, {c.husbandFirstName} &amp; {c.wifeFirstName}
-                                      </span>
-                                      <span className="text-[11px] text-slate-500">
-                                        📞 {c.husbandContact || c.wifeContact || 'No contact'}
-                                      </span>
-                                    </td>
-
-                                    <td className="py-3 px-3 text-slate-700">{c.barangay}</td>
-
-                                    {/* Husband Checkbox */}
-                                    <td className="py-3 px-3 text-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleAttendance(activeTalk.id, c.id, 'husband')}
-                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                                          hp
-                                            ? 'bg-blue-600 text-white shadow-xs'
-                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                        }`}
-                                      >
-                                        {hp ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                                        <span>{hp ? 'Present' : 'Absent'}</span>
-                                      </button>
-                                    </td>
-
-                                    {/* Wife Checkbox */}
-                                    <td className="py-3 px-3 text-center">
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleAttendance(activeTalk.id, c.id, 'wife')}
-                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
-                                          wp
-                                            ? 'bg-rose-600 text-white shadow-xs'
-                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                        }`}
-                                      >
-                                        {wp ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
-                                        <span>{wp ? 'Present' : 'Absent'}</span>
-                                      </button>
-                                    </td>
-
-                                    <td className="py-3 px-3 text-slate-500 text-[11px]">
-                                      {att?.remarks || '—'}
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-
-                          {currentCouples.length === 0 && (
-                            <div className="p-8 text-center text-slate-500 text-xs">
-                              No invited couples to take attendance for yet. Add couples in the &quot;Invited Couples&quot; tab.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="bg-white rounded-3xl p-12 text-center text-slate-500 border border-slate-200">
-                        Select a talk on the left to review or take attendance.
-                      </div>
-                    )}
+                      );
+                    })}
                   </div>
                 </div>
+              ) : (
+                /* ========================================================================= */
+                /* MAXIMIZED ATTENDANCE SHEET PAGE                                           */
+                /* ========================================================================= */
+                activeOpenedTalk && (
+                  <div className="space-y-6">
+                    {/* Navigation & Header Banner */}
+                    <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                        <button
+                          type="button"
+                          onClick={() => setOpenedAttendanceTalkId(null)}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors self-start"
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                          <span>Back to Talks</span>
+                        </button>
+
+                        <div>
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-blue-100 text-[#243c81]">
+                              Talk #{activeOpenedTalk.talkNumber} • Attendance Sheet
+                            </span>
+                            <span className="text-xs text-slate-500 font-bold">
+                              {activeOpenedTalk.moduleName || 'CLP Curriculum'}
+                            </span>
+                          </div>
+                          <h2 className="text-2xl font-black text-slate-900">
+                            {activeOpenedTalk.title}
+                          </h2>
+                          <div className="flex items-center gap-4 text-xs text-slate-600 mt-1 flex-wrap">
+                            <span>
+                              <strong>Speaker:</strong> {activeOpenedTalk.speaker || 'To be assigned'}
+                            </span>
+                            <span>•</span>
+                            <span>
+                              <strong>Venue:</strong> {activeOpenedTalk.venue || 'Parish Hall, Tuy'}
+                            </span>
+                            <span>•</span>
+                            <span>
+                              <strong>Date:</strong> {activeOpenedTalk.date || 'TBA'}
+                              {activeOpenedTalk.time && ` (${activeOpenedTalk.time})`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handlePrintTalkAttendance(activeOpenedTalk)}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all"
+                        >
+                          <Printer className="w-4 h-4 text-slate-500" />
+                          <span>Print Sheet</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditTalk(activeOpenedTalk)}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-blue-800 text-white font-bold text-xs shadow-xs transition-all"
+                        >
+                          <Pencil className="w-4 h-4" />
+                          <span>Edit Talk</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Summary Stat Cards across the full width */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl p-4">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700 mb-1">
+                          Overall Attendance
+                        </div>
+                        <div className="text-2xl font-black text-blue-950">
+                          {openedTalkTotalPresentIndividuals} / {openedTalkTotalPossibleIndividuals}
+                          <span className="text-sm font-bold text-blue-600 ml-1.5">
+                            ({openedTalkAttendancePercentage}%)
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-blue-600/80 mt-1">Individual attendees</div>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-blue-50/60 to-cyan-50/60 border border-blue-100 rounded-2xl p-4">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-blue-600 mb-1">
+                          Husbands Present
+                        </div>
+                        <div className="text-2xl font-black text-blue-900">
+                          {openedTalkPresentHusbands} / {totalInvitedCouples}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-1">
+                          {totalInvitedCouples > 0
+                            ? Math.round((openedTalkPresentHusbands / totalInvitedCouples) * 100)
+                            : 0}
+                          % of husbands
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-rose-50/60 to-pink-50/60 border border-rose-100 rounded-2xl p-4">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-rose-600 mb-1">
+                          Wives Present
+                        </div>
+                        <div className="text-2xl font-black text-rose-900">
+                          {openedTalkPresentWives} / {totalInvitedCouples}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-1">
+                          {totalInvitedCouples > 0
+                            ? Math.round((openedTalkPresentWives / totalInvitedCouples) * 100)
+                            : 0}
+                          % of wives
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-emerald-50/60 to-teal-50/60 border border-emerald-100 rounded-2xl p-4">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 mb-1">
+                          Both Present (Couples)
+                        </div>
+                        <div className="text-2xl font-black text-emerald-950">
+                          {openedTalkBothPresentCouples} / {totalInvitedCouples}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-1">Full couple participation</div>
+                      </div>
+                    </div>
+
+                    {/* Attendance Controls Bar (Search, Status Filter, Barangay Filter, Quick Actions) */}
+                    <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      {/* Search & Filters */}
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
+                        {/* Search */}
+                        <div className="relative flex-1 min-w-[200px]">
+                          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="Search couple or barangay..."
+                            value={attendanceSearchQuery}
+                            onChange={(e) => setAttendanceSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:border-blue-500"
+                          />
+                        </div>
+
+                        {/* Barangay select */}
+                        <div className="min-w-[160px]">
+                          <select
+                            value={attendanceFilterBarangay}
+                            onChange={(e) => setAttendanceFilterBarangay(e.target.value)}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-hidden focus:border-blue-500"
+                          >
+                            <option value="ALL">All Barangays ({currentCouples.length})</option>
+                            {TUY_BARANGAYS.map((brgy) => {
+                              const count = currentCouples.filter((c) => c.barangay === brgy).length;
+                              return (
+                                <option key={brgy} value={brgy}>
+                                  {brgy} ({count})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+
+                        {/* Status Filter Buttons */}
+                        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                          {(
+                            [
+                              { key: 'all', label: 'All' },
+                              { key: 'present', label: 'Both Present' },
+                              { key: 'partial', label: 'Partial' },
+                              { key: 'absent', label: 'Absent' },
+                            ] as const
+                          ).map((filter) => (
+                            <button
+                              key={filter.key}
+                              type="button"
+                              onClick={() => setAttendanceFilterStatus(filter.key)}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                attendanceFilterStatus === filter.key
+                                  ? 'bg-white text-slate-900 shadow-2xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              {filter.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Batch Actions */}
+                      <div className="flex items-center gap-2 self-end lg:self-center shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleMarkFilteredPresent(activeOpenedTalk.id)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition-colors"
+                          title="Mark all currently filtered couples as present"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Mark All Present</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleClearFilteredAttendance(activeOpenedTalk.id)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs transition-colors"
+                          title="Reset attendance for all currently filtered couples"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Clear Filtered</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Maximized Attendance Table */}
+                    <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm border-collapse">
+                          <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                              <th className="py-3.5 px-4 w-12 text-center">#</th>
+                              <th className="py-3.5 px-4">Invited Couple</th>
+                              <th className="py-3.5 px-4">Barangay</th>
+                              <th className="py-3.5 px-4 text-center">Husband Status</th>
+                              <th className="py-3.5 px-4 text-center">Wife Status</th>
+                              <th className="py-3.5 px-4 text-center">Couple Status</th>
+                              <th className="py-3.5 px-4">Remarks / Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {attendanceCouples.map((c, idx) => {
+                              const att = openedTalkAttendance.find((a) => a.coupleId === c.id);
+                              const hp = Boolean(att?.husbandPresent);
+                              const wp = Boolean(att?.wifePresent);
+                              const both = hp && wp;
+                              const partial = (hp && !wp) || (!hp && wp);
+
+                              return (
+                                <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
+                                  <td className="py-3 px-4 text-center text-xs font-bold text-slate-400">
+                                    {idx + 1}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="font-extrabold text-slate-900 text-xs sm:text-sm">
+                                      {c.husbandLastName}, {c.husbandFirstName} &amp; {c.wifeFirstName}
+                                    </div>
+                                    <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
+                                      {c.husbandContact && (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Phone className="w-3 h-3 text-blue-500" />
+                                          <span>H: {c.husbandContact}</span>
+                                        </span>
+                                      )}
+                                      {c.wifeContact && (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Phone className="w-3 h-3 text-rose-500" />
+                                          <span>W: {c.wifeContact}</span>
+                                        </span>
+                                      )}
+                                      {!c.husbandContact && !c.wifeContact && (
+                                        <span>No contact numbers recorded</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 text-xs font-medium text-slate-600">
+                                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold text-[11px]">
+                                      {c.barangay}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleAttendance(activeOpenedTalk.id, c.id, 'husband')}
+                                      className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all w-28 ${
+                                        hp
+                                          ? 'bg-[#243c81] text-white shadow-xs'
+                                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {hp ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                                      <span>{hp ? 'Present' : 'Absent'}</span>
+                                    </button>
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleAttendance(activeOpenedTalk.id, c.id, 'wife')}
+                                      className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all w-28 ${
+                                        wp
+                                          ? 'bg-rose-600 text-white shadow-xs'
+                                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                      }`}
+                                    >
+                                      {wp ? <Check className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+                                      <span>{wp ? 'Present' : 'Absent'}</span>
+                                    </button>
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    {both ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                                        <Check className="w-3 h-3" /> Both Present
+                                      </span>
+                                    ) : partial ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">
+                                        Partial
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500">
+                                        Absent
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <input
+                                      type="text"
+                                      defaultValue={att?.remarks || ''}
+                                      placeholder="Add remarks..."
+                                      onBlur={(e) => handleUpdateRemarks(activeOpenedTalk.id, c.id, e.target.value)}
+                                      className="w-full px-2.5 py-1 text-xs bg-transparent hover:bg-slate-50 focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-400 rounded-lg transition-all"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {attendanceCouples.length === 0 && (
+                        <div className="p-12 text-center text-slate-500 text-xs sm:text-sm">
+                          {currentCouples.length === 0
+                            ? 'No invited couples to take attendance for yet. Add couples in the "Invited Couples" tab.'
+                            : 'No couples match your current search or filter criteria.'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
               )}
             </div>
           )}

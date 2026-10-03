@@ -1775,10 +1775,12 @@ export default function CLPAdminPage() {
       width: 90mm;
       height: 60mm;
       border: 2px solid #1e3a8a;
-      border-radius: 3mm;
+      border-radius: 3.5mm;
       overflow: hidden;
       page-break-inside: avoid;
       break-inside: avoid;
+      background: #ffffff;
+      box-sizing: border-box;
     }
     .id-inner {
       width: 100%;
@@ -1787,43 +1789,45 @@ export default function CLPAdminPage() {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 3mm 5mm;
-      gap: 1.5mm;
+      padding: 3.5mm 5mm;
+      gap: 1.2mm;
+      text-align: center;
+      box-sizing: border-box;
     }
     .last-name {
-      font-size: 13pt;
-      font-weight: 700;
-      color: #111;
-      letter-spacing: 0.04em;
+      font-size: 13.5pt;
+      font-weight: 800;
+      color: #1e3a8a;
+      letter-spacing: 0.07em;
       text-align: center;
-      line-height: 1.1;
+      line-height: 1.15;
       white-space: nowrap;
       max-width: 80mm;
     }
     .first-name {
-      font-size: 20pt;
+      font-size: 25pt;
       font-weight: 900;
-      color: #000;
+      color: #0f172a;
       letter-spacing: 0.02em;
       text-align: center;
-      line-height: 1;
+      line-height: 1.05;
       white-space: nowrap;
       max-width: 80mm;
     }
     .spouse {
-      font-size: 9pt;
+      font-size: 11.5pt;
       font-weight: 700;
-      color: #334155;
+      color: #475569;
       text-align: center;
       letter-spacing: 0.03em;
-      line-height: 1.2;
+      line-height: 1.15;
       white-space: nowrap;
       max-width: 80mm;
     }
     .logo {
-      width: 13mm;
+      width: 12mm;
       height: auto;
-      margin-top: 2mm;
+      margin-top: 1.5mm;
       object-fit: contain;
     }
     @media print {
@@ -1842,37 +1846,51 @@ export default function CLPAdminPage() {
     (function() {
       var PT_TO_PX = 96 / 72; // 1pt ≈ 1.333px at 96 dpi
 
-      // Dynamic sizing table: [maxLen, firstNamePt, otherPt (-5)]
-      function calcPt(len, offset) {
-        var pt;
-        if      (len <= 5)  pt = 50;
-        else if (len <= 8)  pt = 38;
-        else if (len <= 11) pt = 30;
-        else                pt = 24;
-        return pt - (offset || 0);
+      // Proportional sizing functions based on name character length
+      function calcFirstNamePt(len) {
+        if      (len <= 5)  return 26; // EDWIN, SUSAN, LOUIE
+        else if (len <= 8)  return 23; // EUFORIO, ROBERTO
+        else if (len <= 11) return 20; // TERESITA, MA. LOURDES
+        else if (len <= 14) return 17; // MARIA CRISTINA
+        else                return 15;
       }
 
-      // Step 1: Set initial font sizes based on name length
+      function calcLastNamePt(len) {
+        if      (len <= 6)  return 14;   // VALDEZ, LAURIO
+        else if (len <= 9)  return 13;   // SOCORRO, DELA CRUZ
+        else if (len <= 12) return 11.5; // VILLANUEVA, CONCEPCION
+        else                return 10.5;
+      }
+
+      function calcSpousePt(len) {
+        if      (len <= 6)  return 12;   // SUSAN, EDWIN, LOUIE
+        else if (len <= 9)  return 11;   // EUFORIO, ROBERTO
+        else if (len <= 12) return 10;   // TERESITA
+        else                return 9;
+      }
+
+      // Step 1: Set initial proportional font sizes
       document.querySelectorAll('.first-name').forEach(function(el) {
         var len = (el.textContent || '').trim().length;
-        el.style.fontSize = calcPt(len, 0) + 'pt';
+        el.style.fontSize = calcFirstNamePt(len) + 'pt';
       });
       document.querySelectorAll('.last-name').forEach(function(el) {
         var len = (el.textContent || '').trim().length;
-        el.style.fontSize = calcPt(len, 10) + 'pt';
+        el.style.fontSize = calcLastNamePt(len) + 'pt';
       });
       document.querySelectorAll('.spouse').forEach(function(el) {
         var len = (el.textContent || '').trim().length;
-        el.style.fontSize = calcPt(len, 10) + 'pt';
+        el.style.fontSize = calcSpousePt(len) + 'pt';
       });
 
-      // Step 2: Shrink every .fit-text until it no longer overflows its card width
+      // Step 2: Shrink every .fit-text if it still overflows card width
       document.querySelectorAll('.fit-text').forEach(function(el) {
-        var MIN_PT = 6;
+        var MIN_PT = 8;
         var STEP   = 0.5;
         var parent = el.parentElement;
-        var fs = parseFloat(getComputedStyle(el).fontSize) / PT_TO_PX;
-        while (el.scrollWidth > parent.clientWidth * 0.96 && fs > MIN_PT) {
+        var maxW   = parent.clientWidth * 0.94;
+        var fs     = parseFloat(getComputedStyle(el).fontSize) / PT_TO_PX;
+        while (el.scrollWidth > maxW && fs > MIN_PT) {
           fs -= STEP;
           el.style.fontSize = fs + 'pt';
         }

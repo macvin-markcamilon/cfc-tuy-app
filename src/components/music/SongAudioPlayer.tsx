@@ -38,6 +38,16 @@ export default function SongAudioPlayer({
   const [playbackRate, setPlaybackRate] = useState<number>(1);
   const [audioError, setAudioError] = useState<boolean>(false);
 
+  // Reset and reload audio when audioUrl changes
+  useEffect(() => {
+    if (audioRef.current && audioUrl) {
+      audioRef.current.load();
+      setCurrentTime(0);
+      setIsPlaying(false);
+      setAudioError(false);
+    }
+  }, [audioUrl]);
+
   // Sync Audio element
   useEffect(() => {
     const audio = audioRef.current;

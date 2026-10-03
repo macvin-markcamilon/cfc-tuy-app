@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { WorshipSong, fileToAudioDataUrl } from '@/lib/data/songs-service';
+import { WorshipSong, uploadSongAudio, fileToAudioDataUrl } from '@/lib/data/songs-service';
 import InteractiveChordSheet from './InteractiveChordSheet';
 import {
   X,
@@ -104,16 +104,27 @@ export default function SongEditorModal({
     }, 50);
   };
 
-  // Handle MP3 File upload
+  // Handle MP3 File upload directly to Supabase Storage
   const handleAudioFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
       setUploadingAudio(true);
-      const dataUri = await fileToAudioDataUrl(file);
-      setAudioUrl(dataUri);
-      setAudioFileName(file.name);
+      try {
+        const { url, fileName } = await uploadSongAudio(file);
+        setAudioUrl(url);
+        setAudioFileName(fileName);
+      } catch (storageErr: any) {
+        console.warn('Supabase storage upload failed, attempting fallback data URI:', storageErr);
+        // Fallback to data URI for temporary in-session preview
+        const dataUri = await fileToAudioDataUrl(file);
+        setAudioUrl(dataUri);
+        setAudioFileName(file.name);
+        alert(
+          `Supabase Storage Notice:\n${storageErr.message || 'Audio upload to Supabase failed.'}\n\nPlease check your Supabase Storage setup so songs persist across devices and browsers.`
+        );
+      }
     } catch (err) {
       console.error('Failed to read MP3 file:', err);
       alert('Could not read the audio file. Please ensure it is an MP3 or audio format.');

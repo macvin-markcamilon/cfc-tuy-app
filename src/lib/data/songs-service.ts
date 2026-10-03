@@ -246,8 +246,19 @@ function setLocalSongs(songs: WorshipSong[]): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
   } catch (err) {
     console.error('Failed to save worship songs to local storage:', err);
+    // If quota exceeded (often caused by large base64 data URIs), strip data URIs for local cache
+    try {
+      const sanitized = songs.map((s) => ({
+        ...s,
+        audioUrl: s.audioUrl?.startsWith('data:') ? '' : s.audioUrl,
+      }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+    } catch (innerErr) {
+      console.warn('Could not save sanitized songs to localStorage:', innerErr);
+    }
   }
 }
+
 
 export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
   try {
@@ -328,7 +339,7 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
   try {
     const supabase = createClient();
     if (supabase) {
-      await supabase.from('worship_songs').upsert({
+      const { error: upsertErr } = await supabase.from('worship_songs').upsert({
         id: completeSong.id,
         title: completeSong.title,
         artist: completeSong.artist,
@@ -345,10 +356,15 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
         notes: completeSong.notes,
         updated_at: completeSong.updatedAt,
       });
+
+      if (upsertErr) {
+        console.warn('Supabase worship_songs upsert failed:', upsertErr.message);
+      }
     }
-  } catch {
-    // Local storage acts as reliable fallback
+  } catch (err) {
+    console.warn('Supabase worship_songs sync error:', err);
   }
+
 
   return completeSong;
 }
@@ -371,7 +387,57 @@ export async function deleteWorshipSong(id: string): Promise<boolean> {
 }
 
 /**
- * Helper to convert an uploaded MP3 audio file into a Base64 data URI for instant playback
+ * Upload an MP3 audio file directly to Supabase Storage ('songs' bucket)
+ * Returns the public URL of the uploaded audio file
+ */
+export async function uploadSongAudio(file: File): Promise<{ url: string; fileName: string }> {
+  const supabase = createClient();
+  if (!supabase) {
+    throw new Error('Supabase client is not configured.');
+  }
+
+  // Validate file type
+  if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|ogg|m4a|aac)$/i)) {
+    throw new Error('Please upload an audio file (.mp3, .wav, .ogg, .m4a).');
+  }
+
+  // Clean filename and make unique
+  const fileExt = file.name.split('.').pop() || 'mp3';
+  const cleanBase = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '_');
+  const fileName = `${Date.now()}-${cleanBase}.${fileExt}`;
+  const filePath = `audio/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('songs')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: file.type || 'audio/mpeg',
+    });
+
+  if (uploadError) {
+    console.error('Supabase Storage upload error:', uploadError);
+    throw new Error(
+      `Supabase storage error: ${uploadError.message}. Make sure a public bucket named "songs" exists in Supabase Storage.`
+    );
+  }
+
+  const { data: publicUrlData } = supabase.storage
+    .from('songs')
+    .getPublicUrl(filePath);
+
+  if (!publicUrlData?.publicUrl) {
+    throw new Error('Could not retrieve public URL for uploaded audio file.');
+  }
+
+  return {
+    url: publicUrlData.publicUrl,
+    fileName: file.name,
+  };
+}
+
+/**
+ * Fallback helper to convert an uploaded audio file into a Base64 data URI
  */
 export function fileToAudioDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -381,3 +447,4 @@ export function fileToAudioDataUrl(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+

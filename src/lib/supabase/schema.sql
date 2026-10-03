@@ -253,4 +253,70 @@ ALTER TABLE clp_groupings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow full access for CLP groupings" ON clp_groupings;
 CREATE POLICY "Allow full access for CLP groupings" ON clp_groupings FOR ALL USING (true) WITH CHECK (true);
 
+-- 13. Worship Songs Table (Music & Praise Ministry Repertoire)
+CREATE TABLE IF NOT EXISTS public.worship_songs (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  artist TEXT DEFAULT 'CFC Music Ministry',
+  key_signature TEXT DEFAULT 'G',
+  tempo TEXT,
+  time_signature TEXT DEFAULT '4/4',
+  category TEXT DEFAULT 'Praise' CHECK (category IN ('Praise', 'Worship', 'Reflection', 'Offertory', 'Gathering', 'Recessional', 'Marian', 'Mass Ordinary')),
+  ministry TEXT DEFAULT 'CFC',
+  lyrics_and_chords TEXT,
+  ccli_number TEXT,
+  audio_url TEXT,
+  audio_file_name TEXT,
+  tags TEXT[],
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.worship_songs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public read access on worship_songs" ON public.worship_songs;
+CREATE POLICY "Allow public read access on worship_songs"
+  ON public.worship_songs FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow full access on worship_songs" ON public.worship_songs;
+CREATE POLICY "Allow full access on worship_songs"
+  ON public.worship_songs FOR ALL USING (true) WITH CHECK (true);
+
+-- 14. Supabase Storage Bucket for Worship Songs MP3 Audio
+-- Creates the 'songs' bucket with public read access and uploads allowed
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'songs',
+  'songs',
+  true,
+  52428800, -- 50MB max file size
+  ARRAY['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/x-m4a', 'audio/m4a']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = true,
+  file_size_limit = 52428800,
+  allowed_mime_types = ARRAY['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/x-m4a', 'audio/m4a'];
+
+-- Storage bucket access policies
+DROP POLICY IF EXISTS "Public can view song audio files" ON storage.objects;
+CREATE POLICY "Public can view song audio files"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'songs');
+
+DROP POLICY IF EXISTS "Allow all uploads to song audio bucket" ON storage.objects;
+CREATE POLICY "Allow all uploads to song audio bucket"
+  ON storage.objects FOR INSERT
+  WITH CHECK (bucket_id = 'songs');
+
+DROP POLICY IF EXISTS "Allow all updates to song audio bucket" ON storage.objects;
+CREATE POLICY "Allow all updates to song audio bucket"
+  ON storage.objects FOR UPDATE
+  USING (bucket_id = 'songs');
+
+DROP POLICY IF EXISTS "Allow all deletions from song audio bucket" ON storage.objects;
+CREATE POLICY "Allow all deletions from song audio bucket"
+  ON storage.objects FOR DELETE
+  USING (bucket_id = 'songs');
+
 

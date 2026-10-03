@@ -3341,7 +3341,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     Pin Home Location in Tuy, Batangas
                   </span>
                   <span className="text-[10px] text-slate-500 hidden sm:inline">
-                    • Click anywhere on the map or choose a barangay below to pinpoint
+                    • Click anywhere on the map or drag the pin to pinpoint home location
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

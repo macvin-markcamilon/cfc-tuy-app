@@ -371,32 +371,6 @@ export default function TuyMapPicker({
         </div>
       )}
 
-      {/* Quick Barangay Buttons */}
-      <div className="p-3 bg-slate-50 border-b border-slate-200">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-            Quick Barangay Jumper (Tuy, Batangas):
-          </span>
-          <span className="text-[10px] text-slate-400">Pans map &amp; drops pin to center</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
-          {Object.keys(BARANGAY_COORDINATES).map((b) => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => handleCenterPinToBarangay(b)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                barangay === b
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              {b}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Interactive Map Visual Area */}
       {authError && (
         <div className="px-4 py-2.5 bg-amber-500 text-slate-950 text-xs font-semibold flex items-center justify-between gap-2 border-b border-amber-600 animate-in fade-in">
@@ -416,7 +390,7 @@ export default function TuyMapPicker({
       )}
       <div
         className={`relative w-full bg-slate-900 overflow-hidden cursor-crosshair ${
-          isEmbedded ? 'flex-1 min-h-[300px]' : 'h-64 sm:h-72'
+          isEmbedded ? 'flex-1 h-full min-h-[450px]' : 'h-80 sm:h-[420px]'
         }`}
       >
         {/* Floating Pin Status & Quick Controls Overlay */}
@@ -500,173 +474,175 @@ export default function TuyMapPicker({
         )}
       </div>
 
-      {/* Address & Barangay Controls */}
-      <div className="p-4 sm:p-5 space-y-4 bg-white">
-        {/* Row 1: Barangay selection & Coordinates */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
-              <span>Selected Barangay (Official)</span>
-              {detectedBarangay !== barangay && (
+      {/* Address & Barangay Controls (Only shown in standalone modal, not in full-screen embedded mode) */}
+      {!isEmbedded && (
+        <div className="p-4 sm:p-5 space-y-4 bg-white">
+          {/* Row 1: Barangay selection & Coordinates */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Selected Barangay (Official)</span>
+                {detectedBarangay !== barangay && (
+                  <button
+                    type="button"
+                    onClick={() => handleBarangayDropdownChange(detectedBarangay)}
+                    className="text-[10px] font-bold text-blue-600 hover:underline"
+                    title="Click to use the nearest detected barangay"
+                  >
+                    Use Proximity ({detectedBarangay})
+                  </button>
+                )}
+              </label>
+              <select
+                value={barangay}
+                onChange={(e) => handleBarangayDropdownChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-xs text-slate-900 font-bold focus:ring-2 focus:ring-blue-500"
+              >
+                {TUY_BARANGAYS.map((b) => (
+                  <option key={b} value={b}>
+                    Brgy. {b}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Pinned GPS Coordinates (Saved)</span>
                 <button
                   type="button"
-                  onClick={() => handleBarangayDropdownChange(detectedBarangay)}
-                  className="text-[10px] font-bold text-blue-600 hover:underline"
-                  title="Click to use the nearest detected barangay"
+                  onClick={handleTogglePin}
+                  className="text-[11px] font-bold text-blue-600 hover:underline"
                 >
-                  Use Proximity ({detectedBarangay})
+                  {hasPin ? 'Clear Pin' : 'Drop Pin'}
                 </button>
-              )}
-            </label>
-            <select
-              value={barangay}
-              onChange={(e) => handleBarangayDropdownChange(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-xs text-slate-900 font-bold focus:ring-2 focus:ring-blue-500"
-            >
-              {TUY_BARANGAYS.map((b) => (
-                <option key={b} value={b}>
-                  Brgy. {b}
-                </option>
-              ))}
-            </select>
+              </label>
+              <input
+                type="text"
+                readOnly
+                value={hasPin ? `${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}` : 'No Pinpoint Placed'}
+                className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-medium ${
+                  hasPin ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
+              />
+            </div>
           </div>
 
+          {/* Address Selection Option (Save Home Address Editable OR Barangay Address) */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold text-slate-900">
+                Choose Address Format to Save:
+              </span>
+              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                Coordinates ({coords[1].toFixed(4)}, {coords[0].toFixed(4)}) will be saved
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Option A: Custom Editable Home Address */}
+              <label
+                className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                  addressChoice === 'custom'
+                    ? 'bg-white border-blue-600 shadow-xs ring-1 ring-blue-600'
+                    : 'bg-white/70 border-slate-200 hover:bg-white'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="addressChoice"
+                  checked={addressChoice === 'custom'}
+                  onChange={() => setAddressChoice('custom')}
+                  className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-slate-900 block">Home Address (Editable)</span>
+                  <span className="text-[11px] text-slate-500 block mt-0.5">
+                    Save custom street, house #, or sitio
+                  </span>
+                </div>
+              </label>
+
+              {/* Option B: Standard Barangay Address */}
+              <label
+                className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                  addressChoice === 'barangay'
+                    ? 'bg-white border-blue-600 shadow-xs ring-1 ring-blue-600'
+                    : 'bg-white/70 border-slate-200 hover:bg-white'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="addressChoice"
+                  checked={addressChoice === 'barangay'}
+                  onChange={() => setAddressChoice('barangay')}
+                  className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                />
+                <div className="text-xs">
+                  <span className="font-bold text-slate-900 block">Barangay Format</span>
+                  <span className="text-[11px] text-blue-700 font-semibold block mt-0.5 truncate">
+                    Brgy. {barangay}, Tuy, Batangas
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Editable Address Text Input */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
-              <span>Pinned GPS Coordinates (Saved)</span>
+              <span>
+                {addressChoice === 'custom'
+                  ? 'Custom Home Address (Will be saved)'
+                  : 'Custom Home Address (Optional)'}
+              </span>
               <button
                 type="button"
-                onClick={handleTogglePin}
-                className="text-[11px] font-bold text-blue-600 hover:underline"
+                onClick={() => {
+                  setStreetAddress(`Brgy. ${barangay}, Tuy, Batangas`);
+                  setIsAddressDirty(false);
+                }}
+                className="text-[11px] text-blue-600 font-semibold hover:underline"
               >
-                {hasPin ? 'Clear Pin' : 'Drop Pin'}
+                Reset to &quot;Brgy. {barangay}&quot;
               </button>
             </label>
             <input
               type="text"
-              readOnly
-              value={hasPin ? `${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}` : 'No Pinpoint Placed'}
-              className={`w-full px-3 py-2 rounded-xl border text-xs font-mono font-medium ${
-                hasPin ? 'border-slate-200 bg-slate-100 text-slate-700' : 'border-amber-200 bg-amber-50 text-amber-800'
-              }`}
+              required={addressChoice === 'custom'}
+              placeholder="e.g. 142 Rizal St., Brgy. Poblacion 1, Tuy, Batangas"
+              value={streetAddress}
+              onChange={(e) => {
+                setStreetAddress(e.target.value);
+                setIsAddressDirty(true);
+              }}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs sm:text-sm text-slate-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             />
           </div>
-        </div>
 
-        {/* Address Selection Option (Save Home Address Editable OR Barangay Address) */}
-        <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-slate-900">
-              Choose Address Format to Save:
-            </span>
-            <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-              Coordinates ({coords[1].toFixed(4)}, {coords[0].toFixed(4)}) will be saved
-            </span>
-          </div>
+          {/* Action Buttons */}
+          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+            )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {/* Option A: Custom Editable Home Address */}
-            <label
-              className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
-                addressChoice === 'custom'
-                  ? 'bg-white border-blue-600 shadow-xs ring-1 ring-blue-600'
-                  : 'bg-white/70 border-slate-200 hover:bg-white'
-              }`}
-            >
-              <input
-                type="radio"
-                name="addressChoice"
-                checked={addressChoice === 'custom'}
-                onChange={() => setAddressChoice('custom')}
-                className="mt-0.5 text-blue-600 focus:ring-blue-500"
-              />
-              <div className="text-xs">
-                <span className="font-bold text-slate-900 block">Home Address (Editable)</span>
-                <span className="text-[11px] text-slate-500 block mt-0.5">
-                  Save custom street, house #, or sitio
-                </span>
-              </div>
-            </label>
-
-            {/* Option B: Standard Barangay Address */}
-            <label
-              className={`p-3 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
-                addressChoice === 'barangay'
-                  ? 'bg-white border-blue-600 shadow-xs ring-1 ring-blue-600'
-                  : 'bg-white/70 border-slate-200 hover:bg-white'
-              }`}
-            >
-              <input
-                type="radio"
-                name="addressChoice"
-                checked={addressChoice === 'barangay'}
-                onChange={() => setAddressChoice('barangay')}
-                className="mt-0.5 text-blue-600 focus:ring-blue-500"
-              />
-              <div className="text-xs">
-                <span className="font-bold text-slate-900 block">Barangay Format</span>
-                <span className="text-[11px] text-blue-700 font-semibold block mt-0.5 truncate">
-                  Brgy. {barangay}, Tuy, Batangas
-                </span>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        {/* Editable Address Text Input */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
-            <span>
-              {addressChoice === 'custom'
-                ? 'Custom Home Address (Will be saved)'
-                : 'Custom Home Address (Optional)'}
-            </span>
             <button
               type="button"
-              onClick={() => {
-                setStreetAddress(`Brgy. ${barangay}, Tuy, Batangas`);
-                setIsAddressDirty(false);
-              }}
-              className="text-[11px] text-blue-600 font-semibold hover:underline"
+              onClick={handleConfirm}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95"
             >
-              Reset to &quot;Brgy. {barangay}&quot;
+              <Check className="w-4 h-4" />
+              <span>Apply Selected Address</span>
             </button>
-          </label>
-          <input
-            type="text"
-            required={addressChoice === 'custom'}
-            placeholder="e.g. 142 Rizal St., Brgy. Poblacion 1, Tuy, Batangas"
-            value={streetAddress}
-            onChange={(e) => {
-              setStreetAddress(e.target.value);
-              setIsAddressDirty(true);
-            }}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-xs sm:text-sm text-slate-900 font-medium focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-          />
+          </div>
         </div>
-
-        {/* Action Buttons */}
-        <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100"
-            >
-              Cancel
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={handleConfirm}
-            className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-md transition-all active:scale-95"
-          >
-            <Check className="w-4 h-4" />
-            <span>Apply Selected Address</span>
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

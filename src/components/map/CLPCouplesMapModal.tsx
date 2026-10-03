@@ -14,6 +14,7 @@ import {
   Sparkles,
   Search,
   ExternalLink,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   loadGoogleMaps,
@@ -61,6 +62,7 @@ export default function CLPCouplesMapModal({
   const [selectedCouple, setSelectedCouple] = useState<CLPCouple | null>(null);
   const [mapStyle, setMapStyle] = useState<'streets' | 'satellite' | 'terrain'>('streets');
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileTab, setMobileTab] = useState<'list' | 'map'>('list');
   const [isMapLoaded, setIsMapLoaded] = useState(false);
 
   const [authError, setAuthError] = useState(false);
@@ -197,91 +199,138 @@ export default function CLPCouplesMapModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 max-w-5xl w-full flex flex-col h-[90vh] max-h-[850px]">
-        {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-2xl bg-blue-100 text-blue-700 shadow-xs">
-              <Compass className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
-                <span>{title}</span>
-                <span className="bg-blue-50 text-[#243c81] text-xs font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
-                  {couples.length} {couples.length === 1 ? 'Couple' : 'Couples'} Plotted
-                </span>
-              </h3>
-              <p className="text-xs text-slate-500 font-medium">
-                Interactive Google Maps visualization of invited couples across Tuy, Batangas.
-              </p>
-            </div>
-          </div>
+    <div className="fixed inset-0 z-50 flex flex-col bg-slate-100 animate-in fade-in duration-200">
+      {/* Top Header Bar */}
+      <div className="h-16 px-4 sm:px-6 bg-white border-b border-slate-200 flex items-center justify-between gap-3 shadow-xs shrink-0 z-20">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-100 font-bold text-xs sm:text-sm transition-all active:scale-95 shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-500" />
+            <span className="hidden sm:inline">Back to CLP</span>
+          </button>
 
-          <div className="flex items-center gap-2">
-            {/* Style switcher */}
-            {isGoogleMapsActive && (
-              <div className="hidden sm:flex items-center gap-1 bg-slate-200/80 p-1 rounded-xl text-xs font-bold text-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setMapStyle('streets')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
-                    mapStyle === 'streets' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50'
-                  }`}
-                >
-                  Map
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMapStyle('satellite')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
-                    mapStyle === 'satellite' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50'
-                  }`}
-                >
-                  Satellite
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMapStyle('terrain')}
-                  className={`px-2.5 py-1 rounded-lg transition-all ${
-                    mapStyle === 'terrain' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50'
-                  }`}
-                >
-                  Terrain
-                </button>
-              </div>
-            )}
+          <div className="h-6 w-px bg-slate-200 hidden sm:block shrink-0" />
 
-            <button
-              onClick={onClose}
-              type="button"
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 font-bold transition-all"
-            >
-              <X className="w-5 h-5" />
-            </button>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="font-black text-slate-900 text-sm sm:text-base truncate">
+                {title}
+              </h2>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-[#243c81] border border-blue-200 text-[11px] font-black uppercase tracking-wider shrink-0">
+                {couples.length} {couples.length === 1 ? 'Couple' : 'Couples'} Plotted
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 truncate hidden sm:block">
+              Interactive Google Maps visualization of invited couples across Tuy, Batangas.
+            </p>
           </div>
         </div>
 
-        {/* Main Content: Split into Sidebar & Map View */}
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-          {/* Left/Mobile Bottom Sidebar: Couple List & Active Card */}
-          <div className="w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-slate-200 bg-slate-50 flex flex-col shrink-0 overflow-hidden">
-            {/* Search Input */}
-            <div className="p-3 border-b border-slate-200 bg-white">
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search couple or barangay..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
-                />
-              </div>
-            </div>
+        {/* Mobile Tab Switcher */}
+        <div className="flex md:hidden items-center bg-slate-100 p-1 rounded-xl gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileTab('list')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              mobileTab === 'list'
+                ? 'bg-white text-[#243c81] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Couples ({filteredCouples.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileTab('map');
+              setTimeout(() => {
+                if (mapInstanceRef.current && typeof google !== 'undefined' && google.maps) {
+                  google.maps.event.trigger(mapInstanceRef.current, 'resize');
+                }
+              }, 100);
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              mobileTab === 'map'
+                ? 'bg-white text-[#243c81] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Tuy Map
+          </button>
+        </div>
 
-            {/* Couple Selection Scroll Area */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-48 md:max-h-none">
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Style switcher */}
+          {isGoogleMapsActive && (
+            <div className="hidden sm:flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-700">
+              <button
+                type="button"
+                onClick={() => setMapStyle('streets')}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  mapStyle === 'streets' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50 text-slate-600'
+                }`}
+              >
+                Map
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapStyle('satellite')}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  mapStyle === 'satellite' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50 text-slate-600'
+                }`}
+              >
+                Satellite
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapStyle('terrain')}
+                className={`px-3 py-1.5 rounded-lg transition-all ${
+                  mapStyle === 'terrain' ? 'bg-white shadow-xs text-blue-800' : 'hover:bg-white/50 text-slate-600'
+                }`}
+              >
+                Terrain
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={onClose}
+            type="button"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 font-bold transition-all"
+            title="Exit Map Page"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content: Split into Sidebar & Map View */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        {/* Left Sidebar: Couple List & Active Card */}
+        <div
+          className={`w-full md:w-80 lg:w-96 xl:w-[420px] border-b md:border-b-0 md:border-r border-slate-200 bg-white flex flex-col shrink-0 overflow-hidden ${
+            mobileTab === 'list' ? 'flex flex-1 md:flex-none' : 'hidden md:flex'
+          }`}
+        >
+          {/* Search Input */}
+          <div className="p-3.5 border-b border-slate-200 bg-white">
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search couple or barangay..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-600 font-medium"
+              />
+            </div>
+          </div>
+
+          {/* Couple Selection Scroll Area */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {filteredCouples.length === 0 ? (
                 <div className="p-6 text-center text-xs text-slate-400">
                   No couples found matching your search.
@@ -400,7 +449,11 @@ export default function CLPCouplesMapModal({
           </div>
 
           {/* Right Area: Interactive Google Map */}
-          <div className="flex-1 relative bg-slate-950 overflow-hidden">
+          <div
+            className={`flex-1 relative bg-slate-950 overflow-hidden ${
+              mobileTab === 'map' ? 'flex flex-1' : 'hidden md:flex'
+            }`}
+          >
             {isGoogleMapsActive && !authError ? (
               <div ref={mapContainer} className="w-full h-full" />
             ) : (
@@ -448,6 +501,5 @@ export default function CLPCouplesMapModal({
           </div>
         </div>
       </div>
-    </div>
   );
 }

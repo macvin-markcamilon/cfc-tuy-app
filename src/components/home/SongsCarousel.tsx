@@ -1,0 +1,322 @@
+'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { fetchWorshipSongs, WorshipSong } from '@/lib/data/songs-service';
+import SongDetailModal from '@/components/music/SongDetailModal';
+import {
+  Music,
+  ChevronLeft,
+  ChevronRight,
+  Headphones,
+  Play,
+  Pause,
+  ArrowRight,
+  Sparkles,
+  Guitar,
+  BookOpen,
+} from 'lucide-react';
+
+export default function SongsCarousel() {
+  const [songs, setSongs] = useState<WorshipSong[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [selectedSong, setSelectedSong] = useState<WorshipSong | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch songs on mount
+  useEffect(() => {
+    async function loadSongs() {
+      try {
+        const data = await fetchWorshipSongs();
+        setSongs(data);
+      } catch (err) {
+        console.error('Failed to load songs:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadSongs();
+  }, []);
+
+  // Filter songs
+  const categories = ['All', 'Praise', 'Worship', 'Youth', 'Reflection'];
+  const filteredSongs = activeCategory === 'All'
+    ? songs
+    : songs.filter((s) => s.category?.toLowerCase() === activeCategory.toLowerCase());
+
+  // Carousel scroll helpers
+  const handleScroll = (direction: 'left' | 'right') => {
+    if (!scrollContainerRef.current) return;
+    const { scrollLeft, clientWidth } = scrollContainerRef.current;
+    const scrollAmount = clientWidth * 0.8;
+    scrollContainerRef.current.scrollTo({
+      left: direction === 'left' ? scrollLeft - scrollAmount : scrollLeft + scrollAmount,
+      behavior: 'smooth',
+    });
+  };
+
+  // Quick audio toggle
+  const togglePlayAudio = (song: WorshipSong, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!song.audioUrl) return;
+
+    if (playingSongId === song.id) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setPlayingSongId(null);
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const audio = new Audio(song.audioUrl);
+      audioRef.current = audio;
+      audio.play().catch(() => {});
+      setPlayingSongId(song.id);
+      audio.onended = () => setPlayingSongId(null);
+    }
+  };
+
+  // Extract unique chords from ChordPro bracket format [G], [C], etc.
+  const extractChords = (content: string): string[] => {
+    const matches = content.match(/\[([A-G][b#]?[^\]]*)\]/g);
+    if (!matches) return [];
+    const nonChords = new Set(['verse', 'chorus', 'bridge', 'intro', 'outro', 'ending', 'instrumental', 'refrain']);
+    const unique = Array.from(new Set(matches.map((c) => c.slice(1, -1))))
+      .filter((c) => !nonChords.has(c.toLowerCase()) && !c.toLowerCase().startsWith('verse') && !c.toLowerCase().startsWith('chorus'));
+    return unique.slice(0, 6); // return top 6
+  };
+
+  // Clean preview text without bracketed chords
+  const cleanLyricsPreview = (content: string): string => {
+    const lines = content.split('\n');
+    const lyricLines = lines
+      .filter((l) => !l.startsWith('#') && !l.startsWith('{') && !l.match(/^\[(Verse|Chorus|Bridge|Ending|Intro|Outro)/i))
+      .map((l) => l.replace(/\[[^\]]+\]/g, '').trim())
+      .filter((l) => l.length > 0);
+    return lyricLines.slice(0, 2).join(' / ') || 'Tap to view full chords and lyrics.';
+  };
+
+  return (
+    <section className="py-14 sm:py-20 bg-gradient-to-b from-white via-slate-50/60 to-white dark:from-slate-950 dark:via-slate-900/60 dark:to-slate-950 overflow-hidden relative">
+      {/* Decorative ambient background */}
+      <div className="absolute top-1/2 left-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl pointer-events-none -translate-y-1/2" />
+      <div className="absolute top-1/3 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        
+        {/* Header with Title and Controls */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-bold uppercase tracking-wider mb-2">
+              <Guitar className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>CFC Tuy Music Ministry</span>
+            </div>
+            <h2 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+              Worship & Praise Songs
+            </h2>
+            <p className="mt-2 text-sm sm:text-base text-slate-600 dark:text-slate-400 max-w-2xl font-medium">
+              Explore chords, lyrics, and MP3 recordings for household prayer meetings, assemblies, and personal worship.
+            </p>
+          </div>
+
+          {/* Navigation Arrows & Admin Link */}
+          <div className="flex items-center gap-2 self-start md:self-auto">
+            <button
+              type="button"
+              onClick={() => handleScroll('left')}
+              className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs hover:shadow-md transition-all active:scale-95"
+              aria-label="Previous Songs"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleScroll('right')}
+              className="p-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 shadow-xs hover:shadow-md transition-all active:scale-95"
+              aria-label="Next Songs"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+
+            <Link
+              href="/admin/songs"
+              className="ml-2 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-blue-50 dark:bg-blue-950/70 hover:bg-blue-100 dark:hover:bg-blue-900 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold text-xs sm:text-sm transition-all"
+            >
+              <span>Songbook</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 no-scrollbar">
+          {categories.map((cat) => {
+            const isActive = activeCategory === cat;
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveCategory(cat)}
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-200 active:scale-95 ${
+                  isActive
+                    ? 'bg-[#243c81] text-white shadow-md shadow-blue-900/20'
+                    : 'bg-white dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                {cat}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Loading State */}
+        {loading ? (
+          <div className="py-16 text-center">
+            <div className="inline-block animate-spin w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full mb-3" />
+            <p className="text-slate-500 font-medium text-sm">Loading songs library...</p>
+          </div>
+        ) : filteredSongs.length === 0 ? (
+          <div className="py-16 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-xs">
+            <Music className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">No songs found in this category</h3>
+            <p className="text-sm text-slate-500 mt-1">Select &quot;All&quot; to browse all available worship songs.</p>
+          </div>
+        ) : (
+          /* Carousel Scroll Container */
+          <div
+            ref={scrollContainerRef}
+            className="flex gap-5 sm:gap-6 overflow-x-auto pb-6 pt-2 px-1 snap-x snap-mandatory scroll-smooth no-scrollbar"
+          >
+            {filteredSongs.map((song) => {
+              const chords = extractChords(song.lyricsAndChords);
+              const previewLyrics = cleanLyricsPreview(song.lyricsAndChords);
+              const isPlaying = playingSongId === song.id;
+
+              return (
+                <div
+                  key={song.id}
+                  onClick={() => {
+                    setSelectedSong(song);
+                    setModalOpen(true);
+                  }}
+                  className="snap-start shrink-0 w-[300px] sm:w-[350px] lg:w-[380px] bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 p-5 sm:p-6 shadow-sm hover:shadow-xl hover:border-blue-400/80 dark:hover:border-blue-500/60 hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between cursor-pointer group"
+                >
+                  <div>
+                    {/* Top Row: Category + Key + Audio Status */}
+                    <div className="flex items-center justify-between gap-2 mb-3.5">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            song.category === 'Praise'
+                              ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-300'
+                              : song.category === 'Worship'
+                              ? 'bg-blue-100 text-blue-900 dark:bg-blue-950/80 dark:text-blue-300'
+                              : 'bg-purple-100 text-purple-900 dark:bg-purple-950/80 dark:text-purple-300'
+                          }`}
+                        >
+                          {song.category}
+                        </span>
+
+                        <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                          Key: {song.key}
+                        </span>
+                      </div>
+
+                      {song.audioUrl && (
+                        <button
+                          type="button"
+                          onClick={(e) => togglePlayAudio(song, e)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all active:scale-95 ${
+                            isPlaying
+                              ? 'bg-emerald-600 text-white animate-pulse'
+                              : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800'
+                          }`}
+                          title={isPlaying ? 'Pause Audio' : 'Preview Audio'}
+                        >
+                          {isPlaying ? (
+                            <>
+                              <Pause className="w-3 h-3 fill-current" />
+                              <span>Playing</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3 h-3 fill-current" />
+                              <span>Audio</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Title & Artist */}
+                    <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white tracking-tight group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
+                      {song.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                      {song.artist || 'CFC Music Ministry'}
+                    </p>
+
+                    {/* Chords Chips preview */}
+                    {chords.length > 0 && (
+                      <div className="mt-4 flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                          Chords:
+                        </span>
+                        {chords.map((chord) => (
+                          <span
+                            key={chord}
+                            className="px-2 py-0.5 rounded-md text-xs font-mono font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80"
+                          >
+                            {chord}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Lyrics Preview snippet */}
+                    <div className="mt-3.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 italic line-clamp-2">
+                      &ldquo;{previewLyrics}&rdquo;
+                    </div>
+                  </div>
+
+                  {/* Card Action Footer */}
+                  <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                    <span className="text-slate-400 font-medium">
+                      {song.tempo ? `${song.tempo} • ` : ''}
+                      {song.timeSignature || '4/4'}
+                    </span>
+
+                    <span className="inline-flex items-center gap-1 font-bold text-blue-600 dark:text-blue-400 group-hover:translate-x-0.5 transition-transform">
+                      <span>View Chords</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+      </div>
+
+      {/* Interactive Song Chords & Lyrics Modal */}
+      {selectedSong && (
+        <SongDetailModal
+          isOpen={modalOpen}
+          song={selectedSong}
+          onClose={() => {
+            setModalOpen(false);
+            setSelectedSong(null);
+          }}
+        />
+      )}
+    </section>
+  );
+}

@@ -20,7 +20,7 @@ interface SongDetailModalProps {
   isOpen: boolean;
   song: WorshipSong | null;
   onClose: () => void;
-  onEdit: (song: WorshipSong) => void;
+  onEdit?: (song: WorshipSong) => void;
 }
 
 export default function SongDetailModal({
@@ -67,15 +67,17 @@ export default function SongDetailModal({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 self-end sm:self-auto">
-            <button
-              type="button"
-              onClick={() => onEdit(song)}
-              className="px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 border border-white/15 transition-all active:scale-95"
-              title="Edit song details, lyrics, and chords"
-            >
-              <Edit3 className="w-3.5 h-3.5 text-amber-300" />
-              <span>Edit Song</span>
-            </button>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(song)}
+                className="px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 border border-white/15 transition-all active:scale-95"
+                title="Edit song details, lyrics, and chords"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-amber-300" />
+                <span>Edit Song</span>
+              </button>
+            )}
 
             <button
               type="button"

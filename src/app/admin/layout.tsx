@@ -126,7 +126,7 @@ export default function AdminLayout({
   ];
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex bg-slate-50 text-slate-900 w-full max-w-full overflow-x-hidden">
       {/* Mobile Sidebar Backdrop */}
       {sidebarOpen && (
         <div
@@ -481,17 +481,17 @@ export default function AdminLayout({
 
       {/* Main Content Viewport - Smoothly adjusts left padding based on collapsed state */}
       <div
-        className={`flex-1 flex flex-col min-h-screen bg-slate-50 transition-all duration-300 ease-in-out ${
+        className={`flex-1 flex flex-col min-h-screen min-w-0 w-full max-w-full bg-slate-50 transition-all duration-300 ease-in-out ${
           isCollapsed ? 'lg:pl-[72px]' : 'lg:pl-64'
         }`}
       >
         {/* Top Header Bar */}
-        <header className="sticky top-0 z-30 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 h-16 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-3 min-w-0">
             {/* Mobile Sidebar Open Toggle */}
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-xl text-slate-700 hover:bg-slate-100"
+              className="lg:hidden p-2 rounded-xl text-slate-700 hover:bg-slate-100 shrink-0"
               aria-label="Open sidebar"
             >
               <Menu className="w-6 h-6 text-[#243c81]" />
@@ -500,7 +500,7 @@ export default function AdminLayout({
             {/* Desktop Quick Collapse/Expand Toggle Button in Header */}
             <button
               onClick={toggleCollapse}
-              className="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-600 hover:text-[#243c81] hover:bg-blue-50 border border-slate-200 transition-colors"
+              className="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-600 hover:text-[#243c81] hover:bg-blue-50 border border-slate-200 transition-colors shrink-0"
               title={isCollapsed ? 'Expand sidebar menu' : 'Compress & collapse sidebar menu'}
               aria-label={isCollapsed ? 'Expand sidebar menu' : 'Compress & collapse sidebar menu'}
             >
@@ -511,14 +511,14 @@ export default function AdminLayout({
               )}
             </button>
 
-            <div>
-              <span className="text-xs text-slate-500 font-semibold hidden sm:inline-block">
+            <div className="min-w-0">
+              <span className="text-xs text-slate-500 font-semibold hidden sm:inline-block truncate">
                 Couples for Christ • Tuy Chapter Main Admin Portal
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-[#243c81] text-xs font-bold border border-blue-200">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Tuy Chapter Active • Main Admin
@@ -527,7 +527,7 @@ export default function AdminLayout({
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-50">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-50 min-w-0 w-full max-w-full overflow-x-auto">{children}</main>
       </div>
     </div>
   );

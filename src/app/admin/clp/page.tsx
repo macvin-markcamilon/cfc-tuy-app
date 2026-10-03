@@ -70,6 +70,9 @@ import {
   IdCard,
   ArrowLeft,
   ArrowRight,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Save,
   Edit3,
   SlidersHorizontal,
@@ -204,9 +207,11 @@ export default function CLPAdminPage() {
   const [attendanceFilterStatus, setAttendanceFilterStatus] = useState<'all' | 'present' | 'absent' | 'partial'>('all');
   const [attendanceFilterBarangay, setAttendanceFilterBarangay] = useState('ALL');
 
-  // Search & Filter
+  // Search, Filter & Sort
   const [searchCoupleQuery, setSearchCoupleQuery] = useState('');
   const [filterBarangay, setFilterBarangay] = useState('ALL');
+  const [filterAgeBracket, setFilterAgeBracket] = useState<string>('ALL');
+  const [coupleSortBy, setCoupleSortBy] = useState<'lastName-asc' | 'lastName-desc' | 'barangay-asc' | 'barangay-desc'>('lastName-asc');
   const [reportFilterStatus, setReportFilterStatus] = useState<'ALL' | 'Graduation' | 'Returnee' | 'At-Risk'>('ALL');
 
   // View Mode: 'grid' | 'list'
@@ -364,9 +369,49 @@ export default function CLPAdminPage() {
     return currentTalks.find((t) => t.id === openedAttendanceTalkId) || null;
   }, [currentTalks, openedAttendanceTalkId]);
 
-  // Filtered couples in directory
+  // ---------------------------------------------------------------------------
+  // Helper: Compute Age from Birthday String
+  // ---------------------------------------------------------------------------
+  const computeAge = (birthdateStr?: string): string => {
+    if (!birthdateStr || typeof birthdateStr !== 'string') return '—';
+    const clean = birthdateStr.trim();
+    if (!clean) return '—';
+
+    let birth: Date;
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) {
+      const parts = clean.split('/').map(Number);
+      birth = new Date(parts[2], parts[0] - 1, parts[1]);
+    } else {
+      birth = new Date(clean);
+    }
+
+    if (isNaN(birth.getTime())) return '—';
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age >= 0 && age < 130 ? String(age) : '—';
+  };
+
+  // ---------------------------------------------------------------------------
+  // Helper: Age Bracket Categorization
+  // ---------------------------------------------------------------------------
+  const getAgeBracket = (birthdateStr?: string): { label: string; bracket: string; color: string } => {
+    const ageStr = computeAge(birthdateStr);
+    if (ageStr === '—') return { label: 'Age N/A', bracket: 'unknown', color: 'bg-slate-100 text-slate-500 border-slate-200' };
+    const age = parseInt(ageStr, 10);
+    if (age <= 30) return { label: '20–30 yrs', bracket: '20-30', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    if (age <= 40) return { label: '31–40 yrs', bracket: '31-40', color: 'bg-blue-50 text-blue-700 border-blue-200' };
+    if (age <= 50) return { label: '41–50 yrs', bracket: '41-50', color: 'bg-purple-50 text-purple-700 border-purple-200' };
+    if (age <= 60) return { label: '51–60 yrs', bracket: '51-60', color: 'bg-amber-50 text-amber-700 border-amber-200' };
+    return { label: '61+ yrs', bracket: '61-plus', color: 'bg-rose-50 text-rose-700 border-rose-200' };
+  };
+
+  // Filtered and Sorted couples in directory
   const filteredCouples = useMemo(() => {
-    return currentCouples.filter((c) => {
+    const list = currentCouples.filter((c) => {
       const matchesSearch =
         c.husbandFirstName.toLowerCase().includes(searchCoupleQuery.toLowerCase()) ||
         c.husbandLastName.toLowerCase().includes(searchCoupleQuery.toLowerCase()) ||
@@ -376,9 +421,40 @@ export default function CLPAdminPage() {
 
       const matchesBarangay = filterBarangay === 'ALL' || c.barangay === filterBarangay;
 
-      return matchesSearch && matchesBarangay;
+      const hBracket = getAgeBracket(c.husbandBirthday).bracket;
+      const wBracket = getAgeBracket(c.wifeBirthday).bracket;
+      const matchesAgeBracket =
+        filterAgeBracket === 'ALL' ||
+        hBracket === filterAgeBracket ||
+        wBracket === filterAgeBracket;
+
+      return matchesSearch && matchesBarangay && matchesAgeBracket;
     });
-  }, [currentCouples, searchCoupleQuery, filterBarangay]);
+
+    return list.sort((a, b) => {
+      if (coupleSortBy === 'lastName-asc') {
+        const cmp = (a.husbandLastName || '').localeCompare(b.husbandLastName || '');
+        if (cmp !== 0) return cmp;
+        return (a.husbandFirstName || '').localeCompare(b.husbandFirstName || '');
+      }
+      if (coupleSortBy === 'lastName-desc') {
+        const cmp = (b.husbandLastName || '').localeCompare(a.husbandLastName || '');
+        if (cmp !== 0) return cmp;
+        return (b.husbandFirstName || '').localeCompare(a.husbandFirstName || '');
+      }
+      if (coupleSortBy === 'barangay-asc') {
+        const cmp = (a.barangay || '').localeCompare(b.barangay || '');
+        if (cmp !== 0) return cmp;
+        return (a.husbandLastName || '').localeCompare(b.husbandLastName || '');
+      }
+      if (coupleSortBy === 'barangay-desc') {
+        const cmp = (b.barangay || '').localeCompare(a.barangay || '');
+        if (cmp !== 0) return cmp;
+        return (a.husbandLastName || '').localeCompare(b.husbandLastName || '');
+      }
+      return 0;
+    });
+  }, [currentCouples, searchCoupleQuery, filterBarangay, filterAgeBracket, coupleSortBy]);
 
   // -------------------------------------------------------------------------
   // Handlers: CLP Program Creation & Deletion
@@ -1787,39 +1863,15 @@ export default function CLPAdminPage() {
     win.document.close();
   };
 
-  // ---------------------------------------------------------------------------
-  // Helper: Compute Age from Birthday String
-  // ---------------------------------------------------------------------------
-  const computeAge = (birthdateStr?: string): string => {
-    if (!birthdateStr || typeof birthdateStr !== 'string') return '—';
-    const clean = birthdateStr.trim();
-    if (!clean) return '—';
 
-    let birth: Date;
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(clean)) {
-      const parts = clean.split('/').map(Number);
-      birth = new Date(parts[2], parts[0] - 1, parts[1]);
-    } else {
-      birth = new Date(clean);
-    }
-
-    if (isNaN(birth.getTime())) return '—';
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age >= 0 && age < 130 ? String(age) : '—';
-  };
 
   // ---------------------------------------------------------------------------
   // Download Invitee Couples List (CSV)
-  // Fields: Husband Name, Age, Wife's Name, Age, Address
+  // Fields: Husband Name, Age, Age Bracket, Wife's Name, Age, Age Bracket, Address
   // ---------------------------------------------------------------------------
   const handleDownloadCouplesList = () => {
     const targetCouples =
-      searchCoupleQuery.trim() || filterBarangay !== 'ALL'
+      searchCoupleQuery.trim() || filterBarangay !== 'ALL' || filterAgeBracket !== 'ALL' || coupleSortBy !== 'lastName-asc'
         ? filteredCouples
         : currentCouples;
 
@@ -1832,8 +1884,10 @@ export default function CLPAdminPage() {
       '#',
       'Husband Name',
       'Husband Age',
+      'Husband Age Bracket',
       "Wife's Name",
       "Wife's Age",
+      "Wife's Age Bracket",
       'Wedding Anniversary',
       'Address',
       'Barangay',
@@ -1846,8 +1900,10 @@ export default function CLPAdminPage() {
     const rows = targetCouples.map((c, index) => {
       const hName = `${c.husbandFirstName || ''} ${c.husbandLastName || ''}`.trim();
       const hAge = computeAge(c.husbandBirthday);
+      const hBracket = getAgeBracket(c.husbandBirthday).label;
       const wName = `${c.wifeFirstName || ''} ${c.wifeLastName || ''}`.trim();
       const wAge = computeAge(c.wifeBirthday);
+      const wBracket = getAgeBracket(c.wifeBirthday).label;
       const anniversary = c.weddingAnniversary || '—';
       const address = c.address || `Brgy. ${c.barangay}, Tuy, Batangas`;
       const barangay = c.barangay || '';
@@ -1857,8 +1913,10 @@ export default function CLPAdminPage() {
         index + 1,
         escapeCSV(hName),
         escapeCSV(hAge),
+        escapeCSV(hBracket),
         escapeCSV(wName),
         escapeCSV(wAge),
+        escapeCSV(wBracket),
         escapeCSV(anniversary),
         escapeCSV(address),
         escapeCSV(barangay),
@@ -2346,7 +2404,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 w-full max-w-full">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700 animate-in slide-in-from-bottom-5">
@@ -2356,20 +2414,20 @@ Generated via Couples for Christ Tuy Chapter Portal`;
       )}
 
       {/* CLP Header & Selector Bar - High Contrast Crisp Design */}
-      <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <span className="p-2.5 rounded-xl bg-blue-50 text-[#243c81] border border-blue-200/80">
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 min-w-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start sm:items-center gap-3 min-w-0">
+            <span className="p-2.5 rounded-xl bg-blue-50 text-[#243c81] border border-blue-200/80 shrink-0">
               <BookOpenCheck className="w-6 h-6" />
             </span>
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 truncate">
                   {currentClp ? currentClp.name : 'Christian Life Program (CLP)'}
                 </h1>
                 {currentClp && (
                   <span
-                    className={`px-3 py-0.5 rounded-full text-xs font-extrabold border ${
+                    className={`px-3 py-0.5 rounded-full text-xs font-extrabold border shrink-0 ${
                       currentClp.status === 'Ongoing'
                         ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                         : 'bg-amber-50 text-amber-800 border-amber-300'
@@ -2379,7 +2437,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                   </span>
                 )}
               </div>
-              <p className="text-xs sm:text-sm text-slate-600 mt-1 font-medium">
+              <p className="text-xs sm:text-sm text-slate-600 mt-1 font-medium truncate">
                 {currentClp ? (
                   <>
                     Venue: <strong className="text-slate-800">{currentClp.venue}</strong> • {currentClp.startDate} to {currentClp.endDate}
@@ -2393,13 +2451,13 @@ Generated via Couples for Christ Tuy Chapter Portal`;
         </div>
 
         {/* Batch Selector & Actions */}
-        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap shrink-0">
           {programs.length > 0 && (
             <div className="relative">
               <select
                 value={selectedClpId}
                 onChange={(e) => setSelectedClpId(e.target.value)}
-                className="appearance-none bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 pr-9 text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 cursor-pointer shadow-2xs focus:ring-2 focus:ring-blue-600"
+                className="appearance-none bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 pr-9 text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 cursor-pointer shadow-2xs focus:ring-2 focus:ring-blue-600 max-w-[220px] sm:max-w-xs truncate"
               >
                 {programs.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -2497,9 +2555,9 @@ Generated via Couples for Christ Tuy Chapter Portal`;
           {activeTab === 'couples' && (
             <div className="space-y-6">
               {/* Search, Filter, and Action Bar */}
-              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
+              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 min-w-0">
                 {/* Search & Filter Group */}
-                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
                   <div className="relative flex-1 min-w-[200px]">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
@@ -2511,10 +2569,12 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     />
                   </div>
 
+                  {/* Barangay Filter */}
                   <select
                     value={filterBarangay}
                     onChange={(e) => setFilterBarangay(e.target.value)}
                     className="px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-600 shrink-0"
+                    title="Filter by Barangay"
                   >
                     <option value="ALL">All Tuy Barangays</option>
                     {TUY_BARANGAYS.map((b) => (
@@ -2523,6 +2583,37 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       </option>
                     ))}
                   </select>
+
+                  {/* Age Bracket Filter */}
+                  <select
+                    value={filterAgeBracket}
+                    onChange={(e) => setFilterAgeBracket(e.target.value)}
+                    className="px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-600 shrink-0"
+                    title="Filter by Participant Age Bracket"
+                  >
+                    <option value="ALL">All Age Brackets</option>
+                    <option value="20-30">20–30 yrs (Young Adults)</option>
+                    <option value="31-40">31–40 yrs (Young Couples)</option>
+                    <option value="41-50">41–50 yrs (Prime Family)</option>
+                    <option value="51-60">51–60 yrs (Mature Adults)</option>
+                    <option value="61-plus">61+ yrs (Senior Elders)</option>
+                  </select>
+
+                  {/* Sort By Dropdown */}
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 shrink-0">
+                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <select
+                      value={coupleSortBy}
+                      onChange={(e) => setCoupleSortBy(e.target.value as any)}
+                      className="bg-transparent text-slate-800 text-xs sm:text-sm font-semibold focus:outline-hidden cursor-pointer"
+                      title="Sort participants by"
+                    >
+                      <option value="lastName-asc">Sort: Last Name (A → Z)</option>
+                      <option value="lastName-desc">Sort: Last Name (Z → A)</option>
+                      <option value="barangay-asc">Sort: Barangay (A → Z)</option>
+                      <option value="barangay-desc">Sort: Barangay (Z → A)</option>
+                    </select>
+                  </div>
 
                   {/* Grid / List Toggle */}
                   <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-0.5 shrink-0">
@@ -2554,7 +2645,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 </div>
 
                 {/* Unified Action Buttons Group */}
-                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-start xl:justify-end shrink-0">
+                <div className="flex items-center gap-2 flex-wrap justify-start xl:justify-end">
                   <button
                     type="button"
                     onClick={() => {
@@ -2706,16 +2797,20 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                         <div className="mt-4 pt-3 border-t border-slate-100 space-y-2 text-xs">
                           {/* Husband Box */}
                           <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                            <div className="font-bold text-slate-900">
-                              Husband:{' '}
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              <span>Husband:</span>
                               <span className="font-medium text-slate-800">
                                 {couple.husbandFirstName}
                               </span>
                               {couple.husbandBirthday && (
-                                <span className="text-slate-600 font-normal">
-                                  {' '}
-                                  • Age: <strong className="text-slate-900 font-semibold">{computeAge(couple.husbandBirthday)}</strong>
-                                </span>
+                                <>
+                                  <span className="text-slate-600 font-normal">
+                                    • Age: <strong className="text-slate-900 font-semibold">{computeAge(couple.husbandBirthday)}</strong>
+                                  </span>
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${getAgeBracket(couple.husbandBirthday).color}`}>
+                                    {getAgeBracket(couple.husbandBirthday).label}
+                                  </span>
+                                </>
                               )}
                             </div>
                             <div className="text-slate-600 mt-0.5">
@@ -2734,16 +2829,20 @@ Generated via Couples for Christ Tuy Chapter Portal`;
 
                           {/* Wife Box */}
                           <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                            <div className="font-bold text-slate-900">
-                              Wife:{' '}
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                              <span>Wife:</span>
                               <span className="font-medium text-slate-800">
                                 {couple.wifeFirstName}
                               </span>
                               {couple.wifeBirthday && (
-                                <span className="text-slate-600 font-normal">
-                                  {' '}
-                                  • Age: <strong className="text-slate-900 font-semibold">{computeAge(couple.wifeBirthday)}</strong>
-                                </span>
+                                <>
+                                  <span className="text-slate-600 font-normal">
+                                    • Age: <strong className="text-slate-900 font-semibold">{computeAge(couple.wifeBirthday)}</strong>
+                                  </span>
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border ${getAgeBracket(couple.wifeBirthday).color}`}>
+                                    {getAgeBracket(couple.wifeBirthday).label}
+                                  </span>
+                                </>
                               )}
                             </div>
                             <div className="text-slate-600 mt-0.5">
@@ -2791,126 +2890,184 @@ Generated via Couples for Christ Tuy Chapter Portal`;
               ) : (
                 /* ---- LIST VIEW ---- */
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                  {/* List Header */}
-                  <div className="grid grid-cols-[2fr_1.5fr_1.5fr_1fr_auto] gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider">
-                    <span>Couple</span>
-                    <span>Husband</span>
-                    <span>Wife</span>
-                    <span>Barangay</span>
-                    <span>Actions</span>
-                  </div>
-                  {/* List Rows */}
-                  <div className="divide-y divide-slate-100">
-                    {filteredCouples.map((couple, idx) => (
-                      <div
-                        key={couple.id}
-                        className={`grid grid-cols-[2fr_1.5fr_1.5fr_1fr_auto] gap-3 px-4 py-3 items-center hover:bg-slate-50 transition-colors ${
-                          idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
-                        }`}
-                      >
-                        {/* Col 1: Name + Status + Anniversary */}
-                        <div className="min-w-0">
-                          <p className="font-extrabold text-sm text-slate-900 truncate">
-                            Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName}{' '}
-                            {couple.husbandLastName}
-                          </p>
-                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                              couple.status === 'Active'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : couple.status === 'Graduated'
-                                ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                : 'bg-red-50 text-red-700 border-red-200'
-                            }`}>
-                              {couple.status}
-                            </span>
-                            {couple.weddingAnniversary && (
-                              <span className="text-[10px] text-rose-600 font-semibold flex items-center gap-0.5">
-                                <Heart className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
-                                {couple.weddingAnniversary}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Col 2: Husband info */}
-                        <div className="min-w-0 text-xs text-slate-600 space-y-0.5">
-                          <p className="font-semibold text-slate-800 truncate flex items-center gap-1.5">
-                            <span>{couple.husbandFirstName} {couple.husbandLastName}</span>
-                            {couple.husbandBirthday && (
-                              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-200 shrink-0">
-                                Age {computeAge(couple.husbandBirthday)}
-                              </span>
-                            )}
-                          </p>
-                          {couple.husbandOccupation && (
-                            <p className="truncate text-slate-500">{couple.husbandOccupation}</p>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[760px] sm:min-w-[840px]">
+                      {/* List Header with Click-to-Sort */}
+                      <div className="grid grid-cols-[2fr_1.5fr_1.5fr_1fr_auto] gap-3 px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCoupleSortBy((prev) =>
+                              prev === 'lastName-asc' ? 'lastName-desc' : 'lastName-asc'
+                            )
+                          }
+                          className="flex items-center gap-1.5 text-left hover:text-[#243c81] transition-colors group cursor-pointer"
+                          title="Click to sort by Last Name"
+                        >
+                          <span>Couple / Last Name</span>
+                          {coupleSortBy === 'lastName-asc' ? (
+                            <ArrowUp className="w-3.5 h-3.5 text-[#243c81]" />
+                          ) : coupleSortBy === 'lastName-desc' ? (
+                            <ArrowDown className="w-3.5 h-3.5 text-[#243c81]" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500" />
                           )}
-                          {couple.husbandContact && (
-                            <p className="truncate text-slate-500">📞 {couple.husbandContact}</p>
-                          )}
-                        </div>
+                        </button>
 
-                        {/* Col 3: Wife info */}
-                        <div className="min-w-0 text-xs text-slate-600 space-y-0.5">
-                          <p className="font-semibold text-rose-700 truncate flex items-center gap-1.5">
-                            <span>{couple.wifeFirstName} {couple.husbandLastName}</span>
-                            {couple.wifeBirthday && (
-                              <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-200 shrink-0">
-                                Age {computeAge(couple.wifeBirthday)}
-                              </span>
-                            )}
-                          </p>
-                          {couple.wifeOccupation && (
-                            <p className="truncate text-slate-500">{couple.wifeOccupation}</p>
-                          )}
-                          {couple.wifeContact && (
-                            <p className="truncate text-slate-500">📞 {couple.wifeContact}</p>
-                          )}
-                        </div>
+                        <span>Husband &amp; Age Bracket</span>
+                        <span>Wife &amp; Age Bracket</span>
 
-                        {/* Col 4: Barangay + Address */}
-                        <div className="min-w-0 text-xs">
-                          <p className="font-bold text-[#243c81] truncate">Brgy. {couple.barangay}</p>
-                          <p className="text-slate-400 truncate text-[11px] mt-0.5">{couple.address}</p>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCoupleSortBy((prev) =>
+                              prev === 'barangay-asc' ? 'barangay-desc' : 'barangay-asc'
+                            )
+                          }
+                          className="flex items-center gap-1.5 text-left hover:text-[#243c81] transition-colors group cursor-pointer"
+                          title="Click to sort by Barangay"
+                        >
+                          <span>Barangay</span>
+                          {coupleSortBy === 'barangay-asc' ? (
+                            <ArrowUp className="w-3.5 h-3.5 text-[#243c81]" />
+                          ) : coupleSortBy === 'barangay-desc' ? (
+                            <ArrowDown className="w-3.5 h-3.5 text-[#243c81]" />
+                          ) : (
+                            <ArrowUpDown className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-500" />
+                          )}
+                        </button>
 
-                        {/* Col 5: Actions */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMapModalFocusedCoupleId(couple.id);
-                              setMapModalTitle(`Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName}'s Tuy Location`);
-                              setShowCouplesMapModal(true);
-                            }}
-                            title="View on map"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                          >
-                            <MapPin className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleOpenEditCouple(couple)}
-                            title="Edit couple"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-all"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleDeleteCouple(
-                                couple.id,
-                                `Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName} ${couple.husbandLastName}`
-                              )
-                            }
-                            title="Remove couple"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        <span>Actions</span>
                       </div>
-                    ))}
+                      {/* List Rows */}
+                      <div className="divide-y divide-slate-100">
+                        {filteredCouples.map((couple, idx) => {
+                          const hBracket = getAgeBracket(couple.husbandBirthday);
+                          const wBracket = getAgeBracket(couple.wifeBirthday);
+
+                          return (
+                          <div
+                            key={couple.id}
+                            className={`grid grid-cols-[2fr_1.5fr_1.5fr_1fr_auto] gap-3 px-4 py-3 items-center hover:bg-slate-50 transition-colors ${
+                              idx % 2 === 1 ? 'bg-slate-50/40' : 'bg-white'
+                            }`}
+                          >
+                            {/* Col 1: Name + Status + Anniversary */}
+                            <div className="min-w-0">
+                              <p className="font-extrabold text-sm text-slate-900 truncate">
+                                Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName}{' '}
+                                {couple.husbandLastName}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                  couple.status === 'Active'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : couple.status === 'Graduated'
+                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                    : 'bg-red-50 text-red-700 border-red-200'
+                                }`}>
+                                  {couple.status}
+                                </span>
+                                {couple.weddingAnniversary && (
+                                  <span className="text-[10px] text-rose-600 font-semibold flex items-center gap-0.5">
+                                    <Heart className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
+                                    {couple.weddingAnniversary}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Col 2: Husband info with Age Bracket */}
+                            <div className="min-w-0 text-xs text-slate-600 space-y-0.5">
+                              <p className="font-semibold text-slate-800 truncate flex items-center gap-1.5 flex-wrap">
+                                <span>{couple.husbandFirstName} {couple.husbandLastName}</span>
+                                {couple.husbandBirthday && (
+                                  <>
+                                    <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md border border-blue-200 shrink-0">
+                                      Age {computeAge(couple.husbandBirthday)}
+                                    </span>
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${hBracket.color}`}>
+                                      {hBracket.label}
+                                    </span>
+                                  </>
+                                )}
+                              </p>
+                              {couple.husbandOccupation && (
+                                <p className="truncate text-slate-500">{couple.husbandOccupation}</p>
+                              )}
+                              {couple.husbandContact && (
+                                <p className="truncate text-slate-500">📞 {couple.husbandContact}</p>
+                              )}
+                            </div>
+
+                            {/* Col 3: Wife info with Age Bracket */}
+                            <div className="min-w-0 text-xs text-slate-600 space-y-0.5">
+                              <p className="font-semibold text-rose-700 truncate flex items-center gap-1.5 flex-wrap">
+                                <span>{couple.wifeFirstName} {couple.husbandLastName}</span>
+                                {couple.wifeBirthday && (
+                                  <>
+                                    <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-200 shrink-0">
+                                      Age {computeAge(couple.wifeBirthday)}
+                                    </span>
+                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${wBracket.color}`}>
+                                      {wBracket.label}
+                                    </span>
+                                  </>
+                                )}
+                              </p>
+                              {couple.wifeOccupation && (
+                                <p className="truncate text-slate-500">{couple.wifeOccupation}</p>
+                              )}
+                              {couple.wifeContact && (
+                                <p className="truncate text-slate-500">📞 {couple.wifeContact}</p>
+                              )}
+                            </div>
+
+                            {/* Col 4: Barangay + Address */}
+                            <div className="min-w-0 text-xs">
+                              <p className="font-bold text-[#243c81] truncate">Brgy. {couple.barangay}</p>
+                              <p className="text-slate-400 truncate text-[11px] mt-0.5">{couple.address}</p>
+                            </div>
+
+                            {/* Col 5: Actions */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMapModalFocusedCoupleId(couple.id);
+                                  setMapModalTitle(`Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName}'s Tuy Location`);
+                                  setShowCouplesMapModal(true);
+                                }}
+                                title="View on map"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                              >
+                                <MapPin className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleOpenEditCouple(couple)}
+                                title="Edit couple"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-all"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleDeleteCouple(
+                                    couple.id,
+                                    `Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName} ${couple.husbandLastName}`
+                                  )
+                                }
+                                title="Remove couple"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3354,7 +3511,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     {/* Maximized Attendance Table */}
                     <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm border-collapse">
+                        <table className="w-full text-left text-sm border-collapse min-w-[760px]">
                           <thead>
                             <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-black uppercase tracking-wider text-slate-500">
                               <th className="py-3.5 px-4 w-12 text-center">#</th>
@@ -3606,7 +3763,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 </h3>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[700px]">
                     <thead>
                       <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                         <th className="py-2.5 px-3">Talk</th>
@@ -3698,7 +3855,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[800px]">
                     <thead>
                       <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
                         <th className="py-2.5 px-3">Invited Couple</th>

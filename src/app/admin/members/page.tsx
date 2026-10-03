@@ -37,7 +37,7 @@ export default function MembersAdminPage() {
 
         {HOUSEHOLD_GROUPS.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm">
+            <table className="w-full text-left text-xs sm:text-sm min-w-[700px]">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-700 text-xs uppercase font-extrabold bg-slate-50">
                   <th className="py-3 px-3">Unit / Household Name</th>

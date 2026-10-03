@@ -125,3 +125,59 @@ export interface CLPProgram {
   couplesCount?: number;
   talksCount?: number;
 }
+
+// =====================================
+// User & Profile Management
+// =====================================
+
+export type UserRole = 'admin' | 'chapter_servant' | 'unit_leader' | 'household_head' | 'member';
+
+export interface UserProfile {
+  id: string;
+  fullName: string;
+  spouseName?: string;
+  email: string;
+  phoneNumber?: string;
+  barangay: string;
+  ministry: MinistryType;
+  role: UserRole;
+  clpBatch?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// =====================================
+// CLP Groupings & Discussion Circles
+// =====================================
+
+export interface SavedCLPGroupCouple {
+  id: string;
+  name: string;
+  barangay: string;
+  husbandOccupation?: string;
+  wifeOccupation?: string;
+  address?: string;
+  weddingAnniversary?: string;
+}
+
+export interface SavedCLPGroup {
+  groupNumber: number;
+  groupName: string;
+  rationale?: string;
+  facilitator?: string;
+  couples: SavedCLPGroupCouple[];
+}
+
+export interface SavedCLPGrouping {
+  id: string;
+  clpId: string;
+  title: string;
+  talkId?: string;
+  talkTitle?: string;
+  prompt?: string;
+  summary?: string;
+  filterType?: 'all' | 'attended' | 'talk';
+  groups: SavedCLPGroup[];
+  createdAt: string;
+  updatedAt?: string;
+}

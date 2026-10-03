@@ -17,6 +17,8 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
+  UserCheck,
+  User,
 } from 'lucide-react';
 
 export default function AdminLayout({
@@ -29,6 +31,7 @@ export default function AdminLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [userEmail, setUserEmail] = useState('markcamilon@gmail.com');
+  const [userName, setUserName] = useState('Bro. Mark Camilon');
 
   // If on login page, just render children without sidebar
   const isLoginPage = pathname === '/admin/login';
@@ -42,12 +45,24 @@ export default function AdminLayout({
         localStorage.setItem('cfc_tuy_admin_user', 'markcamilon@gmail.com');
       }
 
+      const storedProfile = localStorage.getItem('cfc_tuy_current_user_profile_v1');
+      if (storedProfile) {
+        try {
+          const parsed = JSON.parse(storedProfile);
+          if (parsed?.fullName) {
+            setUserName(parsed.fullName);
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const savedCollapsed = localStorage.getItem('cfc_admin_sidebar_collapsed');
       if (savedCollapsed !== null) {
         setIsCollapsed(savedCollapsed === 'true');
       }
     }
-  }, []);
+  }, [pathname]);
 
   const toggleCollapse = () => {
     setIsCollapsed((prev) => {
@@ -95,6 +110,18 @@ export default function AdminLayout({
       href: '/admin/songs',
       icon: Music,
       description: 'Lyrics, Chords & Repertoire',
+    },
+    {
+      name: 'User Management',
+      href: '/admin/users',
+      icon: UserCheck,
+      description: 'Roles & Leadership Access',
+    },
+    {
+      name: 'My Profile',
+      href: '/admin/profile',
+      icon: User,
+      description: 'Account & Security Settings',
     },
   ];
 
@@ -314,17 +341,21 @@ export default function AdminLayout({
             <div className="hidden lg:flex flex-col items-center gap-2">
               {/* Admin Avatar Tooltip */}
               <div className="relative group">
-                <div className="w-10 h-10 rounded-xl bg-amber-400 text-[#243c81] flex items-center justify-center font-bold text-sm shadow-xs cursor-pointer hover:scale-105 transition-transform">
+                <Link
+                  href="/admin/profile"
+                  className="w-10 h-10 rounded-xl bg-amber-400 text-[#243c81] flex items-center justify-center font-bold text-sm shadow-xs cursor-pointer hover:scale-105 transition-transform"
+                >
                   <ShieldCheck className="w-5 h-5" />
-                </div>
+                </Link>
                 <div className="absolute left-full bottom-0 ml-3.5 hidden group-hover:flex flex-col z-50 bg-slate-900 text-white px-3 py-2 rounded-xl shadow-2xl border border-slate-700 pointer-events-none whitespace-nowrap animate-in fade-in duration-150">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-white">Bro. Mark Camilon</span>
+                    <span className="text-xs font-bold text-white">{userName}</span>
                     <span className="text-[9px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.2 rounded">
                       Admin
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-400">{userEmail}</span>
+                  <span className="text-[9px] text-amber-300 font-semibold mt-0.5">Click to view Profile</span>
                 </div>
               </div>
 
@@ -360,14 +391,18 @@ export default function AdminLayout({
             // Expanded Bottom Section
             <>
               {/* Main Admin user badge */}
-              <div className="p-2.5 rounded-xl bg-white/10 border border-white/15 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-amber-400 text-[#243c81] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+              <Link
+                href="/admin/profile"
+                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 flex items-center gap-2.5 transition-all group"
+                title="View & Edit My Profile"
+              >
+                <div className="w-8 h-8 rounded-lg bg-amber-400 text-[#243c81] flex items-center justify-center font-bold text-xs shrink-0 shadow-xs group-hover:scale-105 transition-transform">
                   <ShieldCheck className="w-4 h-4" />
                 </div>
-                <div className="overflow-hidden">
+                <div className="overflow-hidden flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-xs text-white block truncate">
-                      Bro. Mark Camilon
+                    <span className="font-bold text-xs text-white block truncate group-hover:text-amber-300 transition-colors">
+                      {userName}
                     </span>
                     <span className="text-[8px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.2 rounded">
                       Admin
@@ -377,7 +412,7 @@ export default function AdminLayout({
                     {userEmail}
                   </span>
                 </div>
-              </div>
+              </Link>
 
               {/* Quick Exit to Public Website */}
               <Link
@@ -402,14 +437,17 @@ export default function AdminLayout({
           {/* Mobile Fallback for Bottom Actions when collapsed state is active on desktop */}
           {isCollapsed && (
             <div className="flex lg:hidden flex-col space-y-2">
-              <div className="p-2.5 rounded-xl bg-white/10 border border-white/15 flex items-center gap-2.5">
+              <Link
+                href="/admin/profile"
+                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 flex items-center gap-2.5"
+              >
                 <div className="w-8 h-8 rounded-lg bg-amber-400 text-[#243c81] flex items-center justify-center font-bold text-xs shrink-0">
                   <ShieldCheck className="w-4 h-4" />
                 </div>
-                <div className="overflow-hidden">
+                <div className="overflow-hidden flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-xs text-white block truncate">
-                      Bro. Mark Camilon
+                      {userName}
                     </span>
                     <span className="text-[8px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.2 rounded">
                       Admin
@@ -419,7 +457,7 @@ export default function AdminLayout({
                     {userEmail}
                   </span>
                 </div>
-              </div>
+              </Link>
 
               <Link
                 href="/"

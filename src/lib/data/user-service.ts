@@ -1,0 +1,326 @@
+import { UserProfile, UserRole, MinistryType } from '@/types';
+import { createClient } from '@/lib/supabase/client';
+import { generateUUID, isValidUUID } from './clp-service';
+
+const STORAGE_KEYS = {
+  USERS: 'cfc_tuy_prod_users_v1',
+  CURRENT_USER_PROFILE: 'cfc_tuy_current_user_profile_v1',
+};
+
+function isBrowser(): boolean {
+  return typeof window !== 'undefined';
+}
+
+export const INITIAL_CFC_TUY_USERS: UserProfile[] = [
+  {
+    id: '00000000-0000-0000-0000-000000000001',
+    fullName: 'Bro. Mark Camilon',
+    spouseName: 'Sis. Grace Camilon',
+    email: 'markcamilon@gmail.com',
+    phoneNumber: '0917-123-4567',
+    barangay: 'Poblacion 1',
+    ministry: 'CFC',
+    role: 'admin',
+    clpBatch: 'Batch 28',
+    createdAt: '2024-01-15T08:00:00.000Z',
+  },
+  {
+    id: '00000000-0000-0000-0000-000000000002',
+    fullName: 'Bro. Ronald Bautista',
+    spouseName: 'Sis. Karen Bautista',
+    email: 'ronald.bautista@cfctuy.org',
+    phoneNumber: '0918-234-5678',
+    barangay: 'Rizal (Pob.)',
+    ministry: 'CFC',
+    role: 'chapter_servant',
+    clpBatch: 'Batch 26',
+    createdAt: '2024-02-10T09:30:00.000Z',
+  },
+  {
+    id: '00000000-0000-0000-0000-000000000003',
+    fullName: 'Bro. Michael Hernandez',
+    spouseName: 'Sis. Joy Hernandez',
+    email: 'michael.hernandez@cfctuy.org',
+    phoneNumber: '0919-345-6789',
+    barangay: 'Luna (Pob.)',
+    ministry: 'CFC',
+    role: 'unit_leader',
+    clpBatch: 'Batch 29',
+    createdAt: '2024-03-01T10:15:00.000Z',
+  },
+  {
+    id: '00000000-0000-0000-0000-000000000004',
+    fullName: 'Bro. Joel De Castro',
+    spouseName: 'Sis. Mary Ann De Castro',
+    email: 'joel.decastro@cfctuy.org',
+    phoneNumber: '0920-456-7890',
+    barangay: 'Putol',
+    ministry: 'CFC',
+    role: 'household_head',
+    clpBatch: 'Batch 30',
+    createdAt: '2024-04-12T14:20:00.000Z',
+  },
+  {
+    id: '00000000-0000-0000-0000-000000000005',
+    fullName: 'Sis. Teresa Mendoza',
+    email: 'teresa.mendoza@cfctuy.org',
+    phoneNumber: '0921-567-8901',
+    barangay: 'Guinhawa',
+    ministry: 'HOLD',
+    role: 'household_head',
+    clpBatch: 'Batch 27',
+    createdAt: '2024-05-18T11:00:00.000Z',
+  },
+];
+
+function getLocalUsers(): UserProfile[] {
+  if (!isBrowser()) return INITIAL_CFC_TUY_USERS;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.USERS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_CFC_TUY_USERS));
+      return INITIAL_CFC_TUY_USERS;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_CFC_TUY_USERS;
+  } catch {
+    return INITIAL_CFC_TUY_USERS;
+  }
+}
+
+function setLocalUsers(users: UserProfile[]): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+  } catch (err) {
+    console.error('Error saving local users:', err);
+  }
+}
+
+/**
+ * Fetch all users (from Supabase profiles or local cache)
+ */
+export async function fetchUsers(): Promise<UserProfile[]> {
+  const supabase = createClient();
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const mapped: UserProfile[] = data.map((row: any) => ({
+          id: row.id,
+          fullName: row.full_name || 'Member',
+          spouseName: row.spouse_name || '',
+          email: row.email || '',
+          phoneNumber: row.phone_number || '',
+          barangay: row.barangay || 'Poblacion 1',
+          ministry: (row.ministry as MinistryType) || 'CFC',
+          role: (row.role as UserRole) || 'member',
+          clpBatch: row.clp_batch || '',
+          createdAt: row.created_at || new Date().toISOString(),
+          updatedAt: row.updated_at || undefined,
+        }));
+
+        // Merge with local to ensure admin exists
+        const local = getLocalUsers();
+        const mergedMap = new Map<string, UserProfile>();
+        local.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
+        mapped.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
+        const finalUsers = Array.from(mergedMap.values());
+
+        setLocalUsers(finalUsers);
+        return finalUsers;
+      }
+    } catch (err) {
+      console.warn('Supabase fetchUsers fallback:', err);
+    }
+  }
+
+  return getLocalUsers();
+}
+
+/**
+ * Save / Create / Update a user
+ */
+export async function saveUser(
+  userData: Partial<UserProfile> & { password?: string }
+): Promise<UserProfile> {
+  const userId = isValidUUID(userData.id) ? userData.id! : generateUUID();
+  const now = new Date().toISOString();
+
+  const user: UserProfile = {
+    id: userId,
+    fullName: userData.fullName || 'New Member',
+    spouseName: userData.spouseName || '',
+    email: userData.email || '',
+    phoneNumber: userData.phoneNumber || '',
+    barangay: userData.barangay || 'Poblacion 1',
+    ministry: userData.ministry || 'CFC',
+    role: userData.role || 'member',
+    clpBatch: userData.clpBatch || '',
+    createdAt: userData.createdAt || now,
+    updatedAt: now,
+  };
+
+  const current = getLocalUsers().filter(
+    (u) => u.id !== user.id && u.email.toLowerCase() !== user.email.toLowerCase()
+  );
+  setLocalUsers([user, ...current]);
+
+  const supabase = createClient();
+  if (supabase) {
+    try {
+      // Upsert into profiles
+      await supabase.from('profiles').upsert({
+        id: user.id,
+        full_name: user.fullName,
+        spouse_name: user.spouseName || null,
+        email: user.email,
+        phone_number: user.phoneNumber || null,
+        barangay: user.barangay,
+        ministry: user.ministry,
+        role: user.role,
+        clp_batch: user.clpBatch || null,
+        updated_at: user.updatedAt,
+      });
+    } catch (err) {
+      console.warn('Supabase profile save error, saved locally:', err);
+    }
+  }
+
+  return user;
+}
+
+/**
+ * Delete a user
+ */
+export async function deleteUser(id: string): Promise<void> {
+  const current = getLocalUsers().filter((u) => u.id !== id);
+  setLocalUsers(current);
+
+  const supabase = createClient();
+  if (supabase && isValidUUID(id)) {
+    try {
+      await supabase.from('profiles').delete().eq('id', id);
+    } catch (err) {
+      console.warn('Supabase delete user error:', err);
+    }
+  }
+}
+
+/**
+ * Get current logged in user's profile
+ */
+export async function getCurrentUserProfile(fallbackEmail?: string): Promise<UserProfile> {
+  if (isBrowser()) {
+    const rawSaved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_PROFILE);
+    if (rawSaved) {
+      try {
+        const parsed = JSON.parse(rawSaved);
+        if (parsed && parsed.email) return parsed;
+      } catch {
+        // continue
+      }
+    }
+  }
+
+  const emailToLookup =
+    fallbackEmail ||
+    (isBrowser() ? localStorage.getItem('cfc_tuy_admin_user') : null) ||
+    'markcamilon@gmail.com';
+
+  const supabase = createClient();
+  if (supabase) {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user && user.email) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (profile) {
+          const loaded: UserProfile = {
+            id: profile.id,
+            fullName: profile.full_name || 'Bro. Mark Camilon',
+            spouseName: profile.spouse_name || 'Sis. Grace Camilon',
+            email: profile.email || user.email,
+            phoneNumber: profile.phone_number || '0917-123-4567',
+            barangay: profile.barangay || 'Poblacion 1',
+            ministry: (profile.ministry as MinistryType) || 'CFC',
+            role: (profile.role as UserRole) || 'admin',
+            clpBatch: profile.clp_batch || 'Batch 28',
+            createdAt: profile.created_at || new Date().toISOString(),
+          };
+          if (isBrowser()) {
+            localStorage.setItem(STORAGE_KEYS.CURRENT_USER_PROFILE, JSON.stringify(loaded));
+          }
+          return loaded;
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase getCurrentUserProfile error, using local fallback:', err);
+    }
+  }
+
+  const all = getLocalUsers();
+  const match =
+    all.find((u) => u.email.toLowerCase() === emailToLookup.toLowerCase()) || all[0];
+  if (isBrowser()) {
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_PROFILE, JSON.stringify(match));
+  }
+  return match;
+}
+
+/**
+ * Update current logged-in user's profile
+ */
+export async function updateCurrentUserProfile(
+  profileData: Partial<UserProfile>
+): Promise<UserProfile> {
+  const current = await getCurrentUserProfile(profileData.email);
+  const updated: UserProfile = {
+    ...current,
+    ...profileData,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (isBrowser()) {
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_PROFILE, JSON.stringify(updated));
+    if (updated.email) {
+      localStorage.setItem('cfc_tuy_admin_user', updated.email);
+    }
+  }
+
+  await saveUser(updated);
+  return updated;
+}
+
+/**
+ * Change current user password
+ */
+export async function updateUserPassword(newPassword: string): Promise<{ success: boolean; message: string }> {
+  const supabase = createClient();
+  if (supabase) {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (error) {
+        return { success: false, message: error.message };
+      }
+      return { success: true, message: 'Password updated successfully!' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Failed to update password' };
+    }
+  }
+
+  return { success: true, message: 'Password updated locally.' };
+}

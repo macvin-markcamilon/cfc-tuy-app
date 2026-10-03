@@ -1,4 +1,4 @@
-import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance } from '@/types';
+import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance, SavedCLPGrouping } from '@/types';
 import { createClient } from '@/lib/supabase/client';
 
 const STORAGE_KEYS = {
@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   COUPLES: 'cfc_tuy_prod_clp_couples',
   TALKS: 'cfc_tuy_prod_clp_talks',
   ATTENDANCE: 'cfc_tuy_prod_clp_attendance',
+  GROUPINGS: 'cfc_tuy_prod_clp_groupings',
   LEGACY_PURGED: 'cfc_tuy_sample_purged_v1',
 };
 
@@ -157,6 +158,26 @@ function setLocalAttendance(attendance: CLPAttendance[]): void {
     localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(attendance));
   } catch (err) {
     console.error('Error saving local attendance:', err);
+  }
+}
+
+function getLocalGroupings(): SavedCLPGrouping[] {
+  if (!isBrowser()) return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.GROUPINGS);
+    if (!raw) return [];
+    return JSON.parse(raw) as SavedCLPGrouping[];
+  } catch {
+    return [];
+  }
+}
+
+function setLocalGroupings(groupings: SavedCLPGrouping[]): void {
+  if (!isBrowser()) return;
+  try {
+    localStorage.setItem(STORAGE_KEYS.GROUPINGS, JSON.stringify(groupings));
+  } catch (err) {
+    console.error('Error saving local groupings:', err);
   }
 }
 
@@ -612,6 +633,100 @@ export async function saveCLPAttendance(record: CLPAttendance): Promise<void> {
       );
     } catch (err) {
       console.warn('Supabase attendance save error:', err);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 5. CLP Groupings & Discussion Circles
+// ---------------------------------------------------------------------------
+
+export async function fetchCLPGroupings(clpId?: string): Promise<SavedCLPGrouping[]> {
+  purgeLegacySampleData();
+  const supabase = createClient();
+
+  if (supabase) {
+    try {
+      let query = supabase.from('clp_groupings').select('*').order('created_at', { ascending: false });
+      if (clpId && isValidUUID(clpId)) {
+        query = query.eq('clp_id', clpId);
+      }
+
+      const { data, error } = await query;
+      if (!error && data && data.length > 0) {
+        const mapped: SavedCLPGrouping[] = data.map((row: any) => ({
+          id: row.id,
+          clpId: row.clp_id,
+          title: row.title,
+          talkId: row.talk_id || undefined,
+          talkTitle: row.talk_title || undefined,
+          prompt: row.prompt || undefined,
+          summary: row.summary || undefined,
+          filterType: row.filter_type || 'all',
+          groups: Array.isArray(row.groups_data) ? row.groups_data : [],
+          createdAt: row.created_at || new Date().toISOString(),
+          updatedAt: row.updated_at || undefined,
+        }));
+
+        setLocalGroupings(mapped);
+        return clpId ? mapped.filter((g) => g.clpId === clpId) : mapped;
+      }
+    } catch (err) {
+      console.warn('Supabase fetchCLPGroupings fallback:', err);
+    }
+  }
+
+  const list = getLocalGroupings();
+  return clpId ? list.filter((g) => g.clpId === clpId) : list;
+}
+
+export async function saveCLPGrouping(grouping: SavedCLPGrouping): Promise<SavedCLPGrouping> {
+  const groupingId = isValidUUID(grouping.id) ? grouping.id : generateUUID();
+  const now = new Date().toISOString();
+  const savedRecord: SavedCLPGrouping = {
+    ...grouping,
+    id: groupingId,
+    createdAt: grouping.createdAt || now,
+    updatedAt: now,
+  };
+
+  const current = getLocalGroupings().filter((g) => g.id !== savedRecord.id);
+  setLocalGroupings([savedRecord, ...current]);
+
+  const supabase = createClient();
+  if (supabase) {
+    try {
+      await supabase.from('clp_groupings').upsert({
+        id: groupingId,
+        clp_id: isValidUUID(savedRecord.clpId) ? savedRecord.clpId : null,
+        title: savedRecord.title,
+        talk_id: isValidUUID(savedRecord.talkId) ? savedRecord.talkId : null,
+        talk_title: savedRecord.talkTitle || null,
+        prompt: savedRecord.prompt || null,
+        summary: savedRecord.summary || null,
+        filter_type: savedRecord.filterType || 'all',
+        groups_data: savedRecord.groups,
+        created_at: savedRecord.createdAt,
+        updated_at: savedRecord.updatedAt,
+      });
+    } catch (err) {
+      console.warn('Supabase saveCLPGrouping exception, stored locally:', err);
+    }
+  }
+
+  return savedRecord;
+}
+
+export async function deleteCLPGrouping(id: string): Promise<void> {
+  const all = getLocalGroupings().filter((g) => g.id !== id);
+  setLocalGroupings(all);
+
+  const supabase = createClient();
+  if (supabase && isValidUUID(id)) {
+    try {
+      await supabase.from('clp_groupings').delete().eq('id', id);
+    } catch (err) {
+      console.warn('Supabase deleteCLPGrouping error:', err);
     }
   }
 }

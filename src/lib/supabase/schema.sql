@@ -234,4 +234,23 @@ BEGIN
   END IF;
 END $$;
 
+-- 12. CLP Groupings Table (Saved and editable group assignments)
+CREATE TABLE IF NOT EXISTS clp_groupings (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  clp_id UUID REFERENCES clp_programs(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  talk_id UUID REFERENCES clp_talks(id) ON DELETE SET NULL,
+  talk_title TEXT,
+  prompt TEXT,
+  summary TEXT,
+  filter_type TEXT DEFAULT 'all',
+  groups_data JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE clp_groupings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow full access for CLP groupings" ON clp_groupings;
+CREATE POLICY "Allow full access for CLP groupings" ON clp_groupings FOR ALL USING (true) WITH CHECK (true);
+
 

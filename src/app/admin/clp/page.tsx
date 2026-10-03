@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { TUY_BARANGAYS } from '@/lib/data/mock-data';
-import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance } from '@/types';
+import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance, SavedCLPGrouping } from '@/types';
 import TuyMapPicker from '@/components/map/TuyMapPicker';
 import CLPCouplesMapModal from '@/components/map/CLPCouplesMapModal';
 import {
@@ -17,6 +17,9 @@ import {
   populateStandardTalksForCLP,
   fetchCLPAttendance,
   saveCLPAttendance,
+  fetchCLPGroupings,
+  saveCLPGrouping,
+  deleteCLPGrouping,
   generateUUID,
 } from '@/lib/data/clp-service';
 import {
@@ -64,6 +67,12 @@ import {
   List,
   IdCard,
   ArrowLeft,
+  Save,
+  Edit3,
+  SlidersHorizontal,
+  FolderOpen,
+  ArrowRightLeft,
+  PlusCircle,
 } from 'lucide-react';
 
 export default function CLPAdminPage() {
@@ -84,26 +93,44 @@ export default function CLPAdminPage() {
   // Active Tab: 'couples' | 'talks' | 'report' | 'ai-groups'
   const [activeTab, setActiveTab] = useState<'couples' | 'talks' | 'report' | 'ai-groups'>('couples');
 
-  // AI Grouping State
+  // Grouping Sub-Tab & Attendance-based Grouping State (Req 3, 4, 5)
+  const [groupingSubTab, setGroupingSubTab] = useState<'active' | 'saved'>('active');
+  const [groupingSource, setGroupingSource] = useState<'all' | 'talk'>('all');
+  const [groupingTalkId, setGroupingTalkId] = useState<string>('');
+  const [attendanceRequirement, setAttendanceRequirement] = useState<'either' | 'both'>('either');
+  const [savedGroupings, setSavedGroupings] = useState<SavedCLPGrouping[]>([]);
+  const [activeSavedGroupingId, setActiveSavedGroupingId] = useState<string | null>(null);
+  const [groupingTitleInput, setGroupingTitleInput] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isSavingGrouping, setIsSavingGrouping] = useState(false);
+
+  // AI Grouping Generator State
   const [aiGroupPrompt, setAiGroupPrompt] = useState('');
   const [isAiGrouping, setIsAiGrouping] = useState(false);
   const [aiGroupError, setAiGroupError] = useState<string | null>(null);
   const [aiGroupingResult, setAiGroupingResult] = useState<null | {
+    id?: string;
+    title?: string;
+    talkId?: string;
+    talkTitle?: string;
+    filterType?: 'all' | 'attended' | 'talk';
     groups: {
       groupNumber: number;
       groupName: string;
-      rationale: string;
+      rationale?: string;
+      facilitator?: string;
       couples: {
         id: string;
         name: string;
         barangay: string;
-        husbandOccupation: string;
-        wifeOccupation: string;
-        address: string;
+        husbandOccupation?: string;
+        wifeOccupation?: string;
+        address?: string;
+        weddingAnniversary?: string;
       }[];
     }[];
-    summary: string;
-    prompt: string;
+    summary?: string;
+    prompt?: string;
     generatedAt: string;
   }>(null);
 
@@ -272,6 +299,49 @@ export default function CLPAdminPage() {
       .filter((t) => t.clpId === currentClp.id)
       .sort((a, b) => a.talkNumber - b.talkNumber);
   }, [talks, currentClp]);
+
+  // Load saved groupings whenever currentClp changes
+  useEffect(() => {
+    if (currentClp?.id) {
+      fetchCLPGroupings(currentClp.id).then((list) => {
+        setSavedGroupings(list);
+      });
+    }
+  }, [currentClp?.id]);
+
+  // Set default groupingTalkId when talks are available
+  useEffect(() => {
+    if (currentTalks.length > 0 && !groupingTalkId) {
+      setGroupingTalkId(currentTalks[0].id);
+    }
+  }, [currentTalks, groupingTalkId]);
+
+  // Attended couples calculation for grouping by talk (Req 4)
+  const talkAttendanceForGrouping = useMemo(() => {
+    if (!groupingTalkId) return [];
+    return attendance.filter((a) => a.talkId === groupingTalkId);
+  }, [attendance, groupingTalkId]);
+
+  const attendedCouplesForTalk = useMemo(() => {
+    if (!groupingTalkId) return [];
+    const presentCoupleIds = new Set(
+      talkAttendanceForGrouping
+        .filter((a) =>
+          attendanceRequirement === 'both'
+            ? Boolean(a.husbandPresent && a.wifePresent)
+            : Boolean(a.husbandPresent || a.wifePresent)
+        )
+        .map((a) => a.coupleId)
+    );
+    return currentCouples.filter((c) => presentCoupleIds.has(c.id));
+  }, [currentCouples, talkAttendanceForGrouping, groupingTalkId, attendanceRequirement]);
+
+  const targetCouplesForGrouping = useMemo(() => {
+    if (groupingSource === 'talk') {
+      return attendedCouplesForTalk;
+    }
+    return currentCouples;
+  }, [groupingSource, attendedCouplesForTalk, currentCouples]);
 
   // Active talk for attendance
   const activeTalk = useMemo(() => {
@@ -919,22 +989,35 @@ export default function CLPAdminPage() {
   }, [currentCouples, currentTalks, attendance, totalInvitedCouples]);
 
   // ---------------------------------------------------------------------------
-  // AI Grouping Handler (Gemini API)
+  // AI Grouping Handlers & Editing (Gemini API + Persistence + Re-arranging)
   // ---------------------------------------------------------------------------
   const handleAIGrouping = async () => {
     if (!currentClp || currentCouples.length === 0) {
       triggerToast('No couples to group. Please add invitees first.');
       return;
     }
+
+    if (groupingSource === 'talk' && targetCouplesForGrouping.length === 0) {
+      const selectedTalkObj = currentTalks.find((t) => t.id === groupingTalkId);
+      triggerToast(
+        `No couples have been marked present for ${
+          selectedTalkObj ? `Talk ${selectedTalkObj.talkNumber}` : 'the selected talk'
+        }. Please record attendance or switch to All Registered Couples.`
+      );
+      return;
+    }
+
     if (!aiGroupPrompt.trim()) {
       triggerToast('Please enter a grouping instruction.');
       return;
     }
+
     setIsAiGrouping(true);
     setAiGroupError(null);
     setAiGroupingResult(null);
+
     try {
-      const couplesPayload = currentCouples.map((c) => ({
+      const couplesPayload = targetCouplesForGrouping.map((c) => ({
         id: c.id,
         name: `Bro. ${c.husbandFirstName} & Sis. ${c.wifeFirstName} ${c.husbandLastName}`,
         barangay: c.barangay,
@@ -943,15 +1026,54 @@ export default function CLPAdminPage() {
         address: c.address,
         weddingAnniversary: c.weddingAnniversary || '',
       }));
+
+      const selectedTalkObj = currentTalks.find((t) => t.id === groupingTalkId);
+      const talkTitle =
+        groupingSource === 'talk' && selectedTalkObj
+          ? `Talk ${selectedTalkObj.talkNumber}: ${selectedTalkObj.title}`
+          : undefined;
+
       const response = await fetch('/api/ai-group', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ couples: couplesPayload, userPrompt: aiGroupPrompt, programName: currentClp.name }),
+        body: JSON.stringify({
+          couples: couplesPayload,
+          userPrompt: aiGroupPrompt,
+          programName: currentClp.name + (talkTitle ? ` (${talkTitle})` : ''),
+        }),
       });
+
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'AI grouping failed. Please try again.');
-      setAiGroupingResult(data);
-      triggerToast(`✨ Created ${data.groups.length} groups successfully!`);
+
+      const autoTitle = talkTitle
+        ? `${currentClp.name} - ${talkTitle} Discussion Groups`
+        : `${currentClp.name} - Holy Spirit Groupings`;
+
+      setGroupingTitleInput(autoTitle);
+      setActiveSavedGroupingId(null);
+      setIsEditMode(false);
+
+      const newGroupingResult = {
+        id: generateUUID(),
+        title: autoTitle,
+        talkId: groupingSource === 'talk' ? groupingTalkId : undefined,
+        talkTitle,
+        filterType: groupingSource,
+        groups: data.groups.map((g: any, idx: number) => ({
+          groupNumber: g.groupNumber || idx + 1,
+          groupName: g.groupName || `Group ${idx + 1}`,
+          rationale: g.rationale || '',
+          facilitator: g.facilitator || '',
+          couples: g.couples || [],
+        })),
+        summary: data.summary,
+        prompt: aiGroupPrompt,
+        generatedAt: new Date().toISOString(),
+      };
+
+      setAiGroupingResult(newGroupingResult);
+      triggerToast(`✨ Created ${data.groups.length} groups from ${targetCouplesForGrouping.length} couples!`);
     } catch (err: any) {
       setAiGroupError(err?.message || 'An error occurred during AI grouping.');
     } finally {
@@ -959,13 +1081,185 @@ export default function CLPAdminPage() {
     }
   };
 
+  // Save grouping to Supabase & LocalStorage (Req 3)
+  const handleSaveCurrentGrouping = async () => {
+    if (!aiGroupingResult || !currentClp) return;
+    setIsSavingGrouping(true);
+    try {
+      const finalTitle =
+        groupingTitleInput.trim() || aiGroupingResult.title || `${currentClp.name} Groupings`;
+
+      const toSave: SavedCLPGrouping = {
+        id: activeSavedGroupingId || aiGroupingResult.id || generateUUID(),
+        clpId: currentClp.id,
+        title: finalTitle,
+        talkId: aiGroupingResult.talkId,
+        talkTitle: aiGroupingResult.talkTitle,
+        prompt: aiGroupingResult.prompt,
+        summary: aiGroupingResult.summary,
+        filterType: aiGroupingResult.filterType || groupingSource,
+        groups: aiGroupingResult.groups.map((g) => ({
+          groupNumber: g.groupNumber,
+          groupName: g.groupName,
+          rationale: g.rationale,
+          facilitator: g.facilitator,
+          couples: g.couples.map((c) => ({
+            id: c.id,
+            name: c.name,
+            barangay: c.barangay,
+            husbandOccupation: c.husbandOccupation,
+            wifeOccupation: c.wifeOccupation,
+            address: c.address,
+            weddingAnniversary: c.weddingAnniversary,
+          })),
+        })),
+        createdAt: aiGroupingResult.generatedAt || new Date().toISOString(),
+      };
+
+      const saved = await saveCLPGrouping(toSave);
+      setActiveSavedGroupingId(saved.id);
+      setGroupingTitleInput(saved.title);
+      triggerToast(`✓ Grouping "${saved.title}" saved successfully!`);
+
+      const updated = await fetchCLPGroupings(currentClp.id);
+      setSavedGroupings(updated);
+    } catch (err: any) {
+      triggerToast('Error saving grouping: ' + (err?.message || 'Please try again'));
+    } finally {
+      setIsSavingGrouping(false);
+    }
+  };
+
+  // Load a previously saved grouping (Req 3)
+  const handleLoadSavedGrouping = (saved: SavedCLPGrouping) => {
+    setActiveSavedGroupingId(saved.id);
+    setGroupingTitleInput(saved.title);
+    setAiGroupPrompt(saved.prompt || '');
+    setAiGroupingResult({
+      id: saved.id,
+      title: saved.title,
+      talkId: saved.talkId,
+      talkTitle: saved.talkTitle,
+      filterType: saved.filterType,
+      groups: saved.groups,
+      summary: saved.summary || '',
+      prompt: saved.prompt || '',
+      generatedAt: saved.createdAt,
+    });
+    setGroupingSubTab('active');
+    setIsEditMode(false);
+    triggerToast(`Loaded grouping "${saved.title}"`);
+  };
+
+  // Delete a saved grouping (Req 3)
+  const handleDeleteSavedGrouping = async (id: string, title: string) => {
+    if (confirm(`Are you sure you want to delete saved grouping "${title}"?`)) {
+      await deleteCLPGrouping(id);
+      if (activeSavedGroupingId === id) {
+        setActiveSavedGroupingId(null);
+      }
+      if (currentClp) {
+        const updated = await fetchCLPGroupings(currentClp.id);
+        setSavedGroupings(updated);
+      }
+      triggerToast(`Deleted grouping "${title}"`);
+    }
+  };
+
+  // Edit Grouping Operations (Req 5)
+  const handleUpdateGroupName = (groupIndex: number, newName: string) => {
+    if (!aiGroupingResult) return;
+    const nextGroups = [...aiGroupingResult.groups];
+    nextGroups[groupIndex] = { ...nextGroups[groupIndex], groupName: newName };
+    setAiGroupingResult({ ...aiGroupingResult, groups: nextGroups });
+  };
+
+  const handleUpdateGroupFacilitator = (groupIndex: number, facilitator: string) => {
+    if (!aiGroupingResult) return;
+    const nextGroups = [...aiGroupingResult.groups];
+    nextGroups[groupIndex] = { ...nextGroups[groupIndex], facilitator };
+    setAiGroupingResult({ ...aiGroupingResult, groups: nextGroups });
+  };
+
+  const handleMoveCouple = (fromGroupIndex: number, targetGroupIndex: number, coupleId: string) => {
+    if (!aiGroupingResult || fromGroupIndex === targetGroupIndex) return;
+    const nextGroups = [...aiGroupingResult.groups];
+    const coupleToMove = nextGroups[fromGroupIndex].couples.find((c) => c.id === coupleId);
+    if (!coupleToMove) return;
+
+    nextGroups[fromGroupIndex] = {
+      ...nextGroups[fromGroupIndex],
+      couples: nextGroups[fromGroupIndex].couples.filter((c) => c.id !== coupleId),
+    };
+    nextGroups[targetGroupIndex] = {
+      ...nextGroups[targetGroupIndex],
+      couples: [...nextGroups[targetGroupIndex].couples, coupleToMove],
+    };
+
+    setAiGroupingResult({ ...aiGroupingResult, groups: nextGroups });
+    triggerToast(`Moved ${coupleToMove.name} to Group ${nextGroups[targetGroupIndex].groupNumber}`);
+  };
+
+  const handleRemoveCoupleFromGroup = (groupIndex: number, coupleId: string) => {
+    if (!aiGroupingResult) return;
+    const nextGroups = [...aiGroupingResult.groups];
+    const coupleToRemove = nextGroups[groupIndex].couples.find((c) => c.id === coupleId);
+    nextGroups[groupIndex] = {
+      ...nextGroups[groupIndex],
+      couples: nextGroups[groupIndex].couples.filter((c) => c.id !== coupleId),
+    };
+    setAiGroupingResult({ ...aiGroupingResult, groups: nextGroups });
+    if (coupleToRemove) {
+      triggerToast(`Removed ${coupleToRemove.name} from Group ${nextGroups[groupIndex].groupNumber}`);
+    }
+  };
+
+  const handleAddNewGroup = () => {
+    if (!aiGroupingResult) return;
+    const nextNumber = aiGroupingResult.groups.length + 1;
+    const newGroup = {
+      groupNumber: nextNumber,
+      groupName: `Group ${nextNumber}`,
+      rationale: 'Discussion Circle',
+      facilitator: '',
+      couples: [],
+    };
+    setAiGroupingResult({
+      ...aiGroupingResult,
+      groups: [...aiGroupingResult.groups, newGroup],
+    });
+    triggerToast(`Added Group ${nextNumber}`);
+  };
+
+  const handleDeleteGroup = (groupIndex: number) => {
+    if (!aiGroupingResult) return;
+    if (aiGroupingResult.groups.length <= 1) {
+      triggerToast('You must have at least one group.');
+      return;
+    }
+    const groupToDelete = aiGroupingResult.groups[groupIndex];
+    const remainingGroups = aiGroupingResult.groups.filter((_, idx) => idx !== groupIndex);
+    if (groupToDelete.couples.length > 0 && remainingGroups.length > 0) {
+      remainingGroups[0].couples = [...remainingGroups[0].couples, ...groupToDelete.couples];
+    }
+    const renumbered = remainingGroups.map((g, idx) => ({
+      ...g,
+      groupNumber: idx + 1,
+    }));
+    setAiGroupingResult({ ...aiGroupingResult, groups: renumbered });
+    triggerToast(`Deleted Group ${groupToDelete.groupNumber}`);
+  };
+
   const handleDownloadAIGroupsHTML = () => {
     if (!aiGroupingResult || !currentClp) return;
     const groupColors = ['#243c81', '#7c3aed', '#0f766e', '#b45309', '#be123c', '#0369a1'];
+    const totalCouplesCount = aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0);
+    const groupingTitle = groupingTitleInput.trim() || aiGroupingResult.title || 'Discussion Groupings';
+
     const printContent = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Holy Spirit Groupings – ${currentClp.name}</title>
+  <title>${groupingTitle} – ${currentClp.name}</title>
   <meta charset="utf-8"/>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
@@ -981,6 +1275,7 @@ export default function CLPAdminPage() {
     .gh{padding:12px 16px;color:#fff;display:flex;justify-content:space-between;align-items:center}
     .gn{font-size:14px;font-weight:900}
     .gc{font-size:11px;background:rgba(255,255,255,.2);padding:2px 9px;border-radius:20px}
+    .fac{background:#f1f5f9;padding:6px 16px;font-size:11px;font-weight:700;color:#1e293b;border-bottom:1px solid #e2e8f0}
     .gr{background:#f8fafc;padding:8px 16px;font-size:11px;color:#475569;border-bottom:1px solid #e2e8f0;font-style:italic}
     .cr{display:flex;align-items:center;padding:8px 16px;border-bottom:1px solid #f8fafc}
     .cr:last-child{border-bottom:none}
@@ -992,37 +1287,51 @@ export default function CLPAdminPage() {
   </style>
 </head>
 <body>
-  <h1>Groupings with the Guide of the Holy Spirit</h1>
-  <span class="badge">${currentClp.name}</span>
-  <div class="meta">
-    <div class="meta-label">Grouping Instruction</div>
-    <div class="meta-prompt">"${aiGroupingResult.prompt}"</div>
-    <div class="meta-summary">${aiGroupingResult.summary}</div>
-  </div>
+  <h1>${groupingTitle}</h1>
+  <span class="badge">${currentClp.name} ${aiGroupingResult.talkTitle ? `• ${aiGroupingResult.talkTitle}` : ''} • ${totalCouplesCount} Couples</span>
+  ${
+    aiGroupingResult.prompt
+      ? `<div class="meta">
+          <div class="meta-label">Grouping Instruction / Pastoral Focus</div>
+          <div class="meta-prompt">"${aiGroupingResult.prompt}"</div>
+          ${aiGroupingResult.summary ? `<div class="meta-summary">${aiGroupingResult.summary}</div>` : ''}
+        </div>`
+      : ''
+  }
   <div class="grid">
-    ${aiGroupingResult.groups.map((g, gi) => `
+    ${aiGroupingResult.groups
+      .map(
+        (g, gi) => `
     <div class="group">
       <div class="gh" style="background:${groupColors[gi % groupColors.length]}">
         <span class="gn">Group ${g.groupNumber}: ${g.groupName}</span>
         <span class="gc">${g.couples.length} couples</span>
       </div>
-      <div class="gr">${g.rationale}</div>
-      ${g.couples.map((c, ci) => `
+      ${g.facilitator ? `<div class="fac">Facilitator / Servant: ${g.facilitator}</div>` : ''}
+      ${g.rationale ? `<div class="gr">${g.rationale}</div>` : ''}
+      ${g.couples
+        .map(
+          (c, ci) => `
       <div class="cr">
         <div class="cn-num">${ci + 1}</div>
         <span class="cn">${c.name}</span>
         <span class="cb">Brgy. ${c.barangay}</span>
-      </div>`).join('')}
-    </div>`).join('')}
+      </div>`
+        )
+        .join('')}
+    </div>`
+      )
+      .join('')}
   </div>
   <div class="footer">Generated by CFC Tuy Chapter Admin Portal • ${new Date().toLocaleString('en-PH')}</div>
 </body>
 </html>`;
+
     const blob = new Blob([printContent], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `HolySpirit-Groupings-${currentClp.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.html`;
+    a.download = `${groupingTitle.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2382,239 +2691,712 @@ Generated via Couples for Christ Tuy Chapter Portal`;
           )}
 
           {/* ========================================================================= */}
-          {/* TAB 4: AI GROUP BY GEMINI                                                  */}
+          {/* TAB 4: AI & SAVED GROUPINGS (HOLY SPIRIT CLP CIRCLES)                     */}
           {/* ========================================================================= */}
           {activeTab === 'ai-groups' && (
             <div className="space-y-6">
-              {/* Header */}
-              <div className="bg-gradient-to-br from-violet-600 to-purple-700 p-6 rounded-3xl shadow-lg shadow-violet-200 text-white">
+              {/* Header Banner */}
+              <div className="bg-gradient-to-br from-violet-600 via-purple-700 to-[#243c81] p-6 sm:p-7 rounded-3xl shadow-xl shadow-purple-900/10 text-white">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center border border-white/20">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center border border-white/20 shrink-0">
                       <Brain className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h2 className="text-xl font-black">Groupings with the Guide of the Holy Spirit</h2>
-                      <p className="text-violet-200 text-xs mt-0.5">
-                        {currentCouples.length} couples in {currentClp.name} • AI-assisted pastoral grouping tool
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl sm:text-2xl font-black">Groupings with the Guide of the Holy Spirit</h2>
+                        <span className="text-[10px] font-black uppercase bg-amber-400 text-[#243c81] px-2 py-0.5 rounded-full shadow-xs">
+                          AI &amp; Pastoral Tool
+                        </span>
+                      </div>
+                      <p className="text-violet-200 text-xs mt-1">
+                        {currentClp.name} • Generate, filter by talk attendance, edit, and save discussion groups
                       </p>
                     </div>
                   </div>
-                  {aiGroupingResult && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleDownloadAIGroupsHTML}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-bold transition-all"
-                      >
-                        <Download className="w-4 h-4" />
-                        <span>Download PDF</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => window.print()}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white text-violet-700 hover:bg-violet-50 text-xs font-bold transition-all shadow-sm"
-                      >
-                        <Printer className="w-4 h-4" />
-                        <span>Print</span>
-                      </button>
-                    </div>
-                  )}
+
+                  {/* Sub-tab Navigation */}
+                  <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-black/25 border border-white/10 shrink-0 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setGroupingSubTab('active')}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        groupingSubTab === 'active'
+                          ? 'bg-white text-violet-900 shadow-sm'
+                          : 'text-white/80 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Generator &amp; Editor</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGroupingSubTab('saved')}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        groupingSubTab === 'saved'
+                          ? 'bg-white text-violet-900 shadow-sm'
+                          : 'text-white/80 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
+                      <span>Saved Groupings</span>
+                      <span className="px-1.5 py-0.2 rounded-full bg-violet-100 text-violet-800 text-[10px] font-black">
+                        {savedGroupings.filter((g) => g.clpId === currentClp.id).length}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Prompt Input Section */}
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-black text-slate-900 mb-1">
-                    Grouping Instruction
-                  </label>
-                  <p className="text-xs text-slate-500 mb-3">
-                    Describe how you want the AI to group the invitees. Be specific — the more context you give, the better the groups.
-                  </p>
-                  <textarea
-                    value={aiGroupPrompt}
-                    onChange={(e) => setAiGroupPrompt(e.target.value)}
-                    rows={3}
-                    placeholder='e.g. "Group couples by barangay so they can support each other geographically" or "Group by occupation similarity for mutual encouragement" or "Create 4 balanced groups mixing different barangays for diversity"'
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-300 resize-none font-medium placeholder:text-slate-400 placeholder:font-normal"
-                  />
-                </div>
-
-                {/* Prompt Suggestions */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Quick Suggestions</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      'Group by barangay proximity',
-                      'Group by occupation similarity',
-                      'Mix all barangays for diversity',
-                      'Create 3 balanced groups',
-                      'Separate by anniversary year',
-                    ].map((s) => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setAiGroupPrompt(s)}
-                        className="px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-semibold hover:bg-violet-100 transition-colors"
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleAIGrouping}
-                  disabled={isAiGrouping || currentCouples.length === 0}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white font-bold text-sm shadow-md shadow-violet-200 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
-                >
-                  {isAiGrouping ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Generating groupings...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Generate Groupings</span>
-                    </>
-                  )}
-                </button>
-
-                {/* Error */}
-                {aiGroupError && (
-                  <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-bold">Grouping Failed</p>
-                      <p className="text-xs mt-0.5 text-red-600">{aiGroupError}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Loading State */}
-                {isAiGrouping && (
-                  <div className="flex items-center gap-3 p-4 bg-violet-50 border border-violet-200 rounded-2xl">
-                    <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center">
-                      <Brain className="w-4 h-4 text-violet-600 animate-pulse" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-violet-900">Generating prayerful groupings for {currentCouples.length} couples...</p>
-                      <p className="text-xs text-violet-600">Placing couples according to the Holy Spirit's guidance</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Results */}
-              {aiGroupingResult && (
+              {/* =================================================================== */}
+              {/* SUBTAB 1: SAVED GROUPINGS HISTORY & REPOSITORY (Req 3)               */}
+              {/* =================================================================== */}
+              {groupingSubTab === 'saved' && (
                 <div className="space-y-4">
-                  {/* Summary Bar */}
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
-                        <Sparkles className="w-5 h-5 text-violet-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-black text-slate-900">
-                          {aiGroupingResult.groups.length} groupings created from {currentCouples.length} couples
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5 italic">"{aiGroupingResult.prompt}"</p>
-                      </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-black text-slate-900">Saved Groupings for {currentClp.name}</h3>
+                      <p className="text-xs text-slate-500">
+                        Select any saved grouping to load, view, edit members, print, or download.
+                      </p>
                     </div>
                     <button
                       type="button"
-                      onClick={() => { setAiGroupingResult(null); setAiGroupPrompt(''); }}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-all"
+                      onClick={() => setGroupingSubTab('active')}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all"
                     >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Regroup</span>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Generate New Grouping</span>
                     </button>
                   </div>
 
-                  {/* AI Summary */}
-                  {aiGroupingResult.summary && (
-                    <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
-                      <p className="text-xs font-black uppercase tracking-widest text-violet-400 mb-1">AI Summary</p>
-                      <p className="text-sm text-violet-900 font-medium">{aiGroupingResult.summary}</p>
+                  {savedGroupings.filter((g) => g.clpId === currentClp.id).length === 0 ? (
+                    <div className="bg-white rounded-3xl border-2 border-dashed border-slate-200 p-12 text-center space-y-3">
+                      <FolderOpen className="w-12 h-12 text-slate-300 mx-auto" />
+                      <h4 className="font-bold text-slate-800">No Saved Groupings Yet</h4>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        You can generate groupings with the Holy Spirit guide or filter by attendees of a specific talk, then click &quot;Save Grouping&quot; to keep them here.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setGroupingSubTab('active')}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-md transition-all"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Go to Grouping Generator</span>
+                      </button>
                     </div>
-                  )}
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {savedGroupings
+                        .filter((g) => g.clpId === currentClp.id)
+                        .map((saved) => {
+                          const totalCouples = saved.groups.reduce((acc, grp) => acc + grp.couples.length, 0);
+                          const isCurrentlyActive = activeSavedGroupingId === saved.id;
 
-                  {/* Group Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2">
-                    {aiGroupingResult.groups.map((group, gi) => {
-                      const colorSets = [
-                        { bg: 'bg-[#243c81]', light: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', num: 'bg-blue-100 text-blue-700' },
-                        { bg: 'bg-violet-600', light: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-800', num: 'bg-violet-100 text-violet-700' },
-                        { bg: 'bg-teal-700', light: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800', num: 'bg-teal-100 text-teal-700' },
-                        { bg: 'bg-amber-600', light: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', num: 'bg-amber-100 text-amber-700' },
-                        { bg: 'bg-rose-600', light: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800', num: 'bg-rose-100 text-rose-700' },
-                        { bg: 'bg-sky-600', light: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-800', num: 'bg-sky-100 text-sky-700' },
-                      ];
-                      const colors = colorSets[gi % colorSets.length];
-                      return (
-                        <div key={group.groupNumber} className={`rounded-2xl border ${colors.border} overflow-hidden shadow-xs`}>
-                          {/* Group Header */}
-                          <div className={`${colors.bg} px-5 py-4 flex items-center justify-between`}>
-                            <div>
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">Group {group.groupNumber}</p>
-                              <h3 className="text-base font-black text-white">{group.groupName}</h3>
-                            </div>
-                            <span className="bg-white/20 text-white text-[11px] font-bold px-3 py-1 rounded-full">
-                              {group.couples.length} couples
-                            </span>
-                          </div>
+                          return (
+                            <div
+                              key={saved.id}
+                              className={`bg-white rounded-2xl border p-5 space-y-4 shadow-xs hover:shadow-md transition-all ${
+                                isCurrentlyActive ? 'border-violet-500 ring-2 ring-violet-200' : 'border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-black text-slate-900 text-sm">{saved.title}</h4>
+                                    {isCurrentlyActive && (
+                                      <span className="text-[9px] font-black uppercase bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">
+                                        Loaded
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5">
+                                    Saved {new Date(saved.createdAt).toLocaleString('en-PH')}
+                                  </p>
+                                </div>
 
-                          {/* Rationale */}
-                          <div className={`${colors.light} px-5 py-3 border-b ${colors.border}`}>
-                            <p className={`text-[11px] font-medium ${colors.text} italic`}>{group.rationale}</p>
-                          </div>
-
-                          {/* Couple List */}
-                          <div className="bg-white divide-y divide-slate-100">
-                            {group.couples.map((couple, ci) => (
-                              <div key={couple.id} className="flex items-center gap-3 px-5 py-3">
-                                <span className={`w-6 h-6 rounded-full ${colors.num} text-[11px] font-black flex items-center justify-center shrink-0`}>
-                                  {ci + 1}
-                                </span>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-bold text-slate-900 truncate">{couple.name}</p>
-                                  <p className="text-[11px] text-slate-500">Brgy. {couple.barangay}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleLoadSavedGrouping(saved)}
+                                    className="px-3 py-1.5 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold text-xs border border-violet-200 transition-colors"
+                                  >
+                                    Load / Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteSavedGrouping(saved.id, saved.title)}
+                                    className="p-1.5 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-colors"
+                                    title="Delete grouping"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                 </div>
                               </div>
-                            ))}
+
+                              {/* Badges */}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
+                                  {saved.groups.length} Groups
+                                </span>
+                                <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                                  {totalCouples} Couples
+                                </span>
+                                {saved.talkTitle && (
+                                  <span className="px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-xs font-bold truncate max-w-[220px]">
+                                    {saved.talkTitle}
+                                  </span>
+                                )}
+                              </div>
+
+                              {saved.summary && (
+                                <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100 line-clamp-2 italic">
+                                  &quot;{saved.summary}&quot;
+                                </p>
+                              )}
+
+                              {/* Group chips */}
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                {saved.groups.map((grp) => (
+                                  <span
+                                    key={grp.groupNumber}
+                                    className="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md"
+                                  >
+                                    {grp.groupName}: <strong className="text-slate-900">{grp.couples.length}</strong>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* =================================================================== */}
+              {/* SUBTAB 2: ACTIVE GENERATOR & EDITING WORKSPACE                       */}
+              {/* =================================================================== */}
+              {groupingSubTab === 'active' && (
+                <div className="space-y-6">
+                  {/* Configuration & Filter Card (Req 4: Group only attended couples per talk) */}
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider text-slate-400 mb-1">
+                        Step 1: Select Participants to Group
+                      </h3>
+                      <p className="text-xs text-slate-500 mb-3">
+                        Choose whether to group all invited couples or only couples who attended a specific CLP talk.
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Option 1: All Registered Couples */}
+                        <label
+                          className={`flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${
+                            groupingSource === 'all'
+                              ? 'border-violet-500 bg-violet-50/50 shadow-xs ring-1 ring-violet-400'
+                              : 'border-slate-200 bg-white hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="groupingSource"
+                            checked={groupingSource === 'all'}
+                            onChange={() => setGroupingSource('all')}
+                            className="mt-0.5 text-violet-600 focus:ring-violet-500"
+                          />
+                          <div>
+                            <span className="font-black text-sm text-slate-900 block">
+                              All Registered Couples
+                            </span>
+                            <span className="text-xs text-slate-500 mt-0.5 block">
+                              Group all {currentCouples.length} registered couples in {currentClp.name}
+                            </span>
+                          </div>
+                        </label>
+
+                        {/* Option 2: Attended Couples per Talk */}
+                        <label
+                          className={`flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${
+                            groupingSource === 'talk'
+                              ? 'border-violet-500 bg-violet-50/50 shadow-xs ring-1 ring-violet-400'
+                              : 'border-slate-200 bg-white hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="groupingSource"
+                            checked={groupingSource === 'talk'}
+                            onChange={() => setGroupingSource('talk')}
+                            className="mt-0.5 text-violet-600 focus:ring-violet-500"
+                          />
+                          <div>
+                            <span className="font-black text-sm text-slate-900 block flex items-center gap-1.5">
+                              <span>Only Attended Couples per Talk</span>
+                              <span className="text-[10px] font-black uppercase bg-violet-600 text-white px-1.5 py-0.2 rounded">
+                                Filter
+                              </span>
+                            </span>
+                            <span className="text-xs text-slate-500 mt-0.5 block">
+                              Form discussion circles strictly from attendees present at a specific talk
+                            </span>
+                          </div>
+                        </label>
+                      </div>
+
+                      {/* If Attendance Filter Selected, show Talk Dropdown and Criteria */}
+                      {groupingSource === 'talk' && (
+                        <div className="mt-4 p-4 rounded-2xl bg-violet-50/70 border border-violet-200 animate-in fade-in space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">
+                                Select CLP Talk
+                              </label>
+                              <select
+                                value={groupingTalkId}
+                                onChange={(e) => setGroupingTalkId(e.target.value)}
+                                className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white text-slate-900 font-bold focus:ring-2 focus:ring-violet-500"
+                              >
+                                {currentTalks.map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    Talk {t.talkNumber}: {t.title} {t.date ? `(${t.date})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">
+                                Attendance Criteria
+                              </label>
+                              <select
+                                value={attendanceRequirement}
+                                onChange={(e) => setAttendanceRequirement(e.target.value as any)}
+                                className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white text-slate-900 font-bold focus:ring-2 focus:ring-violet-500"
+                              >
+                                <option value="either">At least 1 spouse present (Husband OR Wife)</option>
+                                <option value="both">Both spouses present (Husband AND Wife)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Live Attendance Counter Feedback */}
+                          <div className="flex items-center justify-between gap-2 pt-1 text-xs">
+                            {attendedCouplesForTalk.length > 0 ? (
+                              <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
+                                <Check className="w-4 h-4 text-emerald-600" />
+                                <span>
+                                  {attendedCouplesForTalk.length} of {currentCouples.length} couples attended this talk and will be grouped.
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-amber-800 font-medium">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span>
+                                  No couples marked present for this talk yet.
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTab('talks')}
+                                  className="underline font-bold text-amber-900 hover:text-amber-700"
+                                >
+                                  Go mark attendance in Talks tab &rarr;
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
+
+                    {/* Step 2: Prompt Input */}
+                    <div className="pt-2 border-t border-slate-100">
+                      <label className="block text-sm font-black text-slate-900 mb-1">
+                        Step 2: Grouping Instruction / Holy Spirit Guidance
+                      </label>
+                      <p className="text-xs text-slate-500 mb-3">
+                        Describe how you want the AI to group the {targetCouplesForGrouping.length} participants (e.g. by barangay, occupation, diversity, or group count).
+                      </p>
+                      <textarea
+                        value={aiGroupPrompt}
+                        onChange={(e) => setAiGroupPrompt(e.target.value)}
+                        rows={3}
+                        placeholder='e.g. "Create 4 balanced discussion groups mixing different barangays for diversity and mutual encouragement" or "Group by barangay proximity so couples can travel together"'
+                        className="w-full px-4 py-3 rounded-2xl border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-300 resize-none font-medium placeholder:text-slate-400 placeholder:font-normal"
+                      />
+
+                      {/* Prompt Suggestions */}
+                      <div className="mt-3">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Quick Suggestions</p>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            'Group by barangay proximity',
+                            'Group by occupation similarity',
+                            'Mix all barangays for diversity',
+                            'Create 3 balanced discussion circles',
+                            'Create 4 balanced discussion circles',
+                            'Separate by wedding anniversary',
+                          ].map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              onClick={() => setAiGroupPrompt(s)}
+                              className="px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-violet-700 text-[11px] font-semibold hover:bg-violet-100 transition-colors"
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Generate Button */}
+                    <button
+                      type="button"
+                      onClick={handleAIGrouping}
+                      disabled={isAiGrouping || targetCouplesForGrouping.length === 0}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-700 hover:to-purple-800 text-white font-bold text-sm shadow-md shadow-violet-200 transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+                    >
+                      {isAiGrouping ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Generating groupings...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>
+                            Generate Groupings ({targetCouplesForGrouping.length} couples)
+                          </span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Error */}
+                    {aiGroupError && (
+                      <div className="flex items-start gap-2 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold">Grouping Failed</p>
+                          <p className="text-xs mt-0.5 text-red-600">{aiGroupError}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Loading State */}
+                    {isAiGrouping && (
+                      <div className="flex items-center gap-3 p-4 bg-violet-50 border border-violet-200 rounded-2xl">
+                        <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center">
+                          <Brain className="w-4 h-4 text-violet-600 animate-pulse" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-violet-900">
+                            Generating prayerful groupings for {targetCouplesForGrouping.length} couples...
+                          </p>
+                          <p className="text-xs text-violet-600">
+                            Placing couples according to the Holy Spirit&apos;s guidance and pastoral care
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Print/Download Action Row */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                    <p className="text-xs text-slate-500 font-medium">
-                      Generated {new Date(aiGroupingResult.generatedAt).toLocaleString('en-PH')} • {aiGroupingResult.groups.length} groups • {currentCouples.length} couples
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleDownloadAIGroupsHTML}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-bold transition-all"
-                      >
-                        <Download className="w-4 h-4" />
-                        <span>Download Groupings</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => window.print()}
-                        className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white text-xs font-bold transition-all shadow-sm"
-                      >
-                        <Printer className="w-4 h-4" />
-                        <span>Print Groupings</span>
-                      </button>
+                  {/* Results & Interactive Group Editor (Req 3 & 5) */}
+                  {aiGroupingResult && (
+                    <div className="space-y-4">
+                      {/* Control & Save Action Bar */}
+                      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 space-y-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          {/* Editable Title */}
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                              Grouping Title
+                            </label>
+                            <input
+                              type="text"
+                              value={groupingTitleInput}
+                              onChange={(e) => setGroupingTitleInput(e.target.value)}
+                              className="w-full text-base sm:text-lg font-black text-slate-900 px-3 py-1.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                              placeholder="Enter grouping title..."
+                            />
+                            <p className="text-xs text-slate-500 mt-1 flex items-center gap-2">
+                              <span>{aiGroupingResult.groups.length} groups</span>
+                              <span>•</span>
+                              <span>
+                                {aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0)} couples
+                              </span>
+                              {aiGroupingResult.talkTitle && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-bold text-violet-700">{aiGroupingResult.talkTitle}</span>
+                                </>
+                              )}
+                            </p>
+                          </div>
+
+                          {/* Toolbar Actions */}
+                          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
+                            {/* Edit Mode Toggle */}
+                            <button
+                              type="button"
+                              onClick={() => setIsEditMode(!isEditMode)}
+                              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                                isEditMode
+                                  ? 'bg-amber-400 text-[#243c81] border-amber-300 shadow-xs ring-2 ring-amber-300'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>{isEditMode ? 'Exit Edit Mode' : 'Edit Groupings'}</span>
+                            </button>
+
+                            {/* Save Grouping Button (Req 3) */}
+                            <button
+                              type="button"
+                              onClick={handleSaveCurrentGrouping}
+                              disabled={isSavingGrouping}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              <span>{isSavingGrouping ? 'Saving...' : 'Save Grouping'}</span>
+                            </button>
+
+                            {/* Download HTML/PDF */}
+                            <button
+                              type="button"
+                              onClick={handleDownloadAIGroupsHTML}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-bold transition-all"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Download</span>
+                            </button>
+
+                            {/* Print */}
+                            <button
+                              type="button"
+                              onClick={() => window.print()}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Print</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Edit Mode Notice Banner */}
+                        {isEditMode && (
+                          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 font-medium animate-in fade-in">
+                            <div className="flex items-center gap-2">
+                              <SlidersHorizontal className="w-4 h-4 text-amber-700 shrink-0" />
+                              <span>
+                                <strong>Edit Mode Active:</strong> You can edit group names, assign facilitators/servants, move couples between groups via dropdown, or add extra groups.
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleAddNewGroup}
+                              className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-white border border-amber-300 text-amber-900 text-xs font-bold hover:bg-amber-100 shrink-0"
+                            >
+                              <PlusCircle className="w-3.5 h-3.5 text-amber-700" />
+                              <span>Add New Group</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* AI Summary */}
+                      {aiGroupingResult.summary && (
+                        <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
+                          <p className="text-xs font-black uppercase tracking-widest text-violet-400 mb-1">AI Pastoral Summary</p>
+                          <p className="text-sm text-violet-900 font-medium">{aiGroupingResult.summary}</p>
+                        </div>
+                      )}
+
+                      {/* Group Cards Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2">
+                        {aiGroupingResult.groups.map((group, gi) => {
+                          const colorSets = [
+                            { bg: 'bg-[#243c81]', light: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800', num: 'bg-blue-100 text-blue-700' },
+                            { bg: 'bg-violet-600', light: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-800', num: 'bg-violet-100 text-violet-700' },
+                            { bg: 'bg-teal-700', light: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-800', num: 'bg-teal-100 text-teal-700' },
+                            { bg: 'bg-amber-600', light: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', num: 'bg-amber-100 text-amber-700' },
+                            { bg: 'bg-rose-600', light: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800', num: 'bg-rose-100 text-rose-700' },
+                            { bg: 'bg-sky-600', light: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-800', num: 'bg-sky-100 text-sky-700' },
+                          ];
+                          const colors = colorSets[gi % colorSets.length];
+
+                          return (
+                            <div key={group.groupNumber} className={`rounded-3xl border ${colors.border} overflow-hidden shadow-xs bg-white`}>
+                              {/* Group Header */}
+                              <div className={`${colors.bg} px-5 py-4 text-white`}>
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+                                      Group {group.groupNumber}
+                                    </p>
+                                    {isEditMode ? (
+                                      <input
+                                        type="text"
+                                        value={group.groupName}
+                                        onChange={(e) => handleUpdateGroupName(gi, e.target.value)}
+                                        className="w-full bg-white/20 text-white font-black text-base px-2.5 py-1 rounded-lg border border-white/30 focus:outline-hidden focus:bg-white/30"
+                                        placeholder="Group Name"
+                                      />
+                                    ) : (
+                                      <h4 className="text-base font-black truncate">{group.groupName}</h4>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="bg-white/20 text-white text-[11px] font-bold px-3 py-1 rounded-full">
+                                      {group.couples.length} couples
+                                    </span>
+                                    {isEditMode && aiGroupingResult.groups.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteGroup(gi)}
+                                        className="p-1 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-white transition-colors"
+                                        title="Delete this group"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Facilitator / Discussion Leader Row */}
+                                <div className="mt-2.5 pt-2 border-t border-white/15 flex items-center gap-2">
+                                  <span className="text-[10px] font-bold uppercase text-white/70 shrink-0">
+                                    Leader / Servant:
+                                  </span>
+                                  {isEditMode ? (
+                                    <input
+                                      type="text"
+                                      value={group.facilitator || ''}
+                                      onChange={(e) => handleUpdateGroupFacilitator(gi, e.target.value)}
+                                      placeholder="e.g. Bro. Joel & Sis. Mary"
+                                      className="flex-1 bg-white/20 text-white text-xs font-semibold px-2 py-0.5 rounded border border-white/30 focus:outline-hidden focus:bg-white/30 placeholder:text-white/50"
+                                    />
+                                  ) : (
+                                    <span className="text-xs font-bold text-amber-200 truncate">
+                                      {group.facilitator || 'To be assigned'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Rationale */}
+                              {group.rationale && (
+                                <div className={`${colors.light} px-5 py-2.5 border-b ${colors.border}`}>
+                                  <p className={`text-[11px] font-medium ${colors.text} italic`}>{group.rationale}</p>
+                                </div>
+                              )}
+
+                              {/* Couple List */}
+                              <div className="divide-y divide-slate-100">
+                                {group.couples.length === 0 ? (
+                                  <div className="p-6 text-center text-xs text-slate-400 italic">
+                                    No couples in this group. Move couples here from other groups.
+                                  </div>
+                                ) : (
+                                  group.couples.map((couple, ci) => (
+                                    <div
+                                      key={couple.id}
+                                      className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        <span className={`w-6 h-6 rounded-full ${colors.num} text-[11px] font-black flex items-center justify-center shrink-0`}>
+                                          {ci + 1}
+                                        </span>
+                                        <div className="min-w-0">
+                                          <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                            {couple.name}
+                                          </p>
+                                          <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                            <span>Brgy. {couple.barangay}</span>
+                                            {couple.husbandOccupation && (
+                                              <span>• {couple.husbandOccupation}</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Edit Mode: Move dropdown and Remove button (Req 5) */}
+                                      {isEditMode && (
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <div className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1 text-slate-600">
+                                            <ArrowRightLeft className="w-3 h-3 text-slate-400" />
+                                            <select
+                                              value={gi}
+                                              onChange={(e) =>
+                                                handleMoveCouple(gi, Number(e.target.value), couple.id)
+                                              }
+                                              className="bg-transparent text-[11px] font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+                                              title="Move to another group"
+                                            >
+                                              {aiGroupingResult.groups.map((targetGrp, targetIdx) => (
+                                                <option key={targetGrp.groupNumber} value={targetIdx}>
+                                                  Grp {targetGrp.groupNumber}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRemoveCoupleFromGroup(gi, couple.id)}
+                                            className="p-1 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
+                                            title="Remove couple from group"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Print/Download/Save Action Row */}
+                      <div className="bg-white rounded-3xl border border-slate-200 p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+                        <p className="text-xs text-slate-500 font-medium">
+                          Created {new Date(aiGroupingResult.generatedAt).toLocaleString('en-PH')} • {aiGroupingResult.groups.length} groups • {aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0)} couples
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleSaveCurrentGrouping}
+                            disabled={isSavingGrouping}
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+                          >
+                            <Save className="w-4 h-4" />
+                            <span>Save Grouping</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDownloadAIGroupsHTML}
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-bold transition-all"
+                          >
+                            <Download className="w-4 h-4" />
+                            <span>Download HTML</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => window.print()}
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all"
+                          >
+                            <Printer className="w-4 h-4" />
+                            <span>Print</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>

@@ -5,6 +5,8 @@ import { TUY_BARANGAYS } from '@/lib/data/mock-data';
 import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance, SavedCLPGrouping } from '@/types';
 import TuyMapPicker from '@/components/map/TuyMapPicker';
 import CLPCouplesMapModal from '@/components/map/CLPCouplesMapModal';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   fetchCLPPrograms,
   saveCLPProgram,
@@ -74,6 +76,7 @@ import {
   FolderOpen,
   ArrowRightLeft,
   Phone,
+  FileText,
   PlusCircle,
 } from 'lucide-react';
 
@@ -1831,6 +1834,7 @@ export default function CLPAdminPage() {
       'Husband Age',
       "Wife's Name",
       "Wife's Age",
+      'Wedding Anniversary',
       'Address',
       'Barangay',
       'Status',
@@ -1844,6 +1848,7 @@ export default function CLPAdminPage() {
       const hAge = computeAge(c.husbandBirthday);
       const wName = `${c.wifeFirstName || ''} ${c.wifeLastName || ''}`.trim();
       const wAge = computeAge(c.wifeBirthday);
+      const anniversary = c.weddingAnniversary || '—';
       const address = c.address || `Brgy. ${c.barangay}, Tuy, Batangas`;
       const barangay = c.barangay || '';
       const status = c.status || 'Active';
@@ -1854,6 +1859,7 @@ export default function CLPAdminPage() {
         escapeCSV(hAge),
         escapeCSV(wName),
         escapeCSV(wAge),
+        escapeCSV(anniversary),
         escapeCSV(address),
         escapeCSV(barangay),
         escapeCSV(status),
@@ -1875,8 +1881,123 @@ export default function CLPAdminPage() {
   };
 
   // ---------------------------------------------------------------------------
+  // Download Invitee Couples List (PDF)
+  // Fields: Husband Name, Age, Wife's Name, Age, Anniversary, Address
+  // ---------------------------------------------------------------------------
+  const handleDownloadCouplesPDF = () => {
+    const targetCouples =
+      searchCoupleQuery.trim() || filterBarangay !== 'ALL'
+        ? filteredCouples
+        : currentCouples;
+
+    if (!targetCouples.length || !currentClp) {
+      triggerToast('No invitee couples to export to PDF.');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', format: 'a4', unit: 'mm' });
+      const genDate = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      // Document Title & Branding
+      doc.setFontSize(16);
+      doc.setTextColor(36, 60, 129); // #243c81
+      doc.setFont('helvetica', 'bold');
+      doc.text('COUPLES FOR CHRIST • MUNICIPALITY OF TUY', 14, 15);
+
+      doc.setFontSize(11);
+      doc.setTextColor(51, 65, 85);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${currentClp.name} — Invitee Couples Directory`, 14, 21);
+
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text(
+        `Venue: ${currentClp.venue || 'Tuy, Batangas'} | Generated: ${genDate} | Total: ${targetCouples.length} Couples`,
+        14,
+        26
+      );
+
+      autoTable(doc, {
+        startY: 30,
+        head: [[
+          '#',
+          'Husband Name',
+          'Age',
+          "Wife's Name",
+          'Age',
+          'Anniversary',
+          'Address / Barangay',
+          'Status',
+        ]],
+        body: targetCouples.map((c, idx) => [
+          idx + 1,
+          `${c.husbandLastName}, ${c.husbandFirstName}`,
+          computeAge(c.husbandBirthday),
+          `${c.wifeLastName}, ${c.wifeFirstName}`,
+          computeAge(c.wifeBirthday),
+          c.weddingAnniversary || '—',
+          c.address || `Brgy. ${c.barangay}, Tuy`,
+          c.status || 'Active',
+        ]),
+        styles: {
+          fontSize: 8.5,
+          cellPadding: 2.5,
+          textColor: [15, 23, 42],
+          lineColor: [226, 232, 240],
+          lineWidth: 0.1,
+        },
+        headStyles: {
+          fillColor: [36, 60, 129], // #243c81
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 8.5,
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252],
+        },
+        columnStyles: {
+          0: { halign: 'center', cellWidth: 10 },
+          2: { halign: 'center', cellWidth: 14 },
+          4: { halign: 'center', cellWidth: 14 },
+          5: { halign: 'center', cellWidth: 26 },
+          7: { halign: 'center', cellWidth: 20 },
+        },
+        margin: { left: 14, right: 14 },
+        didDrawPage: (data) => {
+          const pageCount = doc.getNumberOfPages();
+          doc.setFontSize(8);
+          doc.setTextColor(148, 163, 184);
+          doc.text(
+            'Couples for Christ Tuy Chapter • "Building the Church of the Home and Building the Church of the Poor"',
+            14,
+            doc.internal.pageSize.height - 8
+          );
+          doc.text(
+            `Page ${data.pageNumber} of ${pageCount}`,
+            doc.internal.pageSize.width - 25,
+            doc.internal.pageSize.height - 8
+          );
+        },
+      });
+
+      const clpNameSanitized = currentClp.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      doc.save(`CFC_Tuy_${clpNameSanitized}_Invitees.pdf`);
+      triggerToast(`Downloaded PDF for ${targetCouples.length} couples!`);
+    } catch (err) {
+      console.error('Failed to generate PDF:', err);
+      triggerToast('Failed to generate PDF. You can also use Print List -> Save as PDF.');
+    }
+  };
+
+  // ---------------------------------------------------------------------------
   // Print Invitee Couples List
-  // Fields: Husband Name, Age, Wife's Name, Age, Address
+  // Fields: Husband Name, Age, Wife's Name, Age, Anniversary, Address
   // ---------------------------------------------------------------------------
   const handlePrintCouplesList = () => {
     const targetCouples =
@@ -1902,6 +2023,7 @@ export default function CLPAdminPage() {
         const hAge = computeAge(c.husbandBirthday);
         const wName = `${c.wifeFirstName || ''} ${c.wifeLastName || ''}`.trim();
         const wAge = computeAge(c.wifeBirthday);
+        const anniversary = c.weddingAnniversary || '—';
         const address = c.address || `Brgy. ${c.barangay}, Tuy, Batangas`;
 
         return `
@@ -1915,6 +2037,7 @@ export default function CLPAdminPage() {
               <span class="prefix">Sis.</span> ${wName}
             </td>
             <td class="text-center font-semibold text-accent">${wAge}</td>
+            <td class="text-center font-semibold text-dark">${anniversary}</td>
             <td class="text-address">${address}</td>
           </tr>
         `;
@@ -2158,12 +2281,13 @@ export default function CLPAdminPage() {
     <table>
       <thead>
         <tr>
-          <th style="width: 5%;" class="text-center">#</th>
-          <th style="width: 25%;">Husband Name</th>
-          <th style="width: 7%;" class="text-center">Age</th>
-          <th style="width: 25%;">Wife's Name</th>
-          <th style="width: 7%;" class="text-center">Age</th>
-          <th style="width: 31%;">Address</th>
+          <th style="width: 4%;" class="text-center">#</th>
+          <th style="width: 22%;">Husband Name</th>
+          <th style="width: 6%;" class="text-center">Age</th>
+          <th style="width: 22%;">Wife's Name</th>
+          <th style="width: 6%;" class="text-center">Age</th>
+          <th style="width: 14%;" class="text-center">Anniversary</th>
+          <th style="width: 26%;">Address</th>
         </tr>
       </thead>
       <tbody>
@@ -2446,18 +2570,28 @@ Generated via Couples for Christ Tuy Chapter Portal`;
 
                   <button
                     type="button"
+                    onClick={handleDownloadCouplesPDF}
+                    title="Download invitee couples list as PDF (Husband Name, Age, Wife's Name, Age, Anniversary, Address)"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Download PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleDownloadCouplesList}
-                    title="Download invitee couples list as CSV (Husband Name, Age, Wife's Name, Age, Address)"
+                    title="Download invitee couples list as CSV (Husband Name, Age, Wife's Name, Age, Anniversary, Address)"
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-[#243c81] font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Download List</span>
+                    <span>Download CSV</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handlePrintCouplesList}
-                    title="Print official list of invitee couples (Husband Name, Age, Wife's Name, Age, Address)"
+                    title="Print official list of invitee couples (Husband Name, Age, Wife's Name, Age, Anniversary, Address)"
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
                   >
                     <Printer className="w-3.5 h-3.5" />

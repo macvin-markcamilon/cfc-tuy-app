@@ -54,27 +54,27 @@ export default function PrayerWallSection() {
   };
 
   return (
-    <section className="py-12 sm:py-16 lg:py-24 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+    <section className="py-12 sm:py-16 lg:py-24 bg-white border-t border-slate-200/80">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
           <div>
-            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-600 uppercase tracking-wider">
               <MessageSquareHeart className="w-4 h-4" />
               <span>Intercessory Prayer Ministry</span>
             </div>
-            <h2 className="mt-1 text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+            <h2 className="mt-1 text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
               Tuy Community Prayer Wall
             </h2>
-            <p className="mt-2 text-sm sm:text-base text-slate-600 dark:text-slate-300">
+            <p className="mt-2 text-sm sm:text-base text-slate-600">
               &quot;For where two or three are gathered together in my name, there am I in the midst of them.&quot; (Matthew 18:20)
             </p>
           </div>
 
           <button
             onClick={() => setShowForm(!showForm)}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all self-start sm:self-auto"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-[#243c81] hover:bg-[#1a2d63] text-white font-bold text-xs sm:text-sm shadow-md transition-all self-start sm:self-auto"
           >
             <Plus className="w-4 h-4" />
             <span>{showForm ? 'Close Form' : 'Submit Prayer Intention'}</span>
@@ -83,11 +83,11 @@ export default function PrayerWallSection() {
 
         {/* Modal/Accordion for Prayer Submission */}
         {showForm && (
-          <div className="mb-10 p-6 sm:p-8 rounded-3xl glass-panel border border-blue-200 dark:border-slate-700 shadow-xl animate-in fade-in slide-in-from-top-4 duration-200">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
+          <div className="mb-10 p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-xl animate-in fade-in slide-in-from-top-4 duration-200">
+            <h3 className="text-lg font-bold text-slate-900 mb-1">
               Offer a Prayer Intention
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+            <p className="text-xs text-slate-500 mb-6">
               Your intention will be lifted up by CFC Tuy households during our weekly prayer assemblies.
             </p>
 
@@ -172,7 +172,7 @@ export default function PrayerWallSection() {
                 <div className="flex justify-end">
                   <button
                     type="submit"
-                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2d63] text-white font-bold text-sm shadow-md transition-colors"
                   >
                     <Send className="w-4 h-4" />
                     <span>Post Intention</span>
@@ -192,11 +192,11 @@ export default function PrayerWallSection() {
               return (
                 <div
                   key={item.id}
-                  className="p-6 rounded-3xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex flex-col justify-between"
+                  className="p-6 rounded-3xl bg-white border border-slate-200 hover:border-[#243c81]/50 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
                 >
                   <div>
                     <div className="flex items-center justify-between gap-3 mb-3">
-                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                      <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200">
                         {item.category}
                       </span>
                       <span className="text-[11px] text-slate-400">
@@ -204,20 +204,20 @@ export default function PrayerWallSection() {
                       </span>
                     </div>
 
-                    <p className="text-sm sm:text-base text-slate-800 dark:text-slate-200 font-medium leading-relaxed italic">
+                    <p className="text-sm sm:text-base text-slate-800 font-medium leading-relaxed italic">
                       &quot;{item.intention}&quot;
                     </p>
 
-                    <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
+                      <span className="font-semibold text-slate-700">
                         {item.authorName} {item.barangay ? `(${item.barangay})` : ''}
                       </span>
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                    <span className="text-xs text-slate-500 dark:text-slate-400">
-                      <strong className="text-blue-600 dark:text-blue-400">{item.prayerCount}</strong> brethren prayed
+                  <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-xs text-slate-500">
+                      <strong className="text-[#243c81]">{item.prayerCount}</strong> brethren prayed
                     </span>
 
                     <button
@@ -225,8 +225,8 @@ export default function PrayerWallSection() {
                       disabled={hasPrayed}
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
                         hasPrayed
-                          ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-900 cursor-default'
-                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 border border-slate-200 dark:border-slate-600 shadow-xs active:scale-95'
+                          ? 'bg-red-50 text-red-600 border border-red-200 cursor-default'
+                          : 'bg-white text-slate-700 hover:bg-red-50 hover:text-red-600 border border-slate-200 shadow-xs active:scale-95'
                       }`}
                     >
                       <Heart className={`w-3.5 h-3.5 ${hasPrayed ? 'fill-red-500 text-red-500' : 'text-slate-400'}`} />

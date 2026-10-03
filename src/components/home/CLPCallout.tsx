@@ -11,12 +11,7 @@ export default function CLPCallout() {
   ];
 
   return (
-    <section id="clp" className="py-12 sm:py-16 lg:py-24 bg-gradient-to-br from-blue-900 via-blue-950 to-indigo-950 text-white relative overflow-hidden">
-      
-      {/* Background accents */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 blur-3xl pointer-events-none rounded-full" />
-      <div className="absolute bottom-0 left-0 w-80 h-80 bg-blue-500/15 blur-3xl pointer-events-none rounded-full" />
-
+    <section id="clp" className="py-12 sm:py-16 lg:py-24 bg-[#243c81] text-white relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           

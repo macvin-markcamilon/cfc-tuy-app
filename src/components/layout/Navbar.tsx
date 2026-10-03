@@ -15,7 +15,7 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 glass-nav transition-all duration-200 border-b border-slate-200/60 dark:border-slate-800/60 shadow-xs">
+    <header className="sticky top-0 z-50 bg-white transition-all duration-200 border-b border-slate-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           
@@ -37,9 +37,9 @@ export default function Navbar() {
           <div className="flex items-center">
             <Link
               href="/admin/login"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-800/95 hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs sm:text-sm shadow-xs hover:shadow-md hover:border-blue-300 dark:hover:border-blue-500 transition-all duration-200 active:scale-95"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#243c81] hover:bg-[#1a2d63] text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-md transition-all duration-200 active:scale-95"
             >
-              <LogIn className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <LogIn className="w-4 h-4 text-white" />
               <span>Login</span>
             </Link>
           </div>

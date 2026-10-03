@@ -14,7 +14,7 @@ export default function Footer() {
     return null;
   }
   return (
-    <footer className="border-t border-slate-200 dark:border-slate-800 bg-slate-900 text-slate-300">
+    <footer className="border-t border-blue-900/40 bg-[#182b5c] text-blue-100/90">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
           
@@ -39,10 +39,10 @@ export default function Footer() {
                 </span>
               </div>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-sm text-blue-100/80 leading-relaxed">
               &quot;Families in the Holy Spirit Renewing the Face of the Earth.&quot; Dedicated to supporting marriages, families, and youth through Christ-centered fellowship.
             </p>
-            <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-blue-200/80">
               <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
               <span>Saint Vincent Ferrer Parish, Tuy, Batangas</span>
             </div>
@@ -127,10 +127,10 @@ export default function Footer() {
             <h4 className="text-white font-bold text-sm tracking-wider uppercase text-amber-400">
               Connect With Us
             </h4>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-blue-200/80">
               Want to join a household or learn more about Couples for Christ Tuy? Reach out to our chapter servants.
             </p>
-            <div className="space-y-2 text-sm text-slate-300">
+            <div className="space-y-2 text-sm text-blue-100">
               <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>+63 917 123 4567 (Tuy Secretariat)</span>
@@ -141,7 +141,7 @@ export default function Footer() {
               </div>
             </div>
             <div className="pt-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 text-xs text-slate-300 border border-slate-700">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900/60 text-xs text-blue-200 border border-blue-800/80">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 Archdiocese of Lipa • Batangas
               </span>
@@ -151,14 +151,14 @@ export default function Footer() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        <div className="mt-12 pt-8 border-t border-blue-900/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-blue-200/60">
           <p>© {new Date().getFullYear()} Couples for Christ - Tuy Chapter. All rights reserved.</p>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
-              Built with love <Heart className="w-3 h-3 text-red-500 fill-red-500" /> for the Tuy Community
+              Built with love <Heart className="w-3 h-3 text-red-400 fill-red-400" /> for the Tuy Community
             </span>
             <span>•</span>
-            <span>Powered by Next.js, Supabase & Google Maps</span>
+            <span>Couples for Christ Official Brand Theme</span>
           </div>
         </div>
 

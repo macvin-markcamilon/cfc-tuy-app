@@ -21,13 +21,13 @@ export default function Navbar() {
           
           {/* Brand Logo Only */}
           <Link href="/" className="flex items-center group py-2" aria-label="Couples for Christ Tuy Home">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+            <div className="h-9 sm:h-11 flex items-center group-hover:scale-105 transition-transform duration-200">
               <Image
-                src="/images/cfc_logo_only_blue.png"
+                src="/images/cfc-logo.png"
                 alt="Couples for Christ Logo"
-                width={56}
-                height={56}
-                className="w-11 h-11 sm:w-14 sm:h-14 object-contain drop-shadow-xs"
+                width={200}
+                height={48}
+                className="h-8 sm:h-10 w-auto object-contain drop-shadow-xs"
                 priority
               />
             </div>

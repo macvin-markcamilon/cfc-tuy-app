@@ -21,13 +21,13 @@ export default function Footer() {
           {/* Column 1: Chapter Brand & Mission */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center p-1 shadow-md">
+              <div className="h-10 px-2 rounded-xl bg-white flex items-center justify-center shadow-md">
                 <Image
-                  src="/images/cfc_logo_only_blue.png"
+                  src="/images/cfc-logo.png"
                   alt="Couples for Christ Logo"
-                  width={36}
-                  height={36}
-                  className="w-8 h-8 object-contain"
+                  width={140}
+                  height={34}
+                  className="h-7 w-auto object-contain"
                 />
               </div>
               <div>

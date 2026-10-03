@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
+  FileText,
 } from 'lucide-react';
 import {
   fetchCLPPrograms,
@@ -174,13 +175,23 @@ export default function AdminDashboardPage() {
                 </p>
               </div>
 
-              <Link
-                href="/admin/clp"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 text-[#243c81] border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-all self-start sm:self-auto"
-              >
-                <span>Manage Couples &amp; Attendance</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                <Link
+                  href="/admin/clp?fullReport=true"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all shadow-xs"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Total Invitee Full Report &amp; PDF</span>
+                </Link>
+
+                <Link
+                  href="/admin/clp"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 text-[#243c81] border border-blue-200 text-xs font-bold hover:bg-blue-100 transition-all"
+                >
+                  <span>Manage Couples &amp; Attendance</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
             </div>
 
             {/* Quick Couple Preview */}

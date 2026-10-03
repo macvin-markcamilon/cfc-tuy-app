@@ -5,6 +5,7 @@ import { TUY_BARANGAYS } from '@/lib/data/mock-data';
 import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance, SavedCLPGrouping } from '@/types';
 import TuyMapPicker from '@/components/map/TuyMapPicker';
 import CLPCouplesMapModal from '@/components/map/CLPCouplesMapModal';
+import CLPInviteeFullReportModal from '@/components/clp/CLPInviteeFullReportModal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -186,6 +187,19 @@ export default function CLPAdminPage() {
   const [showCouplesMapModal, setShowCouplesMapModal] = useState(false);
   const [mapModalFocusedCoupleId, setMapModalFocusedCoupleId] = useState<string | null>(null);
   const [mapModalTitle, setMapModalTitle] = useState('All Invited Couples Tuy Map');
+
+  // Full Invitee Report Modal State (Demographics, Age Groups, Maps & PDF)
+  const [showInviteeFullReportModal, setShowInviteeFullReportModal] = useState(false);
+
+  // Auto-open full report modal if requested in URL
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('fullReport') === 'true') {
+        setShowInviteeFullReportModal(true);
+      }
+    }
+  }, []);
 
   // Bulk Upload State
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
@@ -2666,6 +2680,25 @@ Generated via Couples for Christ Tuy Chapter Portal`;
 
                   {/* Actions Group: Icon-Only Buttons with Tooltips + Add Couple */}
                   <div className="flex items-center gap-1.5 flex-wrap self-end md:self-auto shrink-0">
+                    {/* View Total Invitee Full Report Modal */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => setShowInviteeFullReportModal(true)}
+                        className="h-9 px-3 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold text-xs flex items-center gap-1.5 shadow-2xs transition-all active:scale-95"
+                        aria-label="View Total Invitee Full Report"
+                      >
+                        <FileText className="w-4 h-4 text-amber-700" />
+                        <span className="hidden sm:inline">Invitee Full Report</span>
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-30">
+                        <div className="bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
+                          View Total Invitee Full Report (Demographics, Age Groups, Maps &amp; PDF)
+                        </div>
+                        <div className="w-2 h-1 bg-slate-900 rotate-45 -mt-0.5"></div>
+                      </div>
+                    </div>
+
                     {/* View All on Map */}
                     <div className="relative group">
                       <button
@@ -3825,7 +3858,16 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowInviteeFullReportModal(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all shadow-xs active:scale-95"
+                  >
+                    <FileText className="w-4 h-4 text-slate-950" />
+                    <span>Total Invitee Full Report &amp; PDF</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleCopyReportSummary}
@@ -3849,20 +3891,30 @@ Generated via Couples for Christ Tuy Chapter Portal`;
               {/* 4 Overview Analytics Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Total Invited */}
-                <div className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#243c81] flex items-center justify-center shrink-0 border border-blue-100">
-                    <Users className="w-6 h-6" />
+                <div
+                  onClick={() => setShowInviteeFullReportModal(true)}
+                  className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group"
+                  title="Click to view Total Invitee Full Report (Age Groups, Maps & PDF)"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#243c81] group-hover:bg-[#243c81] group-hover:text-white transition-colors flex items-center justify-center shrink-0 border border-blue-100">
+                      <Users className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Invited Couples
+                      </span>
+                      <span className="text-2xl font-black text-slate-900">
+                        {totalInvitedCouples}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-medium block">
+                        {currentCouples.filter((c) => c.status === 'Active').length} active couples
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Invited Couples
-                    </span>
-                    <span className="text-2xl font-black text-slate-900">
-                      {totalInvitedCouples}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-medium block">
-                      {currentCouples.filter((c) => c.status === 'Active').length} active couples
-                    </span>
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-[#243c81] font-bold">
+                    <span>View Full Report &amp; Map</span>
+                    <span className="text-blue-600 group-hover:translate-x-1 transition-transform">↗</span>
                   </div>
                 </div>
 
@@ -6190,6 +6242,17 @@ Generated via Couples for Christ Tuy Chapter Portal`;
         couples={currentCouples}
         focusedCoupleId={mapModalFocusedCoupleId}
         title={mapModalTitle}
+      />
+
+      {/* ========================================================================= */}
+      {/* MODAL 7: TOTAL INVITEE FULL REPORT (AGE GROUPS, MAPS & PDF DOWNLOAD)       */}
+      {/* ========================================================================= */}
+      <CLPInviteeFullReportModal
+        isOpen={showInviteeFullReportModal}
+        onClose={() => setShowInviteeFullReportModal(false)}
+        currentClp={currentClp}
+        couples={currentCouples}
+        onTriggerToast={triggerToast}
       />
     </div>
   );

@@ -4128,21 +4128,57 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                         value={aiGroupPrompt}
                         onChange={(e) => setAiGroupPrompt(e.target.value)}
                         rows={3}
-                        placeholder='e.g. "Create 4 balanced discussion groups mixing different barangays for diversity and mutual encouragement" or "Group by barangay proximity so couples can travel together"'
+                        placeholder='e.g. "Group with 5 members each and group by age and barangay proximity" or "Create 8 balanced discussion circles"'
                         className="w-full px-4 py-3 rounded-2xl border border-slate-300 bg-slate-50 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-300 resize-none font-medium placeholder:text-slate-400 placeholder:font-normal"
                       />
+
+                      {/* Live Calculated Target Breakdown Preview */}
+                      {targetCouplesForGrouping.length > 0 && (
+                        (() => {
+                          const prompt = aiGroupPrompt.trim();
+                          const sizeMatch = prompt.match(/(?:groups?\s+(?:of|with)\s+(\d+)|(\d+)\s*(?:members?|couples?|pax)?\s*(?:each|per\s+group)|(?:each|every)\s+group\s*(?:has|with|of)?\s*(\d+))/i);
+                          const countMatch = prompt.match(/(\d+)\s*(?:balanced\s+|discussion\s+)*(?:groups?|circles?|cells?)/i);
+                          let sz: number | null = null;
+                          if (sizeMatch) {
+                            const raw = sizeMatch[1] || sizeMatch[2] || sizeMatch[3];
+                            if (raw) sz = parseInt(raw, 10);
+                          }
+                          let cnt = 0;
+                          let couplesEach = 5;
+                          if (sizeMatch && sz && sz > 0) {
+                            cnt = Math.ceil(targetCouplesForGrouping.length / sz);
+                            couplesEach = sz;
+                          } else if (countMatch) {
+                            cnt = parseInt(countMatch[1], 10);
+                            couplesEach = Math.max(1, Math.round(targetCouplesForGrouping.length / cnt));
+                          } else {
+                            couplesEach = 5;
+                            cnt = Math.ceil(targetCouplesForGrouping.length / couplesEach);
+                          }
+                          return (
+                            <div className="mt-2.5 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-violet-50 border border-violet-200 text-xs text-violet-800">
+                              <Sparkles className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                              <span>
+                                <strong className="font-bold text-violet-900">Calculated Distribution:</strong>{' '}
+                                {cnt} {cnt === 1 ? 'group' : 'groups'} (~{couplesEach} couples each for all {targetCouplesForGrouping.length} participants)
+                              </span>
+                            </div>
+                          );
+                        })()
+                      )}
 
                       {/* Prompt Suggestions */}
                       <div className="mt-3">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Quick Suggestions</p>
                         <div className="flex flex-wrap gap-2">
                           {[
+                            'Group with 5 members each (~8 groups)',
                             'Group by barangay proximity',
-                            'Group by occupation similarity',
+                            'Create 8 balanced discussion circles',
+                            'Group with 5 members each by age and barangay',
                             'Mix all barangays for diversity',
-                            'Create 3 balanced discussion circles',
                             'Create 4 balanced discussion circles',
-                            'Separate by wedding anniversary',
+                            'Group by occupation similarity',
                           ].map((s) => (
                             <button
                               key={s}

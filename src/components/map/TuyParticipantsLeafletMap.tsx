@@ -29,7 +29,7 @@ export default function TuyParticipantsLeafletMap({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersMapRef = useRef<Record<string, any>>({});
   const [mapReady, setMapReady] = useState(false);
-  const [activeTileType, setActiveTileType] = useState<'voyager' | 'osm'>('voyager');
+  const [activeTileType, setActiveTileType] = useState<'streets' | 'satellite' | 'osm'>('streets');
 
   // Center Tuy coordinates: lat = 14.0228, lng = 120.7289
   const tuyLat = TUY_CENTER_COORDINATES[1];
@@ -58,24 +58,23 @@ export default function TuyParticipantsLeafletMap({
         center: [tuyLat, tuyLng],
         zoom: 13,
         minZoom: 11,
-        maxZoom: 18,
+        maxZoom: 20,
         zoomControl: false,
       });
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      // CartoDB Voyager tiles (clean, modern with clear labels)
-      const voyagerLayer = L.tileLayer(
-        'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      // Google Maps Streets layer (crisp, authentic Google Maps roads, street names and Tuy barangays with NO watermark)
+      const streetsLayer = L.tileLayer(
+        'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
         {
-          attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
-          maxZoom: 19,
-          subdomains: 'abcd',
+          attribution: '&copy; Google Maps',
+          maxZoom: 20,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
         }
       );
 
-      voyagerLayer.addTo(map);
+      streetsLayer.addTo(map);
       mapRef.current = map;
 
       const markersGroup = L.featureGroup().addTo(map);
@@ -289,7 +288,8 @@ export default function TuyParticipantsLeafletMap({
   const handleToggleTile = async () => {
     if (!mapRef.current) return;
     const L = (await import('leaflet')).default;
-    const nextType = activeTileType === 'voyager' ? 'osm' : 'voyager';
+    const nextType: 'streets' | 'satellite' | 'osm' =
+      activeTileType === 'streets' ? 'satellite' : activeTileType === 'satellite' ? 'osm' : 'streets';
     setActiveTileType(nextType);
 
     // Remove existing tile layers
@@ -299,15 +299,24 @@ export default function TuyParticipantsLeafletMap({
       }
     });
 
-    const url =
-      nextType === 'voyager'
-        ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-    L.tileLayer(url, {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(mapRef.current);
+    if (nextType === 'streets') {
+      L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps',
+        maxZoom: 20,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+      }).addTo(mapRef.current);
+    } else if (nextType === 'satellite') {
+      L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        attribution: '&copy; Google Maps Satellite',
+        maxZoom: 20,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+      }).addTo(mapRef.current);
+    } else {
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+      }).addTo(mapRef.current);
+    }
   };
 
   return (
@@ -339,12 +348,16 @@ export default function TuyParticipantsLeafletMap({
           <button
             type="button"
             onClick={handleToggleTile}
-            className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-xl border border-slate-200 shadow-md text-xs font-bold transition-all active:scale-95 flex items-center gap-1"
-            title="Toggle Map Style"
+            className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-xl border border-slate-200 shadow-md text-xs font-bold transition-all active:scale-95 flex items-center gap-1.5"
+            title="Toggle Map Style (Streets / Satellite / OpenStreetMap)"
           >
             <Layers className="w-4 h-4 text-amber-600" />
-            <span className="hidden sm:inline text-[11px]">
-              {activeTileType === 'voyager' ? 'Voyager' : 'Street'}
+            <span className="hidden sm:inline text-[11px] font-bold">
+              {activeTileType === 'streets'
+                ? 'Google Streets'
+                : activeTileType === 'satellite'
+                ? 'Satellite'
+                : 'OpenStreetMap'}
             </span>
           </button>
         </div>

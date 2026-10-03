@@ -409,6 +409,17 @@ export default function CLPAdminPage() {
     return { label: '61+ yrs', bracket: '61-plus', color: 'bg-rose-50 text-rose-700 border-rose-200' };
   };
 
+  const getAgeBracketLabel = (key: string): string => {
+    switch (key) {
+      case '20-30': return '20–30 yrs (Young Adults)';
+      case '31-40': return '31–40 yrs (Young Couples)';
+      case '41-50': return '41–50 yrs (Prime Family)';
+      case '51-60': return '51–60 yrs (Mature Adults)';
+      case '61-plus': return '61+ yrs (Senior Elders)';
+      default: return 'All Age Brackets';
+    }
+  };
+
   // Filtered and Sorted couples in directory
   const filteredCouples = useMemo(() => {
     const list = currentCouples.filter((c) => {
@@ -1940,11 +1951,11 @@ export default function CLPAdminPage() {
 
   // ---------------------------------------------------------------------------
   // Download Invitee Couples List (PDF)
-  // Fields: Husband Name, Age, Wife's Name, Age, Anniversary, Address
+  // Fields: Husband Name, Age, Age Bracket, Wife's Name, Age, Age Bracket, Anniversary, Address
   // ---------------------------------------------------------------------------
   const handleDownloadCouplesPDF = () => {
     const targetCouples =
-      searchCoupleQuery.trim() || filterBarangay !== 'ALL'
+      searchCoupleQuery.trim() || filterBarangay !== 'ALL' || filterAgeBracket !== 'ALL' || coupleSortBy !== 'lastName-asc'
         ? filteredCouples
         : currentCouples;
 
@@ -1975,8 +1986,9 @@ export default function CLPAdminPage() {
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 116, 139);
+      const activeAgeLabel = getAgeBracketLabel(filterAgeBracket);
       doc.text(
-        `Venue: ${currentClp.venue || 'Tuy, Batangas'} | Generated: ${genDate} | Total: ${targetCouples.length} Couples`,
+        `Venue: ${currentClp.venue || 'Tuy, Batangas'} | Age Bracket: ${activeAgeLabel} | Generated: ${genDate} | Total: ${targetCouples.length} Couples`,
         14,
         26
       );
@@ -1986,23 +1998,30 @@ export default function CLPAdminPage() {
         head: [[
           '#',
           'Husband Name',
-          'Age',
+          'Age & Bracket',
           "Wife's Name",
-          'Age',
+          'Age & Bracket',
           'Anniversary',
           'Address / Barangay',
           'Status',
         ]],
-        body: targetCouples.map((c, idx) => [
-          idx + 1,
-          `${c.husbandLastName}, ${c.husbandFirstName}`,
-          computeAge(c.husbandBirthday),
-          `${c.wifeLastName}, ${c.wifeFirstName}`,
-          computeAge(c.wifeBirthday),
-          c.weddingAnniversary || '—',
-          c.address || `Brgy. ${c.barangay}, Tuy`,
-          c.status || 'Active',
-        ]),
+        body: targetCouples.map((c, idx) => {
+          const hAge = computeAge(c.husbandBirthday);
+          const hBracket = getAgeBracket(c.husbandBirthday).label;
+          const wAge = computeAge(c.wifeBirthday);
+          const wBracket = getAgeBracket(c.wifeBirthday).label;
+
+          return [
+            idx + 1,
+            `${c.husbandLastName}, ${c.husbandFirstName}`,
+            hAge !== '—' && hBracket !== 'Age N/A' ? `${hAge} (${hBracket})` : hAge,
+            `${c.wifeLastName}, ${c.wifeFirstName}`,
+            wAge !== '—' && wBracket !== 'Age N/A' ? `${wAge} (${wBracket})` : wAge,
+            c.weddingAnniversary || '—',
+            c.address || `Brgy. ${c.barangay}, Tuy`,
+            c.status || 'Active',
+          ];
+        }),
         styles: {
           fontSize: 8.5,
           cellPadding: 2.5,
@@ -2021,10 +2040,10 @@ export default function CLPAdminPage() {
         },
         columnStyles: {
           0: { halign: 'center', cellWidth: 10 },
-          2: { halign: 'center', cellWidth: 14 },
-          4: { halign: 'center', cellWidth: 14 },
-          5: { halign: 'center', cellWidth: 26 },
-          7: { halign: 'center', cellWidth: 20 },
+          2: { halign: 'center', cellWidth: 28 },
+          4: { halign: 'center', cellWidth: 28 },
+          5: { halign: 'center', cellWidth: 24 },
+          7: { halign: 'center', cellWidth: 18 },
         },
         margin: { left: 14, right: 14 },
         didDrawPage: (data) => {
@@ -2057,9 +2076,12 @@ export default function CLPAdminPage() {
   // Print Invitee Couples List
   // Fields: Husband Name, Age, Wife's Name, Age, Anniversary, Address
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Print Invitee Couples List (with Age Bracket options)
+  // ---------------------------------------------------------------------------
   const handlePrintCouplesList = () => {
     const targetCouples =
-      searchCoupleQuery.trim() || filterBarangay !== 'ALL'
+      searchCoupleQuery.trim() || filterBarangay !== 'ALL' || filterAgeBracket !== 'ALL' || coupleSortBy !== 'lastName-asc'
         ? filteredCouples
         : currentCouples;
 
@@ -2079,22 +2101,30 @@ export default function CLPAdminPage() {
       .map((c, idx) => {
         const hName = `${c.husbandFirstName || ''} ${c.husbandLastName || ''}`.trim();
         const hAge = computeAge(c.husbandBirthday);
+        const hBracket = getAgeBracket(c.husbandBirthday);
         const wName = `${c.wifeFirstName || ''} ${c.wifeLastName || ''}`.trim();
         const wAge = computeAge(c.wifeBirthday);
+        const wBracket = getAgeBracket(c.wifeBirthday);
         const anniversary = c.weddingAnniversary || '—';
         const address = c.address || `Brgy. ${c.barangay}, Tuy, Batangas`;
 
         return `
-          <tr>
+          <tr data-h-bracket="${hBracket.bracket}" data-w-bracket="${wBracket.bracket}">
             <td class="text-center font-bold text-muted">${idx + 1}</td>
             <td class="font-bold text-dark">
               <span class="prefix">Bro.</span> ${hName}
             </td>
-            <td class="text-center font-semibold text-accent">${hAge}</td>
+            <td class="text-center">
+              <span class="text-accent font-bold">${hAge}</span>
+              ${hBracket.label !== 'Age N/A' ? `<div class="badge-bracket">${hBracket.label}</div>` : ''}
+            </td>
             <td class="font-bold text-dark">
               <span class="prefix">Sis.</span> ${wName}
             </td>
-            <td class="text-center font-semibold text-accent">${wAge}</td>
+            <td class="text-center">
+              <span class="text-accent font-bold">${wAge}</span>
+              ${wBracket.label !== 'Age N/A' ? `<div class="badge-bracket">${wBracket.label}</div>` : ''}
+            </td>
             <td class="text-center font-semibold text-dark">${anniversary}</td>
             <td class="text-address">${address}</td>
           </tr>
@@ -2131,9 +2161,11 @@ export default function CLPAdminPage() {
       justify-content: space-between;
       align-items: center;
       box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      flex-wrap: wrap;
+      gap: 10px;
     }
     .no-print-bar .title {
-      font-size: 13.5px;
+      font-size: 13px;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -2143,11 +2175,22 @@ export default function CLPAdminPage() {
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
+    }
+    .print-select {
+      background: #fff;
+      color: #0f172a;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.4);
+      cursor: pointer;
     }
     .btn {
       padding: 6px 14px;
       border-radius: 6px;
-      font-size: 12.5px;
+      font-size: 12px;
       font-weight: 700;
       cursor: pointer;
       border: none;
@@ -2225,7 +2268,7 @@ export default function CLPAdminPage() {
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 12px;
+      font-size: 11.5px;
       line-height: 1.35;
     }
     thead {
@@ -2236,16 +2279,16 @@ export default function CLPAdminPage() {
       color: #1e293b;
       font-weight: 800;
       text-transform: uppercase;
-      font-size: 10.5px;
+      font-size: 10px;
       letter-spacing: 0.5px;
-      padding: 9px 10px;
+      padding: 9px 8px;
       border-top: 1px solid #cbd5e1;
       border-bottom: 2px solid #94a3b8;
       text-align: left;
     }
     th.text-center { text-align: center; }
     td {
-      padding: 8px 10px;
+      padding: 7px 8px;
       border-bottom: 1px solid #e2e8f0;
       vertical-align: middle;
     }
@@ -2256,8 +2299,21 @@ export default function CLPAdminPage() {
     .text-dark { color: #0f172a; }
     .text-muted { color: #64748b; }
     .text-accent { color: #1e3a8a; font-weight: 700; }
-    .text-address { color: #334155; font-size: 11.5px; }
-    .prefix { color: #64748b; font-weight: 600; font-size: 10px; margin-right: 2px; }
+    .text-address { color: #334155; font-size: 11px; }
+    .prefix { color: #64748b; font-weight: 600; font-size: 9.5px; margin-right: 2px; }
+
+    .badge-bracket {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 700;
+      color: #1e3a8a;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 4px;
+      padding: 1px 4px;
+      margin-top: 2px;
+      white-space: nowrap;
+    }
 
     /* Signatures Footer */
     .signatures {
@@ -2314,9 +2370,20 @@ export default function CLPAdminPage() {
 <body>
   <div class="no-print-bar">
     <div class="title">
-      <span>📄 ${currentClp.name} — Invitee Couples Roster (${targetCouples.length} couples)</span>
+      <span>📄 ${currentClp.name} — Invitee Couples Roster</span>
     </div>
     <div class="actions">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <label for="bracket-filter" style="font-size: 11.5px; font-weight: 700; color: #fff;">Age Bracket:</label>
+        <select id="bracket-filter" class="print-select" onchange="filterPrintByAge(this.value)">
+          <option value="ALL" ${filterAgeBracket === 'ALL' ? 'selected' : ''}>All Age Brackets</option>
+          <option value="20-30" ${filterAgeBracket === '20-30' ? 'selected' : ''}>20–30 yrs (Young Adults)</option>
+          <option value="31-40" ${filterAgeBracket === '31-40' ? 'selected' : ''}>31–40 yrs (Young Couples)</option>
+          <option value="41-50" ${filterAgeBracket === '41-50' ? 'selected' : ''}>41–50 yrs (Prime Family)</option>
+          <option value="51-60" ${filterAgeBracket === '51-60' ? 'selected' : ''}>51–60 yrs (Mature Adults)</option>
+          <option value="61-plus" ${filterAgeBracket === '61-plus' ? 'selected' : ''}>61+ yrs (Senior Elders)</option>
+        </select>
+      </div>
       <button class="btn btn-print" onclick="window.print()">🖨 Print / Save as PDF</button>
       <button class="btn btn-close" onclick="window.close()">✕ Close</button>
     </div>
@@ -2329,9 +2396,12 @@ export default function CLPAdminPage() {
         <h1>Couples for Christ • Municipality of Tuy</h1>
         <h2>${currentClp.name} — Invitee Couples Directory</h2>
         <p>Saint Vincent Ferrer Parish • Venue: ${currentClp.venue}</p>
+        <p style="margin-top: 3px; color: #1e3a8a; font-weight: 700;" id="active-age-label">
+          Age Bracket: ${getAgeBracketLabel(filterAgeBracket)}
+        </p>
       </div>
       <div class="doc-header-meta">
-        <span class="badge">${targetCouples.length} Invitee Couples</span>
+        <span class="badge" id="badge-count">${targetCouples.length} Invitee Couples</span>
         <div class="gen-date">Generated: ${genDate}</div>
       </div>
     </div>
@@ -2340,12 +2410,12 @@ export default function CLPAdminPage() {
       <thead>
         <tr>
           <th style="width: 4%;" class="text-center">#</th>
-          <th style="width: 22%;">Husband Name</th>
-          <th style="width: 6%;" class="text-center">Age</th>
-          <th style="width: 22%;">Wife's Name</th>
-          <th style="width: 6%;" class="text-center">Age</th>
-          <th style="width: 14%;" class="text-center">Anniversary</th>
-          <th style="width: 26%;">Address</th>
+          <th style="width: 20%;">Husband Name</th>
+          <th style="width: 12%;" class="text-center">Husband Age &amp; Bracket</th>
+          <th style="width: 20%;">Wife's Name</th>
+          <th style="width: 12%;" class="text-center">Wife Age &amp; Bracket</th>
+          <th style="width: 11%;" class="text-center">Anniversary</th>
+          <th style="width: 21%;">Address &amp; Barangay</th>
         </tr>
       </thead>
       <tbody>
@@ -2372,6 +2442,30 @@ export default function CLPAdminPage() {
       Couples for Christ Tuy Chapter • "Building the Church of the Home and Building the Church of the Poor"
     </div>
   </div>
+
+  <script>
+    function filterPrintByAge(bracket) {
+      var rows = document.querySelectorAll('tbody tr[data-h-bracket]');
+      var count = 0;
+      rows.forEach(function(row) {
+        var hB = row.getAttribute('data-h-bracket');
+        var wB = row.getAttribute('data-w-bracket');
+        if (bracket === 'ALL' || hB === bracket || wB === bracket) {
+          row.style.display = '';
+          count++;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+      var badgeEl = document.getElementById('badge-count');
+      if (badgeEl) badgeEl.innerText = count + ' Invitee Couples';
+      var labelEl = document.getElementById('active-age-label');
+      var selectEl = document.getElementById('bracket-filter');
+      if (labelEl && selectEl) {
+        labelEl.innerText = 'Age Bracket: ' + selectEl.options[selectEl.selectedIndex].text;
+      }
+    }
+  </script>
 </body>
 </html>`;
 
@@ -2555,10 +2649,11 @@ Generated via Couples for Christ Tuy Chapter Portal`;
           {activeTab === 'couples' && (
             <div className="space-y-6">
               {/* Search, Filter, and Action Bar */}
-              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3 min-w-0">
-                {/* Search & Filter Group */}
-                <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
-                  <div className="relative flex-1 min-w-[200px]">
+              <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3 min-w-0">
+                {/* Row 1: Search Bar on Left + Icon-Only Action Buttons with Tooltips + Add Couple */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 min-w-0">
+                  {/* Search Input */}
+                  <div className="relative flex-1 min-w-[200px] max-w-xl">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
@@ -2569,168 +2664,241 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     />
                   </div>
 
-                  {/* Barangay Filter */}
-                  <select
-                    value={filterBarangay}
-                    onChange={(e) => setFilterBarangay(e.target.value)}
-                    className="px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-600 shrink-0"
-                    title="Filter by Barangay"
-                  >
-                    <option value="ALL">All Tuy Barangays</option>
-                    {TUY_BARANGAYS.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
+                  {/* Actions Group: Icon-Only Buttons with Tooltips + Add Couple */}
+                  <div className="flex items-center gap-1.5 flex-wrap self-end md:self-auto shrink-0">
+                    {/* View All on Map */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMapModalFocusedCoupleId(null);
+                          setMapModalTitle(`All Invited Couples • ${currentClp.name}`);
+                          setShowCouplesMapModal(true);
+                        }}
+                        className="w-9 h-9 rounded-xl border border-slate-300 bg-white hover:bg-blue-50 hover:border-blue-300 text-[#243c81] flex items-center justify-center shadow-2xs transition-all active:scale-95"
+                        aria-label="View All on Map"
+                      >
+                        <MapIcon className="w-4 h-4 text-blue-700" />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-30">
+                        <div className="bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
+                          View All on Map
+                        </div>
+                        <div className="w-2 h-1 bg-slate-900 rotate-45 -mt-0.5"></div>
+                      </div>
+                    </div>
 
-                  {/* Age Bracket Filter */}
-                  <select
-                    value={filterAgeBracket}
-                    onChange={(e) => setFilterAgeBracket(e.target.value)}
-                    className="px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-blue-600 shrink-0"
-                    title="Filter by Participant Age Bracket"
-                  >
-                    <option value="ALL">All Age Brackets</option>
-                    <option value="20-30">20–30 yrs (Young Adults)</option>
-                    <option value="31-40">31–40 yrs (Young Couples)</option>
-                    <option value="41-50">41–50 yrs (Prime Family)</option>
-                    <option value="51-60">51–60 yrs (Mature Adults)</option>
-                    <option value="61-plus">61+ yrs (Senior Elders)</option>
-                  </select>
+                    {/* Download PDF */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={handleDownloadCouplesPDF}
+                        className="w-9 h-9 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 flex items-center justify-center shadow-2xs transition-all active:scale-95"
+                        aria-label="Download PDF Directory"
+                      >
+                        <FileText className="w-4 h-4 text-rose-600" />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-30">
+                        <div className="bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
+                          Download PDF (by Age / Barangay)
+                        </div>
+                        <div className="w-2 h-1 bg-slate-900 rotate-45 -mt-0.5"></div>
+                      </div>
+                    </div>
 
-                  {/* Sort By Dropdown */}
-                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 shrink-0">
-                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                    <select
-                      value={coupleSortBy}
-                      onChange={(e) => setCoupleSortBy(e.target.value as any)}
-                      className="bg-transparent text-slate-800 text-xs sm:text-sm font-semibold focus:outline-hidden cursor-pointer"
-                      title="Sort participants by"
-                    >
-                      <option value="lastName-asc">Sort: Last Name (A → Z)</option>
-                      <option value="lastName-desc">Sort: Last Name (Z → A)</option>
-                      <option value="barangay-asc">Sort: Barangay (A → Z)</option>
-                      <option value="barangay-desc">Sort: Barangay (Z → A)</option>
-                    </select>
-                  </div>
+                    {/* Download CSV */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={handleDownloadCouplesList}
+                        className="w-9 h-9 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-[#243c81] flex items-center justify-center shadow-2xs transition-all active:scale-95"
+                        aria-label="Download CSV List"
+                      >
+                        <Download className="w-4 h-4 text-blue-600" />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-30">
+                        <div className="bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
+                          Download CSV List
+                        </div>
+                        <div className="w-2 h-1 bg-slate-900 rotate-45 -mt-0.5"></div>
+                      </div>
+                    </div>
 
-                  {/* Grid / List Toggle */}
-                  <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-0.5 shrink-0">
+                    {/* Print List */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={handlePrintCouplesList}
+                        className="w-9 h-9 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 flex items-center justify-center shadow-2xs transition-all active:scale-95"
+                        aria-label="Print Invitee List"
+                      >
+                        <Printer className="w-4 h-4 text-indigo-600" />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-30">
+                        <div className="bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
+                          Print List (by Age Bracket &amp; Barangay)
+                        </div>
+                        <div className="w-2 h-1 bg-slate-900 rotate-45 -mt-0.5"></div>
+                      </div>
+                    </div>
+
+                    {/* Download CSV Template */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={handleDownloadTemplate}
+                        className="w-9 h-9 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-2xs transition-all active:scale-95"
+                        aria-label="Download CSV Template"
+                      >
+                        <FileDown className="w-4 h-4 text-emerald-600" />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-30">
+                        <div className="bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
+                          Download Bulk CSV Template
+                        </div>
+                        <div className="w-2 h-1 bg-slate-900 rotate-45 -mt-0.5"></div>
+                      </div>
+                    </div>
+
+                    {/* Bulk Upload */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBulkUploadFile(null);
+                          setBulkUploadPreview([]);
+                          setBulkUploadErrors([]);
+                          setBulkUploadResult(null);
+                          setShowBulkUploadModal(true);
+                        }}
+                        className="w-9 h-9 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-700 flex items-center justify-center shadow-2xs transition-all active:scale-95"
+                        aria-label="Bulk Upload CSV"
+                      >
+                        <Upload className="w-4 h-4 text-violet-600" />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-30">
+                        <div className="bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
+                          Bulk Upload Couples CSV
+                        </div>
+                        <div className="w-2 h-1 bg-slate-900 rotate-45 -mt-0.5"></div>
+                      </div>
+                    </div>
+
+                    {/* Print IDs */}
+                    <div className="relative group">
+                      <button
+                        type="button"
+                        onClick={handlePrintIDs}
+                        className="w-9 h-9 rounded-xl border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-700 flex items-center justify-center shadow-2xs transition-all active:scale-95"
+                        aria-label="Print Participant Name IDs"
+                      >
+                        <IdCard className="w-4 h-4 text-orange-600" />
+                      </button>
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-30">
+                        <div className="bg-slate-900 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-xl whitespace-nowrap">
+                          Print Participant Name IDs (90×60 mm)
+                        </div>
+                        <div className="w-2 h-1 bg-slate-900 rotate-45 -mt-0.5"></div>
+                      </div>
+                    </div>
+
+                    <div className="h-6 w-px bg-slate-200 mx-0.5 hidden sm:block"></div>
+
+                    {/* Primary Add Couple Button */}
                     <button
                       type="button"
-                      onClick={() => setCoupleViewMode('grid')}
-                      title="Grid view"
-                      className={`p-1.5 rounded-lg transition-all ${
-                        coupleViewMode === 'grid'
-                          ? 'bg-white shadow-xs text-[#243c81]'
-                          : 'text-slate-400 hover:text-slate-600'
-                      }`}
+                      onClick={() => setShowAddCoupleModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
                     >
-                      <LayoutGrid className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCoupleViewMode('list')}
-                      title="List view"
-                      className={`p-1.5 rounded-lg transition-all ${
-                        coupleViewMode === 'list'
-                          ? 'bg-white shadow-xs text-[#243c81]'
-                          : 'text-slate-400 hover:text-slate-600'
-                      }`}
-                    >
-                      <List className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Couple</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Unified Action Buttons Group */}
-                <div className="flex items-center gap-2 flex-wrap justify-start xl:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMapModalFocusedCoupleId(null);
-                      setMapModalTitle(`All Invited Couples • ${currentClp.name}`);
-                      setShowCouplesMapModal(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-[#243c81] font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    <MapIcon className="w-3.5 h-3.5 text-blue-700" />
-                    <span>View All on Map</span>
-                  </button>
+                {/* Row 2: Demographic Filters, Sorters & View Toggle */}
+                <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2.5 border-t border-slate-100">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Barangay Filter */}
+                    <select
+                      value={filterBarangay}
+                      onChange={(e) => setFilterBarangay(e.target.value)}
+                      className="px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 text-xs font-semibold focus:ring-2 focus:ring-blue-600 shrink-0"
+                      title="Filter by Barangay"
+                    >
+                      <option value="ALL">All Tuy Barangays</option>
+                      {TUY_BARANGAYS.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
 
-                  <button
-                    type="button"
-                    onClick={handleDownloadCouplesPDF}
-                    title="Download invitee couples list as PDF (Husband Name, Age, Wife's Name, Age, Anniversary, Address)"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-rose-600" />
-                    <span>Download PDF</span>
-                  </button>
+                    {/* Age Bracket Filter */}
+                    <select
+                      value={filterAgeBracket}
+                      onChange={(e) => setFilterAgeBracket(e.target.value)}
+                      className="px-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-800 text-xs font-semibold focus:ring-2 focus:ring-blue-600 shrink-0"
+                      title="Filter by Participant Age Bracket"
+                    >
+                      <option value="ALL">All Age Brackets</option>
+                      <option value="20-30">20–30 yrs (Young Adults)</option>
+                      <option value="31-40">31–40 yrs (Young Couples)</option>
+                      <option value="41-50">41–50 yrs (Prime Family)</option>
+                      <option value="51-60">51–60 yrs (Mature Adults)</option>
+                      <option value="61-plus">61+ yrs (Senior Elders)</option>
+                    </select>
 
-                  <button
-                    type="button"
-                    onClick={handleDownloadCouplesList}
-                    title="Download invitee couples list as CSV (Husband Name, Age, Wife's Name, Age, Anniversary, Address)"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-blue-300 bg-blue-50 hover:bg-blue-100 text-[#243c81] font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download CSV</span>
-                  </button>
+                    {/* Sort By Dropdown */}
+                    <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1 shrink-0">
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      <select
+                        value={coupleSortBy}
+                        onChange={(e) => setCoupleSortBy(e.target.value as any)}
+                        className="bg-transparent text-slate-800 text-xs font-semibold focus:outline-hidden cursor-pointer"
+                        title="Sort participants by"
+                      >
+                        <option value="lastName-asc">Sort: Last Name (A → Z)</option>
+                        <option value="lastName-desc">Sort: Last Name (Z → A)</option>
+                        <option value="barangay-asc">Sort: Barangay (A → Z)</option>
+                        <option value="barangay-desc">Sort: Barangay (Z → A)</option>
+                      </select>
+                    </div>
+                  </div>
 
-                  <button
-                    type="button"
-                    onClick={handlePrintCouplesList}
-                    title="Print official list of invitee couples (Husband Name, Age, Wife's Name, Age, Anniversary, Address)"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    <Printer className="w-3.5 h-3.5" />
-                    <span>Print List</span>
-                  </button>
+                  {/* Right side: Count + View Toggle */}
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500 font-medium">
+                      Showing <strong className="text-slate-900 font-bold">{filteredCouples.length}</strong> of {currentCouples.length}
+                    </span>
 
-                  <button
-                    type="button"
-                    onClick={handleDownloadTemplate}
-                    title="Download CSV template for bulk upload"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    <FileDown className="w-3.5 h-3.5" />
-                    <span>Template</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBulkUploadFile(null);
-                      setBulkUploadPreview([]);
-                      setBulkUploadErrors([]);
-                      setBulkUploadResult(null);
-                      setShowBulkUploadModal(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Bulk Upload</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handlePrintIDs}
-                    title="Print name IDs (90×60 mm) on A4 paper"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-700 font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    <IdCard className="w-3.5 h-3.5" />
-                    <span>Print IDs</span>
-                  </button>
-
-                  <button
-                    onClick={() => setShowAddCoupleModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white font-bold text-xs shadow-xs transition-all active:scale-95 whitespace-nowrap"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Couple</span>
-                  </button>
+                    <div className="flex items-center bg-slate-100 rounded-xl p-0.5 gap-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setCoupleViewMode('grid')}
+                        title="Grid view"
+                        className={`p-1.5 rounded-lg transition-all ${
+                          coupleViewMode === 'grid'
+                            ? 'bg-white shadow-xs text-[#243c81]'
+                            : 'text-slate-400 hover:text-slate-600'
+                        }`}
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCoupleViewMode('list')}
+                        title="List view"
+                        className={`p-1.5 rounded-lg transition-all ${
+                          coupleViewMode === 'list'
+                            ? 'bg-white shadow-xs text-[#243c81]'
+                            : 'text-slate-400 hover:text-slate-600'
+                        }`}
+                      >
+                        <List className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

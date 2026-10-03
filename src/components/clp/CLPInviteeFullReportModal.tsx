@@ -1,7 +1,10 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import { CLPCouple, CLPProgram } from '@/types';
+import TuyParticipantsLeafletMap from '@/components/map/TuyParticipantsLeafletMap';
+import { generateComprehensivePdfReport } from '@/lib/reports/generateComprehensivePdfReport';
 import { TUY_BARANGAYS, TUY_CENTER_COORDINATES } from '@/lib/data/mock-data';
 import {
   X,
@@ -546,7 +549,7 @@ export default function CLPInviteeFullReportModal({
   // ---------------------------------------------------------------------------
   // Generate & Download Comprehensive PDF Report
   // ---------------------------------------------------------------------------
-  const handleDownloadFullPDF = () => {
+  const handleDownloadFullPDF = async () => {
     if (!couples.length || !currentClp) {
       if (onTriggerToast) onTriggerToast('No invitee data to generate report.');
       return;
@@ -554,302 +557,15 @@ export default function CLPInviteeFullReportModal({
 
     try {
       setIsGeneratingPdf(true);
-      const doc = new jsPDF({ orientation: 'landscape', format: 'a4', unit: 'mm' });
-      const genDate = new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
+      await generateComprehensivePdfReport({
+        currentClp,
+        couples,
+        filteredCouples,
+        filterAgeBracket,
+        filterBarangay,
+        filterStatus,
+        onToast: onTriggerToast,
       });
-      const genTime = new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-
-      // ==========================================
-      // PAGE HEADER
-      // ==========================================
-      doc.setFillColor(36, 60, 129); // #243c81
-      doc.rect(0, 0, doc.internal.pageSize.width, 24, 'F');
-
-      // Accent gold bar
-      doc.setFillColor(217, 119, 6); // #d97706
-      doc.rect(0, 24, doc.internal.pageSize.width, 2, 'F');
-
-      doc.setFontSize(14);
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.text('COUPLES FOR CHRIST • MUNICIPALITY OF TUY, BATANGAS', 14, 11);
-
-      doc.setFontSize(9.5);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(224, 231, 255);
-      doc.text(
-        `CHRISTIAN LIFE PROGRAM: ${currentClp.name.toUpperCase()} • TOTAL INVITEE COMPREHENSIVE REPORT`,
-        14,
-        18
-      );
-
-      doc.setFontSize(8.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text(`Generated: ${genDate} at ${genTime}`, doc.internal.pageSize.width - 14, 18, {
-        align: 'right',
-      });
-
-      // Batch Meta & Filter Banner
-      doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(30, 41, 59);
-      doc.text(`Venue: ${currentClp.venue || 'Tuy, Batangas'}`, 14, 32);
-
-      const activeBracketLabel =
-        filterAgeBracket === 'ALL'
-          ? 'All Age Groups'
-          : REPORT_AGE_BRACKETS.find((b) => b.key === filterAgeBracket)?.label || filterAgeBracket;
-
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(100, 116, 139);
-      doc.text(
-        `Filter: [Age Group: ${activeBracketLabel}] • [Barangay: ${filterBarangay}] • [Status: ${filterStatus}] | Scope: ${filteredCouples.length} of ${couples.length} Couples (${filteredCouples.length * 2} Individuals)`,
-        14,
-        37
-      );
-
-      // ==========================================
-      // SECTION 1: AGE GROUP DEMOGRAPHIC BREAKDOWN TABLE
-      // ==========================================
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(36, 60, 129);
-      doc.text('1. Invitee Age Group Demographic Distribution', 14, 44);
-
-      const ageSummaryRows = REPORT_AGE_BRACKETS.map((b) => {
-        const stats = demographics.bracketCounts[b.key] || {
-          husbands: 0,
-          wives: 0,
-          total: 0,
-          percentage: 0,
-        };
-        return [
-          `${b.label} (${b.sublabel})`,
-          b.range,
-          stats.husbands,
-          stats.wives,
-          stats.total,
-          `${stats.percentage}%`,
-        ];
-      });
-
-      // Add Total Row
-      ageSummaryRows.push([
-        'Total Cohort',
-        'Husbands + Wives',
-        demographics.totalCouples,
-        demographics.totalCouples,
-        demographics.totalIndividuals,
-        '100%',
-      ]);
-
-      autoTable(doc, {
-        startY: 47,
-        head: [
-          [
-            'Age Bracket',
-            'Age Range',
-            'Husbands Count',
-            'Wives Count',
-            'Total Individuals',
-            '% of Total',
-          ],
-        ],
-        body: ageSummaryRows,
-        styles: {
-          fontSize: 8,
-          cellPadding: 2,
-          textColor: [15, 23, 42],
-        },
-        headStyles: {
-          fillColor: [36, 60, 129],
-          textColor: [255, 255, 255],
-          fontStyle: 'bold',
-          fontSize: 8,
-        },
-        alternateRowStyles: {
-          fillColor: [248, 250, 252],
-        },
-        columnStyles: {
-          0: { fontStyle: 'bold', cellWidth: 50 },
-          1: { cellWidth: 45 },
-          2: { halign: 'center', cellWidth: 32 },
-          3: { halign: 'center', cellWidth: 32 },
-          4: { halign: 'center', cellWidth: 35, fontStyle: 'bold' },
-          5: { halign: 'center', cellWidth: 25 },
-        },
-        margin: { left: 14, right: 14 },
-      });
-
-      // ==========================================
-      // SECTION 2: TOP BARANGAYS DISTRIBUTION SUMMARY
-      // ==========================================
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const finalY1 = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 7 : 95;
-
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(36, 60, 129);
-      doc.text('2. Geographic Representation (Tuy Barangays)', 14, finalY1);
-
-      const topBarangays = demographics.sortedBarangays.slice(0, 8);
-      const brgySummaryRows = topBarangays.map((bg) => [
-        `Brgy. ${bg.name}`,
-        bg.count,
-        bg.count * 2,
-        `${bg.percentage}% of cohort`,
-      ]);
-
-      autoTable(doc, {
-        startY: finalY1 + 3,
-        head: [['Barangay Name', 'Couples Count', 'Individuals Count', 'Distribution %']],
-        body: brgySummaryRows,
-        styles: {
-          fontSize: 8,
-          cellPadding: 2,
-          textColor: [15, 23, 42],
-        },
-        headStyles: {
-          fillColor: [217, 119, 6], // #d97706 gold
-          textColor: [255, 255, 255],
-          fontStyle: 'bold',
-          fontSize: 8,
-        },
-        alternateRowStyles: {
-          fillColor: [248, 250, 252],
-        },
-        columnStyles: {
-          0: { fontStyle: 'bold', cellWidth: 70 },
-          1: { halign: 'center', cellWidth: 40 },
-          2: { halign: 'center', cellWidth: 40 },
-          3: { halign: 'center', cellWidth: 40 },
-        },
-        margin: { left: 14, right: 14 },
-      });
-
-      // ==========================================
-      // SECTION 3: COMPLETE INVITEES DIRECTORY
-      // ==========================================
-      doc.addPage('a4', 'landscape');
-
-      // Top mini header on subsequent pages
-      doc.setFillColor(36, 60, 129);
-      doc.rect(0, 0, doc.internal.pageSize.width, 16, 'F');
-      doc.setFontSize(11);
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.text(
-        `3. Full Invitee Couples Roster (${filteredCouples.length} Couples Tracked)`,
-        14,
-        11
-      );
-
-      const rosterRows = filteredCouples.map((c, idx) => {
-        const hAge = computeAgeString(c.husbandBirthday);
-        const hBracket =
-          REPORT_AGE_BRACKETS.find((b) => b.key === getCoupleAgeBracketKey(c.husbandBirthday))
-            ?.label || '';
-        const wAge = computeAgeString(c.wifeBirthday);
-        const wBracket =
-          REPORT_AGE_BRACKETS.find((b) => b.key === getCoupleAgeBracketKey(c.wifeBirthday))
-            ?.label || '';
-
-        const husbandDesc =
-          hAge !== '—'
-            ? `${c.husbandLastName}, ${c.husbandFirstName}\nAge: ${hAge} (${hBracket})${
-                c.husbandContact ? `\nTel: ${c.husbandContact}` : ''
-              }`
-            : `${c.husbandLastName}, ${c.husbandFirstName}${
-                c.husbandContact ? `\nTel: ${c.husbandContact}` : ''
-              }`;
-
-        const wifeDesc =
-          wAge !== '—'
-            ? `${c.wifeLastName}, ${c.wifeFirstName}\nAge: ${wAge} (${wBracket})${
-                c.wifeContact ? `\nTel: ${c.wifeContact}` : ''
-              }`
-            : `${c.wifeLastName}, ${c.wifeFirstName}${
-                c.wifeContact ? `\nTel: ${c.wifeContact}` : ''
-              }`;
-
-        const marriageDesc = c.weddingAnniversary
-          ? `${c.weddingAnniversary}\n(${computeYearsMarried(c.weddingAnniversary)})`
-          : '—';
-
-        const locationDesc = `${c.address || `Brgy. ${c.barangay}`}\nBrgy. ${c.barangay}, Tuy\nGPS: ${c.coordinates[1].toFixed(
-          3
-        )}, ${c.coordinates[0].toFixed(3)}`;
-
-        return [idx + 1, husbandDesc, wifeDesc, marriageDesc, locationDesc, c.status || 'Active'];
-      });
-
-      autoTable(doc, {
-        startY: 22,
-        head: [
-          [
-            '#',
-            'Husband Details (Age & Contact)',
-            'Wife Details (Age & Contact)',
-            'Wedding Anniversary',
-            'Address, Barangay & GPS',
-            'Status',
-          ],
-        ],
-        body: rosterRows,
-        styles: {
-          fontSize: 8,
-          cellPadding: 2.5,
-          textColor: [15, 23, 42],
-          lineColor: [226, 232, 240],
-          lineWidth: 0.1,
-        },
-        headStyles: {
-          fillColor: [36, 60, 129],
-          textColor: [255, 255, 255],
-          fontStyle: 'bold',
-          fontSize: 8,
-        },
-        alternateRowStyles: {
-          fillColor: [248, 250, 252],
-        },
-        columnStyles: {
-          0: { halign: 'center', cellWidth: 10 },
-          1: { cellWidth: 70 },
-          2: { cellWidth: 70 },
-          3: { halign: 'center', cellWidth: 32 },
-          4: { cellWidth: 67 },
-          5: { halign: 'center', cellWidth: 20, fontStyle: 'bold' },
-        },
-        margin: { left: 14, right: 14 },
-        didDrawPage: (data) => {
-          const pageCount = doc.getNumberOfPages();
-          doc.setFontSize(8);
-          doc.setTextColor(148, 163, 184);
-          doc.text(
-            'Couples for Christ Tuy Chapter • "Building the Church of the Home and Building the Church of the Poor"',
-            14,
-            doc.internal.pageSize.height - 8
-          );
-          doc.text(
-            `Page ${data.pageNumber} of ${pageCount}`,
-            doc.internal.pageSize.width - 25,
-            doc.internal.pageSize.height - 8
-          );
-        },
-      });
-
-      const sanitizedBatch = currentClp.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-      doc.save(`CFC_Tuy_${sanitizedBatch}_Total_Invitee_Full_Report.pdf`);
-
-      if (onTriggerToast) {
-        onTriggerToast(`Downloaded PDF Full Report for ${filteredCouples.length} couples!`);
-      }
     } catch (err) {
       console.error('Failed to generate full report PDF:', err);
       if (onTriggerToast) {
@@ -936,6 +652,18 @@ export default function CLPInviteeFullReportModal({
                 <span>Table</span>
               </button>
             </div>
+
+            {/* Open in Dedicated Page */}
+            {currentClp && (
+              <Link
+                href={`/admin/clp/report?clpId=${currentClp.id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all shadow-md active:scale-95"
+                title="Open this comprehensive report in its own dedicated page"
+              >
+                <span>Open in Dedicated Page</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            )}
 
             {/* Download PDF Button */}
             <button
@@ -1318,56 +1046,13 @@ export default function CLPInviteeFullReportModal({
                 )}
               </div>
 
-              {/* Map Canvas or Fallback Vector Display */}
+              {/* Leaflet Map with all Participant Markers */}
               <div className="w-full h-full relative">
-                {isGoogleMapsActive && !authError ? (
-                  <div ref={mapContainerRef} className="w-full h-full" />
-                ) : (
-                  /* Fallback Interactive Vector Tuy Map */
-                  <div className="w-full h-full relative p-6 flex flex-col justify-between bg-gradient-to-br from-[#0c1633] via-[#101c42] to-slate-950 text-white select-none overflow-hidden">
-                    <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
-
-                    {/* Vector Map Pins Matrix */}
-                    <div className="relative z-10 my-auto grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto max-h-[220px] p-2">
-                      {filteredCouples.map((c) => {
-                        const isSelected = selectedCouple?.id === c.id;
-                        const hAge = computeAgeString(c.husbandBirthday);
-                        const wAge = computeAgeString(c.wifeBirthday);
-
-                        return (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => handleSelectCoupleOnMap(c)}
-                            className={`p-2.5 rounded-xl border text-left transition-all ${
-                              isSelected
-                                ? 'bg-amber-400/20 border-amber-400 text-white ring-2 ring-amber-400/40'
-                                : 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-200'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between text-[10px] font-bold text-amber-300 mb-1">
-                              <span className="truncate">Brgy. {c.barangay}</span>
-                              <span className="font-mono text-slate-400">
-                                {c.coordinates[1].toFixed(2)}°
-                              </span>
-                            </div>
-                            <div className="font-extrabold text-xs text-white truncate">
-                              {c.husbandFirstName} &amp; {c.wifeFirstName}
-                            </div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">
-                              Ages: {hAge} / {wAge}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="relative z-10 text-[11px] text-slate-400 text-center flex items-center justify-center gap-1.5 pt-2 border-t border-white/10">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Saint Vincent Ferrer Parish • Municipality of Tuy, Batangas</span>
-                    </div>
-                  </div>
-                )}
+                <TuyParticipantsLeafletMap
+                  couples={filteredCouples}
+                  selectedCoupleId={selectedCoupleId}
+                  onSelectCouple={(c) => setSelectedCoupleId(c.id)}
+                />
               </div>
 
               {/* Bottom Quick Card for Selected Couple on Map */}

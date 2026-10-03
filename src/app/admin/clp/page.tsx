@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { TUY_BARANGAYS } from '@/lib/data/mock-data';
 import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance, SavedCLPGrouping } from '@/types';
 import TuyMapPicker from '@/components/map/TuyMapPicker';
@@ -85,6 +86,7 @@ import {
 } from 'lucide-react';
 
 export default function CLPAdminPage() {
+  const router = useRouter();
   // Programs State
   const [programs, setPrograms] = useState<CLPProgram[]>([]);
   const [selectedClpId, setSelectedClpId] = useState<string>('');
@@ -191,15 +193,16 @@ export default function CLPAdminPage() {
   // Full Invitee Report Modal State (Demographics, Age Groups, Maps & PDF)
   const [showInviteeFullReportModal, setShowInviteeFullReportModal] = useState(false);
 
-  // Auto-open full report modal if requested in URL
+  // Auto-open full report page if requested in URL
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.get('fullReport') === 'true') {
-        setShowInviteeFullReportModal(true);
+        const batchParam = selectedClpId ? `?clpId=${selectedClpId}` : '';
+        router.push(`/admin/clp/report${batchParam}`);
       }
     }
-  }, []);
+  }, [selectedClpId, router]);
 
   // Bulk Upload State
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
@@ -2680,13 +2683,13 @@ Generated via Couples for Christ Tuy Chapter Portal`;
 
                   {/* Actions Group: Icon-Only Buttons with Tooltips + Add Couple */}
                   <div className="flex items-center gap-1.5 flex-wrap self-end md:self-auto shrink-0">
-                    {/* View Total Invitee Full Report Modal */}
+                    {/* View Total Invitee Full Report Dedicated Page */}
                     <div className="relative group">
                       <button
                         type="button"
-                        onClick={() => setShowInviteeFullReportModal(true)}
+                        onClick={() => router.push(`/admin/clp/report?clpId=${currentClp.id}`)}
                         className="h-9 px-3 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-extrabold text-xs flex items-center gap-1.5 shadow-2xs transition-all active:scale-95"
-                        aria-label="View Total Invitee Full Report"
+                        aria-label="View Total Invitee Full Report Page"
                       >
                         <FileText className="w-4 h-4 text-amber-700" />
                         <span className="hidden sm:inline">Invitee Full Report</span>
@@ -3861,7 +3864,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => setShowInviteeFullReportModal(true)}
+                    onClick={() => router.push(`/admin/clp/report?clpId=${currentClp.id}`)}
                     className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all shadow-xs active:scale-95"
                   >
                     <FileText className="w-4 h-4 text-slate-950" />
@@ -3892,7 +3895,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Total Invited */}
                 <div
-                  onClick={() => setShowInviteeFullReportModal(true)}
+                  onClick={() => router.push(`/admin/clp/report?clpId=${currentClp.id}`)}
                   className="p-5 rounded-3xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group"
                   title="Click to view Total Invitee Full Report (Age Groups, Maps & PDF)"
                 >

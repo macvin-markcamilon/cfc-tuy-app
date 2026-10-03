@@ -1775,12 +1775,13 @@ export default function CLPAdminPage() {
       width: 90mm;
       height: 60mm;
       border: 2px solid #1e3a8a;
-      border-radius: 3.5mm;
+      border-radius: 4mm;
       overflow: hidden;
       page-break-inside: avoid;
       break-inside: avoid;
       background: #ffffff;
       box-sizing: border-box;
+      position: relative;
     }
     .id-inner {
       width: 100%;
@@ -1789,46 +1790,48 @@ export default function CLPAdminPage() {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 3.5mm 5mm;
+      padding: 3mm 4mm;
       gap: 1.2mm;
       text-align: center;
       box-sizing: border-box;
+      overflow: hidden;
     }
     .last-name {
-      font-size: 13.5pt;
       font-weight: 800;
       color: #1e3a8a;
-      letter-spacing: 0.07em;
+      letter-spacing: 0.06em;
       text-align: center;
-      line-height: 1.15;
+      line-height: 1.1;
       white-space: nowrap;
-      max-width: 80mm;
+      margin: 0;
+      padding: 0;
     }
     .first-name {
-      font-size: 25pt;
       font-weight: 900;
       color: #0f172a;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
       text-align: center;
       line-height: 1.05;
       white-space: nowrap;
-      max-width: 80mm;
+      margin: 0;
+      padding: 0;
     }
     .spouse {
-      font-size: 11.5pt;
       font-weight: 700;
       color: #475569;
       text-align: center;
       letter-spacing: 0.03em;
-      line-height: 1.15;
+      line-height: 1.1;
       white-space: nowrap;
-      max-width: 80mm;
+      margin: 0;
+      padding: 0;
     }
     .logo {
-      width: 12mm;
-      height: auto;
-      margin-top: 1.5mm;
+      width: 11mm;
+      height: 11mm;
       object-fit: contain;
+      margin-top: 1mm;
+      flex-shrink: 0;
     }
     @media print {
       body { margin: 0; }
@@ -1837,64 +1840,148 @@ export default function CLPAdminPage() {
   </style>
 </head>
 <body>
-  <div class="no-print" style="padding:12px 16px;background:#1e3a8a;color:#fff;font-family:Arial;font-size:13px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-    <span><strong>${currentClp.name}</strong> — Name IDs (90×60 mm) · ${totalCards} cards (${currentCouples.length} couples)</span>
-    <button onclick="window.print()" style="background:#fff;color:#1e3a8a;border:none;padding:6px 16px;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px">🖨 Print / Save as PDF</button>
+  <div class="no-print" style="position:sticky;top:0;z-index:999;padding:10px 16px;background:#1e3a8a;color:#fff;font-family:Arial,sans-serif;font-size:13px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 2px 10px rgba(0,0,0,0.15)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span><strong>${currentClp.name}</strong> — Name IDs (90×60 mm) · ${totalCards} cards</span>
+    </div>
+
+    <!-- Real-time Font Size Adjuster Controls -->
+    <div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.15);padding:4px 12px;border-radius:8px">
+      <span style="font-weight:bold;font-size:12px">Name Size:</span>
+      <button onclick="adjustScale(-0.1)" title="Smaller font size" style="background:#fff;color:#1e3a8a;border:none;width:24px;height:24px;border-radius:4px;font-weight:900;cursor:pointer;line-height:1">-</button>
+      <input type="range" id="sizeRange" min="0.8" max="1.5" step="0.05" value="1.0" oninput="setScale(parseFloat(this.value))" style="width:90px;cursor:pointer" />
+      <button onclick="adjustScale(0.1)" title="Bigger font size" style="background:#fff;color:#1e3a8a;border:none;width:24px;height:24px;border-radius:4px;font-weight:900;cursor:pointer;line-height:1">+</button>
+      <span id="scaleLabel" style="font-weight:bold;font-size:11px;min-width:38px;text-align:center">100%</span>
+      <button onclick="setScale(1.2)" style="background:rgba(255,255,255,0.25);color:#fff;border:1px solid rgba(255,255,255,0.4);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer">Bigger</button>
+      <button onclick="setScale(1.4)" style="background:rgba(255,255,255,0.25);color:#fff;border:1px solid rgba(255,255,255,0.4);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer">Max Fit</button>
+      <button onclick="setScale(1.0)" style="background:transparent;color:#cbd5e1;border:none;padding:3px 6px;border-radius:4px;font-size:11px;cursor:pointer;text-decoration:underline">Reset</button>
+    </div>
+
+    <div>
+      <button onclick="window.print()" style="background:#f59e0b;color:#0f172a;border:none;padding:7px 18px;border-radius:6px;font-weight:900;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px">
+        🖨 Print / Save as PDF
+      </button>
+    </div>
   </div>
+
   <div class="sheet">${cardsHtml}</div>
+
   <script>
     (function() {
       var PT_TO_PX = 96 / 72; // 1pt ≈ 1.333px at 96 dpi
 
-      // Proportional sizing functions based on name character length
+      // Proportional sizing functions based on name length
+      // Short names start noticeably bigger to fill available space
       function calcFirstNamePt(len) {
-        if      (len <= 5)  return 26; // EDWIN, SUSAN, LOUIE
-        else if (len <= 8)  return 23; // EUFORIO, ROBERTO
-        else if (len <= 11) return 20; // TERESITA, MA. LOURDES
-        else if (len <= 14) return 17; // MARIA CRISTINA
-        else                return 15;
+        if      (len <= 4)  return 34; // DAN, JOY, ANA, REY
+        else if (len <= 6)  return 30; // EDWIN, SUSAN, LOUIE
+        else if (len <= 8)  return 26; // EUFORIO, ROBERTO
+        else if (len <= 11) return 22; // TERESITA, MA. LOURDES
+        else if (len <= 14) return 18; // MARIA CRISTINA
+        else                return 16;
       }
 
       function calcLastNamePt(len) {
-        if      (len <= 6)  return 14;   // VALDEZ, LAURIO
-        else if (len <= 9)  return 13;   // SOCORRO, DELA CRUZ
-        else if (len <= 12) return 11.5; // VILLANUEVA, CONCEPCION
+        if      (len <= 5)  return 17;   // CRUZ, LIM, PO
+        else if (len <= 8)  return 15.5; // VALDEZ, LAURIO
+        else if (len <= 11) return 13.5; // SOCORRO, DELA CRUZ
+        else if (len <= 14) return 12;   // VILLANUEVA
         else                return 10.5;
       }
 
       function calcSpousePt(len) {
-        if      (len <= 6)  return 12;   // SUSAN, EDWIN, LOUIE
-        else if (len <= 9)  return 11;   // EUFORIO, ROBERTO
-        else if (len <= 12) return 10;   // TERESITA
-        else                return 9;
+        if      (len <= 5)  return 14.5; // EDWIN, SUSAN
+        else if (len <= 8)  return 13;   // EUFORIO, ROBERTO
+        else if (len <= 11) return 11.5; // TERESITA
+        else                return 10;
       }
 
-      // Step 1: Set initial proportional font sizes
-      document.querySelectorAll('.first-name').forEach(function(el) {
-        var len = (el.textContent || '').trim().length;
-        el.style.fontSize = calcFirstNamePt(len) + 'pt';
-      });
-      document.querySelectorAll('.last-name').forEach(function(el) {
-        var len = (el.textContent || '').trim().length;
-        el.style.fontSize = calcLastNamePt(len) + 'pt';
-      });
-      document.querySelectorAll('.spouse').forEach(function(el) {
-        var len = (el.textContent || '').trim().length;
-        el.style.fontSize = calcSpousePt(len) + 'pt';
-      });
+      function applyFit(scale) {
+        document.querySelectorAll('.id-card').forEach(function(card) {
+          var inner = card.querySelector('.id-inner');
+          var lastNameEl = card.querySelector('.last-name');
+          var firstNameEl = card.querySelector('.first-name');
+          var spouseEl = card.querySelector('.spouse');
 
-      // Step 2: Shrink every .fit-text if it still overflows card width
-      document.querySelectorAll('.fit-text').forEach(function(el) {
-        var MIN_PT = 8;
-        var STEP   = 0.5;
-        var parent = el.parentElement;
-        var maxW   = parent.clientWidth * 0.94;
-        var fs     = parseFloat(getComputedStyle(el).fontSize) / PT_TO_PX;
-        while (el.scrollWidth > maxW && fs > MIN_PT) {
-          fs -= STEP;
-          el.style.fontSize = fs + 'pt';
-        }
-      });
+          var lLen = (lastNameEl.textContent || '').trim().length;
+          var fLen = (firstNameEl.textContent || '').trim().length;
+          var sLen = (spouseEl.textContent || '').trim().length;
+
+          var lPt = calcLastNamePt(lLen) * scale;
+          var fPt = calcFirstNamePt(fLen) * scale;
+          var sPt = calcSpousePt(sLen) * scale;
+
+          lastNameEl.style.fontSize = lPt + 'pt';
+          firstNameEl.style.fontSize = fPt + 'pt';
+          spouseEl.style.fontSize = sPt + 'pt';
+
+          // Safe bounds check to guarantee no element is cut off horizontally or vertically
+          var maxW = inner.clientWidth - 4; // leave at least 4px safe margin
+          var maxH = inner.clientHeight - 2;
+
+          var safety = 120;
+          while (safety > 0) {
+            safety--;
+            var hasWidthOverflow = 
+              lastNameEl.scrollWidth > maxW ||
+              firstNameEl.scrollWidth > maxW ||
+              spouseEl.scrollWidth > maxW;
+
+            var hasHeightOverflow = inner.scrollHeight > maxH;
+
+            if (!hasWidthOverflow && !hasHeightOverflow) {
+              break;
+            }
+
+            // Shrink specific overflowing element width
+            if (lastNameEl.scrollWidth > maxW && lPt > 8) {
+              lPt -= 0.5;
+              lastNameEl.style.fontSize = lPt + 'pt';
+            }
+            if (firstNameEl.scrollWidth > maxW && fPt > 11) {
+              fPt -= 0.5;
+              firstNameEl.style.fontSize = fPt + 'pt';
+            }
+            if (spouseEl.scrollWidth > maxW && sPt > 8) {
+              sPt -= 0.5;
+              spouseEl.style.fontSize = sPt + 'pt';
+            }
+
+            // If card height overflows vertically, proportionally reduce font sizes so nothing gets cut out
+            if (inner.scrollHeight > maxH) {
+              if (fPt > 13) {
+                fPt -= 0.4;
+                firstNameEl.style.fontSize = fPt + 'pt';
+              }
+              if (lPt > 9 && inner.scrollHeight > maxH) {
+                lPt -= 0.3;
+                lastNameEl.style.fontSize = lPt + 'pt';
+              }
+              if (sPt > 8 && inner.scrollHeight > maxH) {
+                sPt -= 0.3;
+                spouseEl.style.fontSize = sPt + 'pt';
+              }
+            }
+          }
+        });
+      }
+
+      var currentScale = 1.0;
+      window.setScale = function(newScale) {
+        currentScale = Math.max(0.75, Math.min(1.6, newScale));
+        var slider = document.getElementById('sizeRange');
+        if (slider) slider.value = currentScale;
+        var lbl = document.getElementById('scaleLabel');
+        if (lbl) lbl.textContent = Math.round(currentScale * 100) + '%';
+        applyFit(currentScale);
+      };
+
+      window.adjustScale = function(delta) {
+        window.setScale(Math.round((currentScale + delta) * 20) / 20);
+      };
+
+      // Initial run
+      applyFit(1.0);
     })();
   </script>
 </body>

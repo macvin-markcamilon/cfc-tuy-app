@@ -4148,6 +4148,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     setCoupleAddress(data.address);
                     setCoupleBarangay(data.barangay);
                     setCoupleCoords(data.coordinates);
+                    triggerToast(`Applied address: ${data.address}`);
                   }}
                   onClose={() => {}}
                 />

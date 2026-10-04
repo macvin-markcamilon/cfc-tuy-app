@@ -219,6 +219,7 @@ export default function CLPAdminPage() {
   const [attendanceSearchQuery, setAttendanceSearchQuery] = useState('');
   const [attendanceFilterStatus, setAttendanceFilterStatus] = useState<'all' | 'present' | 'absent' | 'partial'>('all');
   const [attendanceFilterBarangay, setAttendanceFilterBarangay] = useState('ALL');
+  const [isPrintTalkDropdownOpen, setIsPrintTalkDropdownOpen] = useState(false);
 
   // Search, Filter & Sort
   const [searchCoupleQuery, setSearchCoupleQuery] = useState('');
@@ -1081,6 +1082,44 @@ export default function CLPAdminPage() {
     }).length;
   }, [currentCouples, openedTalkAttendance]);
 
+  // Couples where at least one spouse is present in opened talk
+  const openedTalkAnyPresentCouples = useMemo(() => {
+    return currentCouples.filter((c) => {
+      const att = openedTalkAttendance.find((a) => a.coupleId === c.id);
+      return Boolean(att?.husbandPresent || att?.wifePresent);
+    });
+  }, [currentCouples, openedTalkAttendance]);
+
+  // Returnees and New Couples for Talks 2 to 8
+  const openedTalkReturneesAndNew = useMemo(() => {
+    if (!activeOpenedTalk || activeOpenedTalk.talkNumber < 2) {
+      return { returnees: 0, newCouples: 0 };
+    }
+    const priorTalkIds = new Set(
+      currentTalks
+        .filter((t) => t.talkNumber < activeOpenedTalk.talkNumber)
+        .map((t) => t.id)
+    );
+    let returnees = 0;
+    let newCouples = 0;
+
+    openedTalkAnyPresentCouples.forEach((c) => {
+      const attendedPrior = attendance.some(
+        (a) =>
+          priorTalkIds.has(a.talkId) &&
+          a.coupleId === c.id &&
+          (a.husbandPresent || a.wifePresent)
+      );
+      if (attendedPrior) {
+        returnees++;
+      } else {
+        newCouples++;
+      }
+    });
+
+    return { returnees, newCouples };
+  }, [activeOpenedTalk, currentTalks, openedTalkAnyPresentCouples, attendance]);
+
   // Filtered couples in attendance sheet
   const attendanceCouples = useMemo(() => {
     if (!activeOpenedTalk) return [];
@@ -1205,8 +1244,11 @@ export default function CLPAdminPage() {
     }
   };
 
-  // Print individual talk attendance sheet
-  const handlePrintTalkAttendance = (talk: CLPTalk) => {
+  // Print individual talk attendance sheet with filter options & phone numbers
+  const handlePrintTalkAttendance = (
+    talk: CLPTalk,
+    initialFilter: 'all' | 'present' | 'absent' = 'all'
+  ) => {
     if (!currentCouples.length) {
       triggerToast('No invited couples to print attendance sheet for.');
       return;
@@ -1221,26 +1263,109 @@ export default function CLPAdminPage() {
 
     const talkAtt = attendance.filter((a) => a.talkId === talk.id);
 
-    const rowsHtml = currentCouples
-      .map((c, idx) => {
-        const att = talkAtt.find((a) => a.coupleId === c.id);
-        const hp = att?.husbandPresent ? '✓ PRESENT' : '[   ]';
-        const wp = att?.wifePresent ? '✓ PRESENT' : '[   ]';
+    // Identify prior talks for Talk 2 to 8 returnee tracking
+    const priorTalkIds = new Set(
+      currentTalks.filter((t) => t.talkNumber < talk.talkNumber).map((t) => t.id)
+    );
+
+    let presentCouplesCount = 0;
+    let absentCouplesCount = 0;
+    let returneeCount = 0;
+    let newCoupleCount = 0;
+
+    const couplesData = currentCouples.map((c) => {
+      const att = talkAtt.find((a) => a.coupleId === c.id);
+      const hp = Boolean(att?.husbandPresent);
+      const wp = Boolean(att?.wifePresent);
+      const isPresent = hp || wp;
+      const isAbsent = !hp && !wp;
+
+      if (isPresent) presentCouplesCount++;
+      if (isAbsent) absentCouplesCount++;
+
+      let attendeeTag = '';
+      if (talk.talkNumber >= 2 && isPresent) {
+        const attendedPrior = attendance.some(
+          (a) =>
+            priorTalkIds.has(a.talkId) &&
+            a.coupleId === c.id &&
+            (a.husbandPresent || a.wifePresent)
+        );
+        if (attendedPrior) {
+          returneeCount++;
+          attendeeTag = 'Returnee';
+        } else {
+          newCoupleCount++;
+          attendeeTag = 'New Couple';
+        }
+      }
+
+      const statusGroup = isPresent ? 'present' : 'absent';
+
+      return {
+        couple: c,
+        att,
+        hp,
+        wp,
+        isPresent,
+        isAbsent,
+        statusGroup,
+        attendeeTag,
+      };
+    });
+
+    const rowsHtml = couplesData
+      .map((item, idx) => {
+        const { couple: c, att, hp, wp, statusGroup, attendeeTag } = item;
+        const hpText = hp ? '✓ PRESENT' : '[   ]';
+        const wpText = wp ? '✓ PRESENT' : '[   ]';
+
+        const phones: string[] = [];
+        if (c.husbandContact) {
+          phones.push(`<div><strong style="color:#1e3a8a;">H:</strong> ${c.husbandContact}</div>`);
+        }
+        if (c.wifeContact) {
+          phones.push(`<div><strong style="color:#be123c;">W:</strong> ${c.wifeContact}</div>`);
+        }
+        const phoneHtml =
+          phones.length > 0
+            ? phones.join('')
+            : '<span style="color:#94a3b8;font-size:11px;">—</span>';
+
+        let badgeHtml = '';
+        if (attendeeTag === 'Returnee') {
+          badgeHtml = `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font-size:9.5px;font-weight:700;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;">Returnee</span>`;
+        } else if (attendeeTag === 'New Couple') {
+          badgeHtml = `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font-size:9.5px;font-weight:700;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;">New Couple</span>`;
+        }
 
         return `
-          <tr>
-            <td style="text-align:center;font-weight:bold;color:#64748b;">${idx + 1}</td>
-            <td style="font-weight:bold;">
-              ${c.husbandLastName}, ${c.husbandFirstName} & ${c.wifeFirstName}
+          <tr data-status="${statusGroup}">
+            <td class="row-idx" style="text-align:center;font-weight:bold;color:#64748b;">${idx + 1}</td>
+            <td>
+              <div style="font-weight:700;color:#0f172a;font-size:12px;">
+                ${c.husbandLastName}, ${c.husbandFirstName} & ${c.wifeFirstName}
+                ${badgeHtml}
+              </div>
             </td>
-            <td>Brgy. ${c.barangay}</td>
-            <td style="text-align:center;font-weight:bold;${att?.husbandPresent ? 'color:#1e3a8a;' : 'color:#94a3b8;'}">${hp}</td>
-            <td style="text-align:center;font-weight:bold;${att?.wifePresent ? 'color:#be123c;' : 'color:#94a3b8;'}">${wp}</td>
+            <td style="font-size:11px;color:#334155;line-height:1.45;">
+              ${phoneHtml}
+            </td>
+            <td style="font-size:11.5px;color:#334155;">Brgy. ${c.barangay}</td>
+            <td style="text-align:center;font-weight:bold;${hp ? 'color:#1e3a8a;' : 'color:#94a3b8;'}">${hpText}</td>
+            <td style="text-align:center;font-weight:bold;${wp ? 'color:#be123c;' : 'color:#94a3b8;'}">${wpText}</td>
             <td style="color:#64748b;font-size:11px;">${att?.remarks || ''}</td>
           </tr>
         `;
       })
       .join('');
+
+    const returneeHeaderStats =
+      talk.talkNumber >= 2
+        ? `<div style="font-size:11px;color:#475569;margin-top:3px;">
+             Returnees: <strong style="color:#3730a3;">${returneeCount}</strong> • New Couples: <strong style="color:#166534;">${newCoupleCount}</strong>
+           </div>`
+        : '';
 
     const html = `<!DOCTYPE html>
 <html>
@@ -1250,9 +1375,16 @@ export default function CLPAdminPage() {
   <style>
     @page { size: A4 portrait; margin: 10mm 12mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #0f172a; padding: 20px; }
-    .no-print { display: flex; justify-content: space-between; align-items: center; background: #1e3a8a; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 20px; }
-    .btn { background: #fff; color: #1e3a8a; border: none; padding: 6px 14px; font-weight: 700; border-radius: 6px; cursor: pointer; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #0f172a; padding: 20px; }
+    .no-print { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; background: #1e3a8a; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    .no-print-left { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; }
+    .talk-badge { background: #3b82f6; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; }
+    .filter-tabs { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px; border-radius: 6px; }
+    .filter-btn { background: transparent; color: #e2e8f0; border: none; padding: 5px 12px; font-size: 11.5px; font-weight: 700; border-radius: 4px; cursor: pointer; transition: all 0.15s ease; }
+    .filter-btn:hover { background: rgba(255,255,255,0.25); color: #fff; }
+    .filter-btn.active { background: #ffffff; color: #1e3a8a; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+    .btn-print { background: #22c55e; color: #ffffff; border: none; padding: 7px 16px; font-size: 12px; font-weight: 800; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+    .btn-print:hover { background: #16a34a; }
     .header { display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 16px; }
     .header img { width: 50px; height: 50px; }
     .header h1 { font-size: 16px; font-weight: 900; color: #1e3a8a; }
@@ -1260,21 +1392,38 @@ export default function CLPAdminPage() {
     .header p { font-size: 11px; color: #64748b; }
     .meta { margin-left: auto; text-align: right; font-size: 11px; color: #64748b; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { background: #f1f5f9; padding: 8px; border-bottom: 2px solid #94a3b8; text-align: left; font-size: 10.5px; text-transform: uppercase; }
-    td { padding: 7px 8px; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f1f5f9; padding: 8px 10px; border-bottom: 2px solid #94a3b8; text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: #475569; }
+    td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
     tr:nth-child(even) { background: #f8fafc; }
     @media print {
       body { padding: 0; }
       .no-print { display: none !important; }
       tr { page-break-inside: avoid; }
+      table { page-break-after: auto; }
     }
   </style>
 </head>
 <body>
   <div class="no-print">
-    <span>Talk #${talk.talkNumber}: ${talk.title} • Attendance Sheet</span>
-    <button class="btn" onclick="window.print()">🖨 Print / Save PDF</button>
+    <div class="no-print-left">
+      <span class="talk-badge">Talk #${talk.talkNumber}</span>
+      <span>${talk.title} • Attendance Sheet</span>
+    </div>
+    <div class="filter-tabs">
+      <span style="font-size:11px;color:#cbd5e1;margin-right:2px;font-weight:600;">Print View:</span>
+      <button type="button" class="filter-btn" id="btn-all" onclick="applyFilter('all')">
+        📋 Full List (${currentCouples.length})
+      </button>
+      <button type="button" class="filter-btn" id="btn-present" onclick="applyFilter('present')">
+        ✓ Only Present (${presentCouplesCount})
+      </button>
+      <button type="button" class="filter-btn" id="btn-absent" onclick="applyFilter('absent')">
+        ✗ Only Absent (${absentCouplesCount})
+      </button>
+    </div>
+    <button type="button" class="btn-print" onclick="window.print()">🖨 Print / Save PDF</button>
   </div>
+
   <div class="header">
     <img src="${logoUrl}" alt="CFC" />
     <div>
@@ -1283,18 +1432,21 @@ export default function CLPAdminPage() {
       <p>Speaker: ${talk.speaker} • Venue: ${talk.venue} • Date: ${talk.date || 'TBD'} ${talk.time || ''}</p>
     </div>
     <div class="meta">
-      <div>Total Couples: ${currentCouples.length}</div>
+      <div><strong><span id="meta-filter-label">Full List</span></strong>: <span id="meta-couples-count">${currentCouples.length}</span> Couples</div>
       <div>Date: ${genDate}</div>
+      ${returneeHeaderStats}
     </div>
   </div>
+
   <table>
     <thead>
       <tr>
-        <th style="width:5%;text-align:center;">#</th>
-        <th style="width:35%;">Invited Couple</th>
-        <th style="width:18%;">Barangay</th>
-        <th style="width:14%;text-align:center;">Husband</th>
-        <th style="width:14%;text-align:center;">Wife</th>
+        <th style="width:4%;text-align:center;">#</th>
+        <th style="width:26%;">Invited Couple</th>
+        <th style="width:18%;">Phone Number</th>
+        <th style="width:14%;">Barangay</th>
+        <th style="width:12%;text-align:center;">Husband</th>
+        <th style="width:12%;text-align:center;">Wife</th>
         <th style="width:14%;">Remarks / Signature</th>
       </tr>
     </thead>
@@ -1302,6 +1454,62 @@ export default function CLPAdminPage() {
       ${rowsHtml}
     </tbody>
   </table>
+
+  <script>
+    let currentFilter = '${initialFilter}';
+
+    function applyFilter(mode) {
+      currentFilter = mode;
+      
+      // Update buttons
+      document.querySelectorAll('.filter-btn').forEach(function(b) {
+        b.classList.remove('active');
+      });
+      var activeBtn = document.getElementById('btn-' + mode);
+      if (activeBtn) activeBtn.classList.add('active');
+
+      // Update rows & renumber visible index
+      var visibleCount = 0;
+      var rows = document.querySelectorAll('tbody tr');
+      rows.forEach(function(row) {
+        var status = row.getAttribute('data-status');
+        var shouldShow = false;
+        if (mode === 'all') {
+          shouldShow = true;
+        } else if (mode === 'present') {
+          shouldShow = (status === 'present');
+        } else if (mode === 'absent') {
+          shouldShow = (status === 'absent');
+        }
+
+        if (shouldShow) {
+          row.style.display = '';
+          visibleCount++;
+          var idxCell = row.querySelector('.row-idx');
+          if (idxCell) idxCell.textContent = visibleCount;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+
+      // Update summary meta
+      var countEl = document.getElementById('meta-couples-count');
+      var labelEl = document.getElementById('meta-filter-label');
+      if (countEl) countEl.textContent = visibleCount;
+      if (labelEl) {
+        if (mode === 'present') {
+          labelEl.textContent = 'Only Present Couples';
+        } else if (mode === 'absent') {
+          labelEl.textContent = 'Only Absent Couples';
+        } else {
+          labelEl.textContent = 'Full List';
+        }
+      }
+    }
+
+    // Apply initial filter
+    applyFilter(currentFilter);
+  </script>
 </body>
 </html>`;
 
@@ -4110,6 +4318,34 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                           ? Math.round((countPresentIndividuals / totalPossibleIndividuals) * 100)
                           : 0;
 
+                      // For Talk 2 to 8: Returnees & New Couples
+                      let returneeCount = 0;
+                      let newCouplesCount = 0;
+                      if (talk.talkNumber >= 2) {
+                        const priorTalkIds = new Set(
+                          currentTalks
+                            .filter((t) => t.talkNumber < talk.talkNumber)
+                            .map((t) => t.id)
+                        );
+                        currentCouples.forEach((c) => {
+                          const a = talkAtt.find((att) => att.coupleId === c.id);
+                          const isPresent = Boolean(a?.husbandPresent || a?.wifePresent);
+                          if (isPresent) {
+                            const attendedPrior = attendance.some(
+                              (prevAtt) =>
+                                priorTalkIds.has(prevAtt.talkId) &&
+                                prevAtt.coupleId === c.id &&
+                                (prevAtt.husbandPresent || prevAtt.wifePresent)
+                            );
+                            if (attendedPrior) {
+                              returneeCount++;
+                            } else {
+                              newCouplesCount++;
+                            }
+                          }
+                        });
+                      }
+
                       return (
                         <div
                           key={talk.id}
@@ -4215,6 +4451,17 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                                 <ArrowRight className="w-3.5 h-3.5" />
                               </span>
                             </div>
+
+                            {talk.talkNumber >= 2 && (
+                              <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100 text-[11px]">
+                                <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                                  {returneeCount} Returnees
+                                </span>
+                                <span className="font-bold text-teal-700 bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full">
+                                  {newCouplesCount} New Couples
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -4269,14 +4516,90 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       </div>
 
                       <div className="flex items-center gap-2.5 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => handlePrintTalkAttendance(activeOpenedTalk)}
-                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition-all"
-                        >
-                          <Printer className="w-4 h-4 text-slate-500" />
-                          <span>Print Sheet</span>
-                        </button>
+                        {/* Print Attendance Split Button & Dropdown */}
+                        <div className="relative inline-flex items-center">
+                          <div className="inline-flex rounded-xl shadow-2xs overflow-hidden border border-slate-200 bg-white">
+                            <button
+                              type="button"
+                              onClick={() => handlePrintTalkAttendance(activeOpenedTalk, 'all')}
+                              className="inline-flex items-center gap-2 px-3.5 py-2.5 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-all border-r border-slate-200"
+                              title="Print Attendance Sheet (Full List)"
+                            >
+                              <Printer className="w-4 h-4 text-slate-500" />
+                              <span>Print Sheet</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsPrintTalkDropdownOpen(!isPrintTalkDropdownOpen)}
+                              className="px-2.5 py-2.5 hover:bg-slate-50 text-slate-600 transition-colors"
+                              title="Print options: Full List, Only Present, Only Absent"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {isPrintTalkDropdownOpen && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                onClick={() => setIsPrintTalkDropdownOpen(false)}
+                              />
+                              <div className="absolute right-0 top-full mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 text-xs animate-in fade-in zoom-in-95 duration-100">
+                                <div className="px-3.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
+                                  Print Attendance Sheet
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsPrintTalkDropdownOpen(false);
+                                    handlePrintTalkAttendance(activeOpenedTalk, 'all');
+                                  }}
+                                  className="w-full text-left px-3.5 py-2 hover:bg-slate-50 font-bold text-slate-800 flex items-center justify-between transition-colors"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                                    <span>Full List</span>
+                                  </span>
+                                  <span className="text-[11px] text-slate-400 font-normal">
+                                    {currentCouples.length} couples
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsPrintTalkDropdownOpen(false);
+                                    handlePrintTalkAttendance(activeOpenedTalk, 'present');
+                                  }}
+                                  className="w-full text-left px-3.5 py-2 hover:bg-emerald-50/70 font-bold text-emerald-800 flex items-center justify-between transition-colors"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                    <span>Only Present</span>
+                                  </span>
+                                  <span className="text-[11px] text-emerald-600 font-bold">
+                                    {openedTalkAnyPresentCouples.length} couples
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsPrintTalkDropdownOpen(false);
+                                    handlePrintTalkAttendance(activeOpenedTalk, 'absent');
+                                  }}
+                                  className="w-full text-left px-3.5 py-2 hover:bg-rose-50/70 font-bold text-rose-800 flex items-center justify-between transition-colors"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                                    <span>Only Absent</span>
+                                  </span>
+                                  <span className="text-[11px] text-rose-600 font-bold">
+                                    {Math.max(0, currentCouples.length - openedTalkAnyPresentCouples.length)} couples
+                                  </span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
 
                         <button
                           type="button"
@@ -4290,7 +4613,13 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     </div>
 
                     {/* Summary Stat Cards across the full width */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div
+                      className={`grid gap-4 ${
+                        activeOpenedTalk.talkNumber >= 2
+                          ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'
+                          : 'grid-cols-2 md:grid-cols-4'
+                      }`}
+                    >
                       <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200/80 rounded-2xl p-4">
                         <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700 mb-1">
                           Overall Attendance
@@ -4343,6 +4672,32 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                         </div>
                         <div className="text-[11px] text-slate-500 mt-1">Full couple participation</div>
                       </div>
+
+                      {activeOpenedTalk.talkNumber >= 2 && (
+                        <>
+                          <div className="bg-gradient-to-br from-indigo-50/90 to-blue-50/90 border border-indigo-200/90 rounded-2xl p-4">
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 mb-1">
+                              Number of Returnee
+                            </div>
+                            <div className="text-2xl font-black text-indigo-950">
+                              {openedTalkReturneesAndNew.returnees}
+                              <span className="text-xs font-semibold text-indigo-600 ml-1">couples</span>
+                            </div>
+                            <div className="text-[11px] text-indigo-600/80 mt-1">Attended prior talk(s)</div>
+                          </div>
+
+                          <div className="bg-gradient-to-br from-teal-50/90 to-emerald-50/90 border border-teal-200/90 rounded-2xl p-4">
+                            <div className="text-[11px] font-bold uppercase tracking-wider text-teal-700 mb-1">
+                              Number of New Couple
+                            </div>
+                            <div className="text-2xl font-black text-teal-950">
+                              {openedTalkReturneesAndNew.newCouples}
+                              <span className="text-xs font-semibold text-teal-600 ml-1">couples</span>
+                            </div>
+                            <div className="text-[11px] text-teal-600/80 mt-1">First session attended</div>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {/* Attendance Controls Bar (Search, Status Filter, Barangay Filter, Quick Actions) */}
@@ -4452,6 +4807,23 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                               const wp = Boolean(att?.wifePresent);
                               const both = hp && wp;
                               const partial = (hp && !wp) || (!hp && wp);
+                              const isPresent = hp || wp;
+
+                              let attendeeCategory: 'returnee' | 'new' | null = null;
+                              if (activeOpenedTalk.talkNumber >= 2 && isPresent) {
+                                const priorTalkIds = new Set(
+                                  currentTalks
+                                    .filter((t) => t.talkNumber < activeOpenedTalk.talkNumber)
+                                    .map((t) => t.id)
+                                );
+                                const attendedPrior = attendance.some(
+                                  (a) =>
+                                    priorTalkIds.has(a.talkId) &&
+                                    a.coupleId === c.id &&
+                                    (a.husbandPresent || a.wifePresent)
+                                );
+                                attendeeCategory = attendedPrior ? 'returnee' : 'new';
+                              }
 
                               return (
                                 <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
@@ -4459,8 +4831,20 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                                     {idx + 1}
                                   </td>
                                   <td className="py-3 px-4">
-                                    <div className="font-extrabold text-slate-900 text-xs sm:text-sm">
-                                      {c.husbandLastName}, {c.husbandFirstName} &amp; {c.wifeFirstName}
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
+                                        {c.husbandLastName}, {c.husbandFirstName} &amp; {c.wifeFirstName}
+                                      </span>
+                                      {attendeeCategory === 'returnee' && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                          Returnee
+                                        </span>
+                                      )}
+                                      {attendeeCategory === 'new' && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                          New Couple
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
                                       {c.husbandContact && (

@@ -8,6 +8,15 @@ import {
   fetchWorshipSongs,
 } from '@/lib/data/songs-service';
 import {
+  getActivePlaylistIds,
+  setActivePlaylistIds,
+  getSavedPlaylists,
+  savePlaylist,
+  deletePlaylist,
+  SavedPlaylist,
+} from '@/lib/music/playlist-service';
+import SongPresentationModal from '@/components/music/SongPresentationModal';
+import {
   Music,
   Search,
   Play,
@@ -25,6 +34,14 @@ import {
   Disc3,
   SlidersHorizontal,
   ChevronDown,
+  Plus,
+  Check,
+  X,
+  ListMusic,
+  Tv,
+  Save,
+  Trash2,
+  FolderHeart,
 } from 'lucide-react';
 
 export default function SongbookPage() {
@@ -39,17 +56,27 @@ export default function SongbookPage() {
   const [sortBy, setSortBy] = useState<'title-asc' | 'title-desc' | 'key-asc' | 'category-asc'>('title-asc');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
+  // Playlist & Presentation state
+  const [playlistIds, setPlaylistIds] = useState<string[]>([]);
+  const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylist[]>([]);
+  const [isPresentingPlaylist, setIsPresentingPlaylist] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [showSavedDrawer, setShowSavedDrawer] = useState(false);
+
   // Audio preview state
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Load songs on mount
+  // Load songs & playlists on mount
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
         const data = await fetchWorshipSongs();
         setSongs(data);
+        setPlaylistIds(getActivePlaylistIds());
+        setSavedPlaylists(getSavedPlaylists());
       } catch (err) {
         console.error('Failed to load songs repertoire:', err);
       } finally {
@@ -68,6 +95,59 @@ export default function SongbookPage() {
       }
     };
   }, []);
+
+  // Derived active playlist songs list
+  const playlistSongs = useMemo(() => {
+    return playlistIds
+      .map((id) => songs.find((s) => s.id === id))
+      .filter((s): s is WorshipSong => Boolean(s));
+  }, [playlistIds, songs]);
+
+  // Playlist Management Handlers
+  const togglePlaylistSong = (songId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    let updated: string[];
+    if (playlistIds.includes(songId)) {
+      updated = playlistIds.filter((id) => id !== songId);
+    } else {
+      updated = [...playlistIds, songId];
+    }
+    setPlaylistIds(updated);
+    setActivePlaylistIds(updated);
+  };
+
+  const removeFromPlaylist = (songId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const updated = playlistIds.filter((id) => id !== songId);
+    setPlaylistIds(updated);
+    setActivePlaylistIds(updated);
+  };
+
+  const clearPlaylistQueue = () => {
+    setPlaylistIds([]);
+    setActivePlaylistIds([]);
+  };
+
+  const handleSavePlaylistSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlaylistName.trim() || !playlistIds.length) return;
+    const saved = savePlaylist(newPlaylistName, playlistIds);
+    setSavedPlaylists(getSavedPlaylists());
+    setNewPlaylistName('');
+    setShowSaveModal(false);
+  };
+
+  const loadSavedPlaylistSet = (saved: SavedPlaylist) => {
+    setPlaylistIds(saved.songIds);
+    setActivePlaylistIds(saved.songIds);
+    setShowSavedDrawer(false);
+  };
+
+  const handleDeleteSavedPlaylist = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    deletePlaylist(id);
+    setSavedPlaylists(getSavedPlaylists());
+  };
 
   // Categories list with counts
   const categoriesWithCounts = useMemo(() => {
@@ -192,11 +272,10 @@ export default function SongbookPage() {
 
             <p className="mt-3 text-sm sm:text-base text-blue-100/90 leading-relaxed font-normal max-w-3xl">
               Lift your heart in praise and adoration. Browse our official songbook complete with
-              authentic chord sheets, transposing, guitar fingerings, and audio recordings for
-              CLP assemblies, household meetings, and community prayer gatherings.
+              authentic chord sheets, transposing, guitar fingerings, audio recordings, and custom playlist creation for continuous lyrics presentation during CLP assemblies and household meetings.
             </p>
 
-            {/* Quick Repertoire Stats */}
+            {/* Quick Repertoire Stats & Saved Playlists Button */}
             <div className="mt-6 flex flex-wrap items-center gap-3 sm:gap-6 text-xs sm:text-sm font-semibold">
               <div className="px-3.5 py-2 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/15 flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-amber-400" />
@@ -210,19 +289,157 @@ export default function SongbookPage() {
                 <Music className="w-4 h-4 text-blue-300" />
                 <span><strong>{worshipCount}</strong> Worship</span>
               </div>
-              <div className="px-3.5 py-2 rounded-2xl bg-white/10 backdrop-blur-xs border border-white/15 flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-emerald-300" />
-                <span><strong>{audioCount}</strong> With Audio</span>
-              </div>
+              
+              {savedPlaylists.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowSavedDrawer((prev) => !prev)}
+                  className="px-4 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center gap-2 shadow-md transition-all active:scale-95"
+                >
+                  <FolderHeart className="w-4 h-4" />
+                  <span>Saved Playlists ({savedPlaylists.length})</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
       </section>
 
       {/* ===================================================================== */}
+      {/* SAVED PLAYLISTS DRAWER / PANEL                                       */}
+      {/* ===================================================================== */}
+      {showSavedDrawer && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="bg-amber-500/10 border-2 border-amber-400/40 rounded-3xl p-5 backdrop-blur-md">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2 text-slate-900 font-black text-base">
+                <FolderHeart className="w-5 h-5 text-amber-600" />
+                <span>Your Saved Worship Playlists</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSavedDrawer(false)}
+                className="p-1 rounded-full text-slate-500 hover:bg-slate-200 text-xs"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {savedPlaylists.map((pl) => (
+                <div
+                  key={pl.id}
+                  onClick={() => loadSavedPlaylistSet(pl)}
+                  className="bg-white p-4 rounded-2xl border border-amber-300/60 hover:border-[#243c81] shadow-sm hover:shadow-md cursor-pointer transition-all flex items-center justify-between gap-3 group"
+                >
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm group-hover:text-[#243c81] transition-colors">
+                      {pl.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      {pl.songIds.length} Worship Songs
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteSavedPlaylist(pl.id, e)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                      title="Delete Saved Playlist"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* ACTIVE PLAYLIST / QUEUE BANNER                                        */}
+      {/* ===================================================================== */}
+      {playlistSongs.length > 0 && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 animate-in fade-in duration-200">
+          <div className="bg-[#243c81] text-white rounded-3xl p-4 sm:p-5 shadow-xl border-2 border-amber-400 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 font-black shadow-md">
+                <ListMusic className="w-6 h-6" />
+              </div>
+              <div className="truncate">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950">
+                    Playlist Queue
+                  </span>
+                  <span className="text-xs font-mono font-bold text-amber-300">
+                    {playlistSongs.length} Song{playlistSongs.length > 1 ? 's' : ''} Selected
+                  </span>
+                </div>
+                {/* Song Pills List */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1.5 max-w-2xl">
+                  {playlistSongs.map((s, idx) => (
+                    <div
+                      key={s.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/15 border border-white/20 text-xs font-bold whitespace-nowrap text-white"
+                    >
+                      <span className="text-amber-300 font-mono text-[11px]">{idx + 1}.</span>
+                      <span>{s.title}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => removeFromPlaylist(s.id, e)}
+                        className="p-0.5 hover:bg-white/20 rounded-full text-white/70 hover:text-white transition-colors"
+                        title="Remove from playlist"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Playlist Actions */}
+            <div className="flex items-center gap-2 shrink-0 self-end md:self-center flex-wrap">
+              {/* Present Playlist Button */}
+              <button
+                type="button"
+                onClick={() => setIsPresentingPlaylist(true)}
+                className="px-5 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg transition-all active:scale-95"
+              >
+                <Tv className="w-4 h-4 text-slate-950" />
+                <span>Present Playlist ({playlistSongs.length})</span>
+              </button>
+
+              {/* Save Playlist Button */}
+              <button
+                type="button"
+                onClick={() => setShowSaveModal(true)}
+                className="px-3.5 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 border border-white/20 transition-all active:scale-95"
+              >
+                <Save className="w-4 h-4 text-amber-300" />
+                <span>Save Set</span>
+              </button>
+
+              {/* Clear Queue Button */}
+              <button
+                type="button"
+                onClick={clearPlaylistQueue}
+                className="p-2.5 rounded-2xl bg-white/10 hover:bg-red-500/20 text-white/70 hover:text-white border border-white/15 transition-all"
+                title="Clear Playlist Queue"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ===================================================================== */}
       {/* FILTER & SEARCH TOOLBAR                                               */}
       {/* ===================================================================== */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
         <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-lg border border-slate-200 space-y-4">
           
           {/* Top Row: Search Input + View Mode + Key Filter + Sort */}
@@ -377,7 +594,7 @@ export default function SongbookPage() {
           </div>
           {filteredSongs.length > 0 && (
             <div className="hidden sm:block text-slate-400 text-xs">
-              Click any song to open interactive chord sheet &amp; audio player
+              Click any song to view chords or add to custom presentation playlist
             </div>
           )}
         </div>
@@ -421,6 +638,7 @@ export default function SongbookPage() {
               const chords = extractChords(song.lyricsAndChords);
               const preview = cleanLyricsPreview(song.lyricsAndChords);
               const isPlaying = playingSongId === song.id;
+              const inPlaylist = playlistIds.includes(song.id);
 
               return (
                 <div
@@ -428,7 +646,9 @@ export default function SongbookPage() {
                   onClick={() => {
                     router.push(`/songbook/${song.id}`);
                   }}
-                  className="bg-white rounded-3xl border border-slate-200 hover:border-[#243c81] p-6 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between cursor-pointer group relative overflow-hidden"
+                  className={`bg-white rounded-3xl border p-6 shadow-xs hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between cursor-pointer group relative overflow-hidden ${
+                    inPlaylist ? 'border-[#243c81] ring-2 ring-[#243c81]/20' : 'border-slate-200 hover:border-[#243c81]'
+                  }`}
                 >
                   {/* Category Accent top border */}
                   <div
@@ -442,7 +662,7 @@ export default function SongbookPage() {
                   />
 
                   <div>
-                    {/* Top Row: Category, Key, Audio Button */}
+                    {/* Top Row: Category, Key, Playlist Toggle */}
                     <div className="flex items-center justify-between gap-2 mb-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
@@ -460,41 +680,31 @@ export default function SongbookPage() {
                         <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
                           Key: {song.key}
                         </span>
-
-                        {song.timeSignature && (
-                          <span className="text-[10px] font-semibold text-slate-500">
-                            {song.timeSignature}
-                          </span>
-                        )}
                       </div>
 
-                      {/* Audio Button Preview */}
-                      {song.audioUrl ? (
-                        <button
-                          type="button"
-                          onClick={(e) => toggleAudio(song, e)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
-                            isPlaying
-                              ? 'bg-[#243c81] text-white shadow-md animate-pulse'
-                              : 'bg-blue-50 text-[#243c81] hover:bg-blue-100 border border-blue-200'
-                          }`}
-                          title={isPlaying ? 'Pause preview' : 'Play audio preview'}
-                        >
-                          {isPlaying ? (
-                            <>
-                              <Pause className="w-3.5 h-3.5 fill-current" />
-                              <span>Playing</span>
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-3.5 h-3.5 fill-current" />
-                              <span>Audio</span>
-                            </>
-                          )}
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-slate-400 font-medium">Chord Sheet</span>
-                      )}
+                      {/* Add to Playlist Toggle Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => togglePlaylistSong(song.id, e)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all active:scale-95 border ${
+                          inPlaylist
+                            ? 'bg-[#243c81] text-white border-[#243c81] shadow-xs'
+                            : 'bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#243c81] border-slate-200'
+                        }`}
+                        title={inPlaylist ? 'Remove from active playlist' : 'Add song to active presentation playlist'}
+                      >
+                        {inPlaylist ? (
+                          <>
+                            <Check className="w-3 h-3 text-amber-300" />
+                            <span>In Playlist</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3 h-3" />
+                            <span>+ Playlist</span>
+                          </>
+                        )}
+                      </button>
                     </div>
 
                     {/* Title & Artist */}
@@ -511,23 +721,44 @@ export default function SongbookPage() {
                     </p>
                   </div>
 
-                  {/* Bottom Row: Chords Badges + Open Action */}
+                  {/* Bottom Row: Chords Badges + Audio / Open Action */}
                   <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
-                    {/* Chords Used */}
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {chords.length > 0 ? (
-                        chords.map((ch) => (
+                    {/* Audio Preview Button */}
+                    {song.audioUrl ? (
+                      <button
+                        type="button"
+                        onClick={(e) => toggleAudio(song, e)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+                          isPlaying
+                            ? 'bg-[#243c81] text-white shadow-md animate-pulse'
+                            : 'bg-blue-50 text-[#243c81] hover:bg-blue-100 border border-blue-200'
+                        }`}
+                        title={isPlaying ? 'Pause preview' : 'Play audio preview'}
+                      >
+                        {isPlaying ? (
+                          <>
+                            <Pause className="w-3.5 h-3.5 fill-current" />
+                            <span>Playing</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>Audio</span>
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {chords.slice(0, 3).map((ch) => (
                           <span
                             key={ch}
                             className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-mono font-bold border border-slate-200"
                           >
                             {ch}
                           </span>
-                        ))
-                      ) : (
-                        <span className="text-[10px] text-slate-400">Chords included</span>
-                      )}
-                    </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Action link */}
                     <span className="text-xs font-bold text-[#243c81] group-hover:underline flex items-center gap-1 shrink-0">
@@ -551,16 +782,15 @@ export default function SongbookPage() {
                     <th className="py-3.5 px-4 sm:px-6">Title &amp; Artist</th>
                     <th className="py-3.5 px-4">Category</th>
                     <th className="py-3.5 px-4">Key</th>
-                    <th className="py-3.5 px-4 hidden md:table-cell">Time</th>
-                    <th className="py-3.5 px-4 hidden lg:table-cell">Chords Sample</th>
+                    <th className="py-3.5 px-4 text-center">Playlist</th>
                     <th className="py-3.5 px-4 text-center">Audio</th>
                     <th className="py-3.5 px-4 sm:px-6 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredSongs.map((song) => {
-                    const chords = extractChords(song.lyricsAndChords);
                     const isPlaying = playingSongId === song.id;
+                    const inPlaylist = playlistIds.includes(song.id);
 
                     return (
                       <tr
@@ -568,7 +798,9 @@ export default function SongbookPage() {
                         onClick={() => {
                           router.push(`/songbook/${song.id}`);
                         }}
-                        className="hover:bg-blue-50/60 cursor-pointer transition-colors group"
+                        className={`hover:bg-blue-50/60 cursor-pointer transition-colors group ${
+                          inPlaylist ? 'bg-blue-50/40' : ''
+                        }`}
                       >
                         <td className="py-3.5 px-4 sm:px-6">
                           <div className="font-bold text-slate-900 group-hover:text-[#243c81] transition-colors">
@@ -599,21 +831,29 @@ export default function SongbookPage() {
                           </span>
                         </td>
 
-                        <td className="py-3.5 px-4 text-xs text-slate-500 hidden md:table-cell">
-                          {song.timeSignature || '4/4'}
-                        </td>
-
-                        <td className="py-3.5 px-4 hidden lg:table-cell">
-                          <div className="flex items-center gap-1 flex-wrap">
-                            {chords.slice(0, 4).map((ch) => (
-                              <span
-                                key={ch}
-                                className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono"
-                              >
-                                {ch}
-                              </span>
-                            ))}
-                          </div>
+                        {/* Playlist Toggle */}
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => togglePlaylistSong(song.id, e)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all active:scale-95 border ${
+                              inPlaylist
+                                ? 'bg-[#243c81] text-white border-[#243c81]'
+                                : 'bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-[#243c81] border-slate-200'
+                            }`}
+                          >
+                            {inPlaylist ? (
+                              <>
+                                <Check className="w-3 h-3 text-amber-300" />
+                                <span>Added</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-3 h-3" />
+                                <span>+ Add</span>
+                              </>
+                            )}
+                          </button>
                         </td>
 
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
@@ -661,6 +901,72 @@ export default function SongbookPage() {
           </div>
         )}
       </main>
+
+      {/* Save Playlist Modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 max-w-md w-full animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2 font-black text-slate-900 text-lg">
+                <Save className="w-5 h-5 text-[#243c81]" />
+                <span>Save Worship Playlist</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSaveModal(false)}
+                className="p-1 rounded-full text-slate-400 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePlaylistSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Playlist Title / Set Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sunday CLP Assembly, Household Gathering..."
+                  value={newPlaylistName}
+                  onChange={(e) => setNewPlaylistName(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-semibold focus:outline-hidden focus:ring-2 focus:ring-[#243c81]"
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                Saves current queue of <strong>{playlistSongs.length} songs</strong> to your local repertoire list.
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSaveModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-[#243c81] hover:bg-[#1a2d63] text-white text-xs font-black shadow-md transition-all active:scale-95"
+                >
+                  Save Setlist
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Continuous Playlist Presentation Modal */}
+      <SongPresentationModal
+        isOpen={isPresentingPlaylist}
+        song={playlistSongs[0] || null}
+        playlist={playlistSongs}
+        onClose={() => setIsPresentingPlaylist(false)}
+      />
     </div>
   );
 }

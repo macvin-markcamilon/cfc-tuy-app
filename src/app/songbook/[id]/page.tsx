@@ -8,9 +8,15 @@ import {
   fetchWorshipSongById,
   fetchWorshipSongs,
 } from '@/lib/data/songs-service';
+import {
+  getActivePlaylistIds,
+  setActivePlaylistIds,
+} from '@/lib/music/playlist-service';
 import InteractiveChordSheet from '@/components/music/InteractiveChordSheet';
 import SongAudioPlayer from '@/components/music/SongAudioPlayer';
 import SongEditorModal from '@/components/music/SongEditorModal';
+import SongPresentationModal from '@/components/music/SongPresentationModal';
+import SongPrintModal from '@/components/music/SongPrintModal';
 import {
   ArrowLeft,
   Music,
@@ -25,6 +31,9 @@ import {
   Guitar,
   Clock,
   Tag,
+  Tv,
+  Plus,
+  ListMusic,
 } from 'lucide-react';
 
 interface SongDetailPageProps {
@@ -42,10 +51,14 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
   const [copied, setCopied] = useState(false);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isPresenting, setIsPresenting] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [playlistIds, setPlaylistIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setIsAdminLoggedIn(localStorage.getItem('cfc_tuy_admin_auth') === 'true');
+      setPlaylistIds(getActivePlaylistIds());
     }
   }, []);
 
@@ -67,6 +80,24 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
     }
     loadData();
   }, [songId]);
+
+  // Derived playlist songs
+  const playlistSongs = playlistIds
+    .map((id) => allSongs.find((s) => s.id === id))
+    .filter((s): s is WorshipSong => Boolean(s));
+
+  const inPlaylist = playlistIds.includes(songId);
+
+  const togglePlaylist = () => {
+    let updated: string[];
+    if (inPlaylist) {
+      updated = playlistIds.filter((id) => id !== songId);
+    } else {
+      updated = [...playlistIds, songId];
+    }
+    setPlaylistIds(updated);
+    setActivePlaylistIds(updated);
+  };
 
   // Find next & previous songs for repertoire navigation
   const currentIndex = allSongs.findIndex((s) => s.id === songId);
@@ -134,6 +165,40 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
           </Link>
 
           <div className="flex items-center gap-2">
+            {/* Playlist Toggle Button */}
+            <button
+              type="button"
+              onClick={togglePlaylist}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                inPlaylist
+                  ? 'bg-[#243c81] text-white border-[#243c81] shadow-xs'
+                  : 'bg-white text-slate-700 hover:bg-blue-50 border-slate-200 shadow-xs'
+              }`}
+            >
+              {inPlaylist ? (
+                <>
+                  <Check className="w-4 h-4 text-amber-300" />
+                  <span>In Playlist</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  <span>+ Playlist</span>
+                </>
+              )}
+            </button>
+
+            {/* Present Lyrics Mode Button */}
+            <button
+              type="button"
+              onClick={() => setIsPresenting(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#243c81] hover:bg-[#1a2d63] text-white font-extrabold text-xs shadow-xs transition-all active:scale-95 border border-[#1a2d63]"
+              title="Present song lyrics in full screen presentation mode"
+            >
+              <Tv className="w-4 h-4 text-amber-300" />
+              <span>{playlistSongs.length > 1 ? `Present Playlist (${playlistSongs.length})` : 'Present'}</span>
+            </button>
+
             {/* Share / Copy link button */}
             <button
               type="button"
@@ -161,9 +226,9 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
             {/* Print chord sheet */}
             <button
               type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-xs font-bold text-xs transition-all"
-              title="Print Chord Sheet"
+              onClick={() => setIsPrintModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-xs font-bold text-xs transition-all cursor-pointer"
+              title="Print Sheet (Chords / Lyrics)"
             >
               <Printer className="w-4 h-4 text-slate-500" />
               <span className="hidden sm:inline">Print Sheet</span>
@@ -303,6 +368,21 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
           ) : null}
         </div>
       </main>
+
+      {/* Song Presentation Fullscreen Modal */}
+      <SongPresentationModal
+        isOpen={isPresenting}
+        song={song}
+        playlist={playlistSongs.length > 0 ? playlistSongs : [song]}
+        onClose={() => setIsPresenting(false)}
+      />
+
+      {/* Song Print Sheet Modal */}
+      <SongPrintModal
+        isOpen={isPrintModalOpen}
+        song={song}
+        onClose={() => setIsPrintModalOpen(false)}
+      />
 
       {/* Admin Edit Modal if triggered */}
       {isAdminLoggedIn && isEditorOpen && (

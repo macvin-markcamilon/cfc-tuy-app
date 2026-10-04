@@ -1,9 +1,11 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { WorshipSong } from '@/lib/data/songs-service';
 import InteractiveChordSheet from './InteractiveChordSheet';
 import SongAudioPlayer from './SongAudioPlayer';
+import SongPresentationModal from './SongPresentationModal';
+import SongPrintModal from './SongPrintModal';
 import {
   X,
   Music,
@@ -14,6 +16,7 @@ import {
   Heart,
   ExternalLink,
   Sparkles,
+  Tv,
 } from 'lucide-react';
 
 interface SongDetailModalProps {
@@ -29,6 +32,9 @@ export default function SongDetailModal({
   onClose,
   onEdit,
 }: SongDetailModalProps) {
+  const [isPresenting, setIsPresenting] = useState(false);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
   if (!isOpen || !song) return null;
 
   return (
@@ -67,6 +73,17 @@ export default function SongDetailModal({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 self-end sm:self-auto">
+            {/* Present Lyrics Mode Button */}
+            <button
+              type="button"
+              onClick={() => setIsPresenting(true)}
+              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+              title="Present song lyrics in full screen presentation mode"
+            >
+              <Tv className="w-4 h-4 text-slate-950" />
+              <span>Present</span>
+            </button>
+
             {onEdit && (
               <button
                 type="button"
@@ -81,9 +98,9 @@ export default function SongDetailModal({
 
             <button
               type="button"
-              onClick={() => window.print()}
-              className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/15 transition-all"
-              title="Print Chord Sheet"
+              onClick={() => setIsPrintModalOpen(true)}
+              className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/15 transition-all cursor-pointer"
+              title="Print Sheet (Chords / Lyrics)"
             >
               <Printer className="w-4 h-4 text-amber-300" />
             </button>
@@ -117,6 +134,20 @@ export default function SongDetailModal({
           />
         </div>
       </div>
+
+      {/* Song Presentation Fullscreen Modal */}
+      <SongPresentationModal
+        isOpen={isPresenting}
+        song={song}
+        onClose={() => setIsPresenting(false)}
+      />
+
+      {/* Song Print Sheet Modal */}
+      <SongPrintModal
+        isOpen={isPrintModalOpen}
+        song={song}
+        onClose={() => setIsPrintModalOpen(false)}
+      />
     </div>
   );
 }

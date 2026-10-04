@@ -4,13 +4,13 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft, KeyRound } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('markcamilon@gmail.com');
-  const [password, setPassword] = useState('weakPassword');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -39,7 +39,7 @@ export default function AdminLoginPage() {
             router.push('/admin/clp');
             return;
           }
-          setError(authError.message || 'Invalid login credentials.');
+          setError(authError.message || 'Invalid email or password.');
           setLoading(false);
           return;
         }
@@ -69,24 +69,10 @@ export default function AdminLoginPage() {
         }
         router.push('/admin/clp');
       } else {
-        setError('Invalid credentials. Use markcamilon@gmail.com / weakPassword');
+        setError('Invalid email or password. Please check your credentials and try again.');
         setLoading(false);
       }
     }, 400);
-  };
-
-  const handleQuickMainAdminLogin = () => {
-    setEmail('markcamilon@gmail.com');
-    setPassword('weakPassword');
-    setLoading(true);
-
-    setTimeout(() => {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('cfc_tuy_admin_auth', 'true');
-        localStorage.setItem('cfc_tuy_admin_user', 'markcamilon@gmail.com');
-      }
-      router.push('/admin/clp');
-    }, 300);
   };
 
   return (
@@ -146,7 +132,7 @@ export default function AdminLoginPage() {
                 <input
                   type="email"
                   required
-                  placeholder="markcamilon@gmail.com"
+                  placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-sm focus:outline-hidden focus:ring-2 focus:ring-[#243c81]"
@@ -191,22 +177,6 @@ export default function AdminLoginPage() {
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick 1-Click Main Admin Login Button */}
-          <div className="mt-6 pt-5 border-t border-slate-200">
-            <span className="text-[11px] text-slate-500 font-semibold block text-center mb-2">
-              Preset Main Admin Credentials:
-            </span>
-            <button
-              type="button"
-              onClick={handleQuickMainAdminLogin}
-              className="w-full py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#243c81] border border-blue-200 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>1-Click Sign-in as markcamilon@gmail.com</span>
-            </button>
-          </div>
-
         </div>
 
         {/* Parish Note */}

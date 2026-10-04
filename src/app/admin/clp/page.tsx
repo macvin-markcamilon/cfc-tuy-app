@@ -220,6 +220,8 @@ export default function CLPAdminPage() {
   const [attendanceFilterStatus, setAttendanceFilterStatus] = useState<'all' | 'present' | 'absent' | 'partial'>('all');
   const [attendanceFilterBarangay, setAttendanceFilterBarangay] = useState('ALL');
   const [isPrintTalkDropdownOpen, setIsPrintTalkDropdownOpen] = useState(false);
+  const [groupingToDelete, setGroupingToDelete] = useState<{ id: string; title: string } | null>(null);
+  const [isDeletingGrouping, setIsDeletingGrouping] = useState(false);
 
   // Search, Filter & Sort
   const [searchCoupleQuery, setSearchCoupleQuery] = useState('');
@@ -1828,17 +1830,34 @@ export default function CLPAdminPage() {
   };
 
   // Delete a saved grouping (Req 3)
-  const handleDeleteSavedGrouping = async (id: string, title: string) => {
-    if (confirm(`Are you sure you want to delete saved grouping "${title}"?`)) {
-      await deleteCLPGrouping(id);
+  const handleDeleteSavedGrouping = (id: string, title: string) => {
+    setGroupingToDelete({ id, title });
+  };
+
+  const handleConfirmDeleteSavedGrouping = async () => {
+    if (!groupingToDelete) return;
+    const { id, title } = groupingToDelete;
+    setIsDeletingGrouping(true);
+
+    try {
+      // Optimistically remove from state so the card immediately disappears
+      setSavedGroupings((prev) => prev.filter((g) => g.id !== id));
       if (activeSavedGroupingId === id) {
         setActiveSavedGroupingId(null);
       }
+
+      await deleteCLPGrouping(id, currentClp?.id);
+      triggerToast(`Deleted grouping "${title}"`);
+    } catch (err) {
+      console.error('Error deleting grouping:', err);
+      triggerToast('Error deleting grouping. Please try again.');
       if (currentClp) {
         const updated = await fetchCLPGroupings(currentClp.id);
         setSavedGroupings(updated);
       }
-      triggerToast(`Deleted grouping "${title}"`);
+    } finally {
+      setIsDeletingGrouping(false);
+      setGroupingToDelete(null);
     }
   };
 
@@ -7784,6 +7803,58 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-white cursor-pointer"
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 9: CONFIRM DELETE SAVED GROUPING                                    */}
+      {/* ========================================================================= */}
+      {groupingToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">Delete Saved Grouping?</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 bg-slate-50 p-3.5 rounded-2xl border border-slate-100 leading-relaxed">
+              Are you sure you want to delete <strong className="text-slate-900">&quot;{groupingToDelete.title}&quot;</strong> from your saved groupings repository?
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingGrouping}
+                onClick={() => setGroupingToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingGrouping}
+                onClick={handleConfirmDeleteSavedGrouping}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {isDeletingGrouping ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete Grouping</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

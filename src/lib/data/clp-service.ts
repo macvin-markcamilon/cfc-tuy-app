@@ -721,16 +721,14 @@ export async function fetchCLPGroupings(clpId?: string): Promise<SavedCLPGroupin
         }
 
         if (extractedFromDb.length > 0) {
-          // Merge with local storage ensuring unique IDs
-          const existingLocal = getLocalGroupings();
-          const combined = [...extractedFromDb];
-          for (const loc of existingLocal) {
-            if (!combined.some((c) => c.id === loc.id)) {
-              combined.push(loc);
-            }
-          }
-          setLocalGroupings(combined);
-          return clpId ? combined.filter((g) => g.clpId === clpId) : combined;
+          // Sync with local storage: cloud database is the authoritative source of truth
+          setLocalGroupings(extractedFromDb);
+          return clpId ? extractedFromDb.filter((g) => g.clpId === clpId) : extractedFromDb;
+        } else if (progs && progs.length > 0 && clpId) {
+          // If the cloud program was checked and has 0 groupings, purge stale groupings for this CLP
+          const cleaned = getLocalGroupings().filter((g) => g.clpId !== clpId);
+          setLocalGroupings(cleaned);
+          return [];
         }
       }
     } catch (dbErr) {
@@ -811,47 +809,63 @@ export async function saveCLPGrouping(grouping: SavedCLPGrouping): Promise<Saved
   return savedRecord;
 }
 
-export async function deleteCLPGrouping(id: string): Promise<void> {
-  const target = getLocalGroupings().find((g) => g.id === id);
-  const remaining = getLocalGroupings().filter((g) => g.id !== id);
+export async function deleteCLPGrouping(id: string, clpId?: string): Promise<void> {
+  const local = getLocalGroupings();
+  const target = local.find((g) => g.id === id);
+  const targetClpId = clpId || target?.clpId;
+
+  // 1. Immediately remove from local storage
+  const remaining = local.filter((g) => g.id !== id);
   setLocalGroupings(remaining);
 
   const supabase = createClient();
   if (supabase) {
+    // 2. Delete from dedicated clp_groupings table if present
     if (isValidUUID(id)) {
       try {
         await supabase.from('clp_groupings').delete().eq('id', id);
       } catch (err) {
-        console.warn('Supabase deleteCLPGrouping error:', err);
+        // Table may not exist
       }
     }
 
-    // Sync deletion back to clp_programs in Supabase
-    if (target?.clpId && isValidUUID(target.clpId)) {
-      try {
-        const { data: prog } = await supabase
-          .from('clp_programs')
-          .select('team_leader')
-          .eq('id', target.clpId)
-          .single();
-
-        const rawLeader = prog?.team_leader || '';
-        const cleanLeader = rawLeader.includes('<!--CLP_GROUPINGS_JSON:::')
-          ? rawLeader.split('<!--CLP_GROUPINGS_JSON:::')[0].trim()
-          : rawLeader.trim() || 'Bro. Mark & Sis. Grace Camilon';
-
-        const forThisClp = remaining.filter((g) => g.clpId === target.clpId);
-        const encodedLeader = forThisClp.length > 0
-          ? `${cleanLeader} <!--CLP_GROUPINGS_JSON:::${JSON.stringify(forThisClp)}:::-->`
-          : cleanLeader;
-
-        await supabase
-          .from('clp_programs')
-          .update({ team_leader: encodedLeader })
-          .eq('id', target.clpId);
-      } catch (delSyncErr) {
-        console.warn('Supabase delete cloud sync warning:', delSyncErr);
+    // 3. Sync deletion back to clp_programs in Supabase
+    try {
+      let progQuery = supabase.from('clp_programs').select('id, team_leader');
+      if (targetClpId && isValidUUID(targetClpId)) {
+        progQuery = progQuery.eq('id', targetClpId);
       }
+      const { data: progs, error: pErr } = await progQuery;
+      if (!pErr && progs && progs.length > 0) {
+        for (const prog of progs) {
+          const rawLeader = prog.team_leader || '';
+          if (rawLeader.includes('<!--CLP_GROUPINGS_JSON:::')) {
+            const cleanLeader = rawLeader.split('<!--CLP_GROUPINGS_JSON:::')[0].trim() || 'Bro. Mark & Sis. Grace Camilon';
+            let dbGroupings: SavedCLPGrouping[] = [];
+            try {
+              const rawJson = rawLeader.split('<!--CLP_GROUPINGS_JSON:::')[1].split(':::-->')[0];
+              const parsed = JSON.parse(rawJson);
+              if (Array.isArray(parsed)) {
+                dbGroupings = parsed;
+              }
+            } catch (jsonErr) {
+              console.warn('Error parsing cloud groupings JSON for deletion:', jsonErr);
+            }
+
+            const updatedGroupings = dbGroupings.filter((g) => g.id !== id);
+            const encodedLeader = updatedGroupings.length > 0
+              ? `${cleanLeader} <!--CLP_GROUPINGS_JSON:::${JSON.stringify(updatedGroupings)}:::-->`
+              : cleanLeader;
+
+            await supabase
+              .from('clp_programs')
+              .update({ team_leader: encodedLeader })
+              .eq('id', prog.id);
+          }
+        }
+      }
+    } catch (delSyncErr) {
+      console.warn('Supabase delete cloud sync warning:', delSyncErr);
     }
   }
 }

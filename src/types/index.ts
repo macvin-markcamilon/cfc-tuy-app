@@ -108,6 +108,8 @@ export interface CLPCouple {
   barangay: string;
   coordinates: [number, number]; // [longitude, latitude]
   status: 'Active' | 'Graduated' | 'Dropped';
+  groupName?: string;
+  groupNumber?: number;
 }
 
 export interface CLPTalk {

@@ -83,6 +83,7 @@ import {
   Phone,
   FileText,
   PlusCircle,
+  Zap,
 } from 'lucide-react';
 
 export default function CLPAdminPage() {
@@ -105,15 +106,17 @@ export default function CLPAdminPage() {
   const [activeTab, setActiveTab] = useState<'couples' | 'talks' | 'report' | 'ai-groups'>('couples');
 
   // Grouping Sub-Tab & Attendance-based Grouping State (Req 3, 4, 5)
-  const [groupingSubTab, setGroupingSubTab] = useState<'active' | 'saved'>('active');
+  const [groupingSubTab, setGroupingSubTab] = useState<'manage' | 'generator' | 'saved'>('manage');
   const [groupingSource, setGroupingSource] = useState<'all' | 'talk'>('all');
   const [groupingTalkId, setGroupingTalkId] = useState<string>('');
   const [attendanceRequirement, setAttendanceRequirement] = useState<'either' | 'both'>('either');
   const [savedGroupings, setSavedGroupings] = useState<SavedCLPGrouping[]>([]);
   const [activeSavedGroupingId, setActiveSavedGroupingId] = useState<string | null>(null);
   const [groupingTitleInput, setGroupingTitleInput] = useState('');
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(true);
   const [isSavingGrouping, setIsSavingGrouping] = useState(false);
+  const [filterGroup, setFilterGroup] = useState<string>('ALL');
+  const [showAddCoupleToGroupModal, setShowAddCoupleToGroupModal] = useState<number | null>(null);
 
   // AI Grouping Generator State
   const [aiGroupPrompt, setAiGroupPrompt] = useState('');
@@ -333,11 +336,47 @@ export default function CLPAdminPage() {
       .sort((a, b) => a.talkNumber - b.talkNumber);
   }, [talks, currentClp]);
 
+  // CLP Grouping Helpers & Computed Lists
+  const assignedCoupleIds = useMemo(() => {
+    if (!aiGroupingResult?.groups) return new Set<string>();
+    return new Set(aiGroupingResult.groups.flatMap((g) => g.couples.map((c) => c.id)));
+  }, [aiGroupingResult?.groups]);
+
+  const unassignedCouples = useMemo(() => {
+    return currentCouples.filter((c) => !assignedCoupleIds.has(c.id));
+  }, [currentCouples, assignedCoupleIds]);
+
+  const getCoupleGroup = (coupleId: string): string | null => {
+    if (!aiGroupingResult?.groups) return null;
+    for (const g of aiGroupingResult.groups) {
+      if (g.couples.some((c) => c.id === coupleId)) {
+        return g.groupName || `Group ${g.groupNumber}`;
+      }
+    }
+    return null;
+  };
+
   // Load saved groupings whenever currentClp changes
   useEffect(() => {
     if (currentClp?.id) {
       fetchCLPGroupings(currentClp.id).then((list) => {
         setSavedGroupings(list);
+        if (list.length > 0) {
+          const latest = list[0];
+          setAiGroupingResult({
+            id: latest.id,
+            title: latest.title,
+            talkId: latest.talkId,
+            talkTitle: latest.talkTitle,
+            filterType: latest.filterType,
+            groups: latest.groups,
+            summary: latest.summary || '',
+            prompt: latest.prompt || '',
+            generatedAt: latest.createdAt,
+          });
+          setActiveSavedGroupingId(latest.id);
+          setGroupingTitleInput(latest.title);
+        }
       });
     }
   }, [currentClp?.id]);
@@ -456,7 +495,12 @@ export default function CLPAdminPage() {
         hBracket === filterAgeBracket ||
         wBracket === filterAgeBracket;
 
-      return matchesSearch && matchesBarangay && matchesAgeBracket;
+      const coupleGrp = getCoupleGroup(c.id);
+      const matchesGroup =
+        filterGroup === 'ALL' ||
+        (filterGroup === 'UNASSIGNED' ? !coupleGrp : coupleGrp === filterGroup);
+
+      return matchesSearch && matchesBarangay && matchesAgeBracket && matchesGroup;
     });
 
     return list.sort((a, b) => {
@@ -482,7 +526,7 @@ export default function CLPAdminPage() {
       }
       return 0;
     });
-  }, [currentCouples, searchCoupleQuery, filterBarangay, filterAgeBracket, coupleSortBy]);
+  }, [currentCouples, searchCoupleQuery, filterBarangay, filterAgeBracket, coupleSortBy, filterGroup, aiGroupingResult]);
 
   // -------------------------------------------------------------------------
   // Handlers: CLP Program Creation & Deletion
@@ -1454,6 +1498,7 @@ export default function CLPAdminPage() {
       };
 
       setAiGroupingResult(newGroupingResult);
+      setGroupingSubTab('manage');
       triggerToast(`✨ Created ${data.groups.length} groups from ${targetCouplesForGrouping.length} couples!`);
     } catch (err: any) {
       setAiGroupError(err?.message || 'An error occurred during AI grouping.');
@@ -1527,7 +1572,7 @@ export default function CLPAdminPage() {
       prompt: saved.prompt || '',
       generatedAt: saved.createdAt,
     });
-    setGroupingSubTab('active');
+    setGroupingSubTab('manage');
     setIsEditMode(false);
     triggerToast(`Loaded grouping "${saved.title}"`);
   };
@@ -1596,8 +1641,7 @@ export default function CLPAdminPage() {
   };
 
   const handleAddNewGroup = () => {
-    if (!aiGroupingResult) return;
-    const nextNumber = aiGroupingResult.groups.length + 1;
+    const nextNumber = (aiGroupingResult?.groups?.length || 0) + 1;
     const newGroup = {
       groupNumber: nextNumber,
       groupName: `Group ${nextNumber}`,
@@ -1605,11 +1649,122 @@ export default function CLPAdminPage() {
       facilitator: '',
       couples: [],
     };
-    setAiGroupingResult({
-      ...aiGroupingResult,
-      groups: [...aiGroupingResult.groups, newGroup],
-    });
+    if (aiGroupingResult) {
+      setAiGroupingResult({
+        ...aiGroupingResult,
+        groups: [...aiGroupingResult.groups, newGroup],
+      });
+    } else {
+      setAiGroupingResult({
+        id: generateUUID(),
+        title: `${currentClp?.name || 'CLP'} Discussion Groups`,
+        groups: [newGroup],
+        generatedAt: new Date().toISOString(),
+      });
+    }
     triggerToast(`Added Group ${nextNumber}`);
+  };
+
+  const handleAddCoupleToSpecificGroup = (groupIndex: number, coupleId: string) => {
+    const couple = currentCouples.find((c) => c.id === coupleId);
+    if (!couple) return;
+
+    let baseGroups = aiGroupingResult?.groups ? [...aiGroupingResult.groups] : [];
+    if (baseGroups.length === 0) {
+      handleAddNewGroup();
+      return;
+    }
+
+    if (groupIndex >= baseGroups.length) return;
+
+    // Check if couple is already in that group
+    if (baseGroups[groupIndex].couples.some((c) => c.id === coupleId)) return;
+
+    // Also remove from any other group if present
+    baseGroups = baseGroups.map((g) => ({
+      ...g,
+      couples: g.couples.filter((c) => c.id !== coupleId),
+    }));
+
+    baseGroups[groupIndex] = {
+      ...baseGroups[groupIndex],
+      couples: [
+        ...baseGroups[groupIndex].couples,
+        {
+          id: couple.id,
+          name: `Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName} ${couple.husbandLastName}`,
+          barangay: couple.barangay,
+          husbandOccupation: couple.husbandOccupation,
+          wifeOccupation: couple.wifeOccupation,
+          address: couple.address,
+          weddingAnniversary: couple.weddingAnniversary,
+        },
+      ],
+    };
+
+    setAiGroupingResult({
+      id: aiGroupingResult?.id || generateUUID(),
+      title: groupingTitleInput.trim() || aiGroupingResult?.title || `${currentClp?.name} Discussion Groups`,
+      groups: baseGroups,
+      generatedAt: new Date().toISOString(),
+    });
+    setShowAddCoupleToGroupModal(null);
+    triggerToast(`Added ${couple.husbandLastName} couple to ${baseGroups[groupIndex].groupName}`);
+  };
+
+  const handleAutoDistributeCouples = (numGroups = 4) => {
+    if (currentCouples.length === 0) {
+      triggerToast('No couples available to group.');
+      return;
+    }
+
+    let baseGroups =
+      aiGroupingResult?.groups && aiGroupingResult.groups.length > 0
+        ? aiGroupingResult.groups.map((g) => ({ ...g, couples: [...g.couples] }))
+        : Array.from({ length: numGroups }, (_, i) => ({
+            groupNumber: i + 1,
+            groupName: `Group ${i + 1}`,
+            rationale: 'Discussion Circle',
+            facilitator: '',
+            couples: [] as any[],
+          }));
+
+    const assignedIds = new Set(baseGroups.flatMap((g) => g.couples.map((c) => c.id)));
+    const unassigned = currentCouples.filter((c) => !assignedIds.has(c.id));
+
+    if (unassigned.length === 0) {
+      triggerToast('All couples are already assigned to groups.');
+      return;
+    }
+
+    unassigned.forEach((couple) => {
+      let minGroup = baseGroups[0];
+      for (const g of baseGroups) {
+        if (g.couples.length < minGroup.couples.length) {
+          minGroup = g;
+        }
+      }
+      minGroup.couples.push({
+        id: couple.id,
+        name: `Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName} ${couple.husbandLastName}`,
+        barangay: couple.barangay,
+        husbandOccupation: couple.husbandOccupation,
+        wifeOccupation: couple.wifeOccupation,
+        address: couple.address,
+        weddingAnniversary: couple.weddingAnniversary,
+      });
+    });
+
+    const newResult = {
+      id: aiGroupingResult?.id || generateUUID(),
+      title: groupingTitleInput.trim() || aiGroupingResult?.title || `${currentClp?.name} Discussion Groups`,
+      groups: baseGroups,
+      generatedAt: new Date().toISOString(),
+      summary: `Organized ${currentCouples.length} couples across ${baseGroups.length} discussion groups.`,
+    };
+
+    setAiGroupingResult(newResult);
+    triggerToast(`✨ Successfully assigned all couples across ${baseGroups.length} groups!`);
   };
 
   const handleDeleteGroup = (groupIndex: number) => {
@@ -2755,8 +2910,11 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-violet-50 hover:text-violet-700 hover:border-violet-200'
               }`}
             >
-              <Brain className="w-4 h-4" />
-              <span>Groupings with the Guide of the Holy Spirit</span>
+              <Users className="w-4 h-4" />
+              <span>Participant Groups &amp; Circles</span>
+              <span className="text-[10px] font-black bg-white/20 text-white px-2 py-0.5 rounded-full">
+                {aiGroupingResult?.groups?.length || 0}
+              </span>
               <span className="hidden sm:inline text-[9px] font-black uppercase bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded-md border border-violet-200">
                 NEW
               </span>
@@ -2989,6 +3147,25 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       <option value="61-plus">61+ yrs (Senior Elders)</option>
                     </select>
 
+                    {/* Discussion Group Filter */}
+                    <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1 shrink-0">
+                      <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      <select
+                        value={filterGroup}
+                        onChange={(e) => setFilterGroup(e.target.value)}
+                        className="bg-transparent text-slate-800 text-xs font-semibold focus:outline-hidden cursor-pointer"
+                        title="Filter by participant discussion group"
+                      >
+                        <option value="ALL">All Groups</option>
+                        <option value="UNASSIGNED">⚠️ Unassigned ({unassignedCouples.length})</option>
+                        {aiGroupingResult?.groups?.map((g) => (
+                          <option key={g.groupNumber} value={g.groupName}>
+                            {g.groupName} ({g.couples.length})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* Sort By Dropdown */}
                     <div className="flex items-center gap-1 bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1 shrink-0">
                       <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0" />
@@ -3051,10 +3228,28 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       className="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-slate-300 hover:shadow-md transition-all flex flex-col justify-between"
                     >
                       <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            {couple.status}
-                          </span>
+                        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              {couple.status}
+                            </span>
+                            {(() => {
+                              const assigned = getCoupleGroup(couple.id);
+                              if (assigned) {
+                                return (
+                                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">
+                                    <Users className="w-3 h-3 text-violet-600" />
+                                    {assigned}
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                  Unassigned
+                                </span>
+                              );
+                            })()}
+                          </div>
                           <span className="text-xs font-bold text-[#243c81] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
                             <MapPin className="w-3.5 h-3.5 text-red-500" />
                             Brgy. {couple.barangay}
@@ -3276,6 +3471,22 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                                 }`}>
                                   {couple.status}
                                 </span>
+                                {(() => {
+                                  const assigned = getCoupleGroup(couple.id);
+                                  if (assigned) {
+                                    return (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1">
+                                        <Users className="w-2.5 h-2.5 text-violet-600" />
+                                        {assigned}
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                      Unassigned
+                                    </span>
+                                  );
+                                })()}
                                 {couple.weddingAnniversary && (
                                   <span className="text-[10px] text-rose-600 font-semibold flex items-center gap-0.5">
                                     <Heart className="w-2.5 h-2.5 fill-rose-500 text-rose-500" />
@@ -4306,18 +4517,33 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                   </div>
 
                   {/* Sub-tab Navigation */}
-                  <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-black/25 border border-white/10 shrink-0 self-start sm:self-auto">
+                  <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-black/25 border border-white/10 shrink-0 self-start sm:self-auto flex-wrap">
                     <button
                       type="button"
-                      onClick={() => setGroupingSubTab('active')}
+                      onClick={() => setGroupingSubTab('manage')}
                       className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                        groupingSubTab === 'active'
+                        groupingSubTab === 'manage'
                           ? 'bg-white text-violet-900 shadow-sm'
                           : 'text-white/80 hover:text-white hover:bg-white/10'
                       }`}
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Generator &amp; Editor</span>
+                      <Users className="w-3.5 h-3.5 text-violet-600" />
+                      <span>Groups Manager</span>
+                      <span className="px-1.5 py-0.2 rounded-full bg-violet-100 text-violet-800 text-[10px] font-black">
+                        {aiGroupingResult?.groups?.length || 0}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGroupingSubTab('generator')}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        groupingSubTab === 'generator'
+                          ? 'bg-white text-violet-900 shadow-sm'
+                          : 'text-white/80 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Holy Spirit AI</span>
                     </button>
                     <button
                       type="button"
@@ -4328,8 +4554,8 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                           : 'text-white/80 hover:text-white hover:bg-white/10'
                       }`}
                     >
-                      <FolderOpen className="w-3.5 h-3.5 text-blue-500" />
-                      <span>Saved Groupings</span>
+                      <FolderOpen className="w-3.5 h-3.5 text-blue-300" />
+                      <span>Saved Repositories</span>
                       <span className="px-1.5 py-0.2 rounded-full bg-violet-100 text-violet-800 text-[10px] font-black">
                         {savedGroupings.filter((g) => g.clpId === currentClp.id).length}
                       </span>
@@ -4352,7 +4578,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     </div>
                     <button
                       type="button"
-                      onClick={() => setGroupingSubTab('active')}
+                      onClick={() => setGroupingSubTab('generator')}
                       className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -4369,7 +4595,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       </p>
                       <button
                         type="button"
-                        onClick={() => setGroupingSubTab('active')}
+                        onClick={() => setGroupingSubTab('generator')}
                         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-md transition-all"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
@@ -4466,10 +4692,34 @@ Generated via Couples for Christ Tuy Chapter Portal`;
               )}
 
               {/* =================================================================== */}
-              {/* SUBTAB 2: ACTIVE GENERATOR & EDITING WORKSPACE                       */}
+              {/* SUBTAB 3: HOLY SPIRIT AI GENERATOR                                  */}
               {/* =================================================================== */}
-              {groupingSubTab === 'active' && (
+              {groupingSubTab === 'generator' && (
                 <div className="space-y-6">
+                  {/* Status Banner if groups already exist */}
+                  {aiGroupingResult && aiGroupingResult.groups.length > 0 && (
+                    <div className="p-4 rounded-2xl bg-violet-50 border border-violet-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <Sparkles className="w-5 h-5 text-violet-600 shrink-0" />
+                        <div>
+                          <p className="text-xs font-bold text-violet-900">
+                            {aiGroupingResult.groups.length} groups currently formed with {aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0)} couples
+                          </p>
+                          <p className="text-[11px] text-violet-600">
+                            Generating a new grouping will propose fresh assignments guided by your prompt.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setGroupingSubTab('manage')}
+                        className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all shadow-xs shrink-0 self-start sm:self-auto"
+                      >
+                        Return to Groups Manager →
+                      </button>
+                    </div>
+                  )}
+
                   {/* Configuration & Filter Card (Req 4: Group only attended couples per talk) */}
                   <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-6 space-y-5">
                     <div>
@@ -4728,114 +4978,282 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                     )}
                   </div>
 
-                  {/* Results & Interactive Group Editor (Req 3 & 5) */}
-                  {aiGroupingResult && (
-                    <div className="space-y-4">
-                      {/* Control & Save Action Bar */}
-                      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 space-y-4">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          {/* Editable Title */}
-                          <div className="flex-1 min-w-0">
-                            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                              Grouping Title
-                            </label>
-                            <input
-                              type="text"
-                              value={groupingTitleInput}
-                              onChange={(e) => setGroupingTitleInput(e.target.value)}
-                              className="w-full text-base sm:text-lg font-black text-slate-900 px-3 py-1.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
-                              placeholder="Enter grouping title..."
-                            />
-                            <p className="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                              <span>{aiGroupingResult.groups.length} groups</span>
-                              <span>•</span>
-                              <span>
-                                {aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0)} couples
-                              </span>
-                              {aiGroupingResult.talkTitle && (
-                                <>
-                                  <span>•</span>
-                                  <span className="font-bold text-violet-700">{aiGroupingResult.talkTitle}</span>
-                                </>
-                              )}
-                            </p>
+                </div>
+              )}
+
+              {/* =================================================================== */}
+              {/* SUBTAB 2: GROUPS MANAGER (PRIMARY INTERFACE FOR CLP PARTICIPANTS)    */}
+              {/* =================================================================== */}
+              {groupingSubTab === 'manage' && (
+                <div className="space-y-6">
+                  {/* Summary Toolbar Card */}
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-xs p-5 space-y-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      {/* Group Title and Statistics */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Discussion Grouping Roster
+                          </label>
+                          {aiGroupingResult?.talkTitle && (
+                            <span className="text-[10px] font-bold bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full">
+                              {aiGroupingResult.talkTitle}
+                            </span>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={groupingTitleInput}
+                          onChange={(e) => setGroupingTitleInput(e.target.value)}
+                          className="w-full text-base sm:text-lg font-black text-slate-900 px-3 py-1.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                          placeholder={`${currentClp?.name || 'CLP'} Discussion Groups`}
+                        />
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                            <Users className="w-3.5 h-3.5 text-blue-600" />
+                            <span>{aiGroupingResult?.groups?.length || 0} Groups</span>
+                          </span>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{assignedCoupleIds.size} / {currentCouples.length} Assigned</span>
+                          </span>
+                          {unassignedCouples.length > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300 animate-pulse">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                              <span>{unassignedCouples.length} Unassigned</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>100% Fully Distributed</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action Toolbar */}
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {/* Add Group */}
+                        <button
+                          type="button"
+                          onClick={handleAddNewGroup}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Group</span>
+                        </button>
+
+                        {/* Auto-Distribute Unassigned */}
+                        {unassignedCouples.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleAutoDistributeCouples(aiGroupingResult?.groups?.length || 4)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-bold transition-all shadow-xs active:scale-95"
+                          >
+                            <Zap className="w-3.5 h-3.5 fill-current" />
+                            <span>Auto-Distribute ({unassignedCouples.length})</span>
+                          </button>
+                        )}
+
+                        {/* Save Grouping Button */}
+                        <button
+                          type="button"
+                          onClick={handleSaveCurrentGrouping}
+                          disabled={isSavingGrouping || !aiGroupingResult || aiGroupingResult.groups.length === 0}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          <span>{isSavingGrouping ? 'Saving...' : 'Save Grouping'}</span>
+                        </button>
+
+                        {/* Download HTML */}
+                        {aiGroupingResult && aiGroupingResult.groups.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDownloadAIGroupsHTML}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-bold transition-all"
+                            title="Download HTML Roster"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">HTML</span>
+                          </button>
+                        )}
+
+                        {/* Print */}
+                        {aiGroupingResult && aiGroupingResult.groups.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => window.print()}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all"
+                            title="Print Roster Sheets"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Print</span>
+                          </button>
+                        )}
+
+                        {/* AI Generator Shortcut */}
+                        <button
+                          type="button"
+                          onClick={() => setGroupingSubTab('generator')}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 text-xs font-bold transition-all"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Holy Spirit AI</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* UNASSIGNED PARTICIPANTS TRAY */}
+                  {unassignedCouples.length > 0 && (
+                    <div className="bg-amber-50/70 border border-amber-200 rounded-3xl p-5 shadow-xs space-y-3 animate-in fade-in">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+                            <AlertCircle className="w-4 h-4" />
                           </div>
-
-                          {/* Toolbar Actions */}
-                          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
-                            {/* Edit Mode Toggle */}
-                            <button
-                              type="button"
-                              onClick={() => setIsEditMode(!isEditMode)}
-                              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
-                                isEditMode
-                                  ? 'bg-amber-400 text-[#243c81] border-amber-300 shadow-xs ring-2 ring-amber-300'
-                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
-                              }`}
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                              <span>{isEditMode ? 'Exit Edit Mode' : 'Edit Groupings'}</span>
-                            </button>
-
-                            {/* Save Grouping Button (Req 3) */}
-                            <button
-                              type="button"
-                              onClick={handleSaveCurrentGrouping}
-                              disabled={isSavingGrouping}
-                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#243c81] hover:bg-[#1a2c60] text-white text-xs font-bold transition-all shadow-xs disabled:opacity-50"
-                            >
-                              <Save className="w-3.5 h-3.5" />
-                              <span>{isSavingGrouping ? 'Saving...' : 'Save Grouping'}</span>
-                            </button>
-
-                            {/* Download HTML/PDF */}
-                            <button
-                              type="button"
-                              onClick={handleDownloadAIGroupsHTML}
-                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-50 hover:bg-violet-100 border border-violet-200 text-violet-700 text-xs font-bold transition-all"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Download</span>
-                            </button>
-
-                            {/* Print */}
-                            <button
-                              type="button"
-                              onClick={() => window.print()}
-                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Print</span>
-                            </button>
+                          <div>
+                            <h4 className="text-sm font-extrabold text-amber-950">
+                              {unassignedCouples.length} Participants Not Yet Assigned to a Group
+                            </h4>
+                            <p className="text-xs text-amber-800">
+                              Quickly assign each couple to an existing group, or balance them evenly.
+                            </p>
                           </div>
                         </div>
 
-                        {/* Edit Mode Notice Banner */}
-                        {isEditMode && (
-                          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 font-medium animate-in fade-in">
-                            <div className="flex items-center gap-2">
-                              <SlidersHorizontal className="w-4 h-4 text-amber-700 shrink-0" />
-                              <span>
-                                <strong>Edit Mode Active:</strong> You can edit group names, assign facilitators/servants, move couples between groups via dropdown, or add extra groups.
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={handleAddNewGroup}
-                              className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-white border border-amber-300 text-amber-900 text-xs font-bold hover:bg-amber-100 shrink-0"
-                            >
-                              <PlusCircle className="w-3.5 h-3.5 text-amber-700" />
-                              <span>Add New Group</span>
-                            </button>
-                          </div>
+                        {aiGroupingResult && aiGroupingResult.groups.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleAutoDistributeCouples(aiGroupingResult.groups.length)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs font-bold transition-all shadow-xs shrink-0 self-start sm:self-auto"
+                          >
+                            <Zap className="w-3.5 h-3.5 fill-current" />
+                            <span>Auto-Distribute All {unassignedCouples.length}</span>
+                          </button>
                         )}
                       </div>
 
-                      {/* AI Summary */}
+                      {/* Horizontal list of unassigned couples */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 pt-1 max-h-60 overflow-y-auto pr-1">
+                        {unassignedCouples.map((couple) => (
+                          <div
+                            key={couple.id}
+                            className="bg-white rounded-xl border border-amber-200 p-2.5 shadow-2xs flex flex-col justify-between gap-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">
+                                Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName} {couple.husbandLastName}
+                              </p>
+                              <p className="text-[11px] text-slate-500 truncate">
+                                Brgy. {couple.barangay}
+                              </p>
+                            </div>
+
+                            {aiGroupingResult && aiGroupingResult.groups.length > 0 ? (
+                              <select
+                                defaultValue=""
+                                onChange={(e) => {
+                                  if (e.target.value !== '') {
+                                    handleAddCoupleToSpecificGroup(Number(e.target.value), couple.id);
+                                    e.target.value = '';
+                                  }
+                                }}
+                                className="w-full text-xs font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1 focus:ring-2 focus:ring-violet-500 cursor-pointer"
+                              >
+                                <option value="">+ Assign to Group...</option>
+                                {aiGroupingResult.groups.map((grp, grpIdx) => (
+                                  <option key={grp.groupNumber} value={grpIdx}>
+                                    Assign to {grp.groupName} ({grp.couples.length})
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleAddNewGroup}
+                                className="text-xs font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1 hover:bg-violet-100 transition-colors"
+                              >
+                                + Create Group 1
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* EMPTY STATE: NO GROUPS YET */}
+                  {(!aiGroupingResult || aiGroupingResult.groups.length === 0) && (
+                    <div className="bg-white rounded-3xl border-2 border-dashed border-slate-200 p-10 text-center space-y-4">
+                      <div className="w-14 h-14 rounded-2xl bg-violet-100 text-violet-600 flex items-center justify-center mx-auto">
+                        <Users className="w-7 h-7" />
+                      </div>
+                      <div className="max-w-md mx-auto space-y-1">
+                        <h4 className="font-extrabold text-slate-900 text-base">
+                          No Discussion Groups Formed Yet
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          {currentCouples.length} participant couples are currently registered in {currentClp.name}. Choose how you would like to organize your discussion groups.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => handleAutoDistributeCouples(4)}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-md shadow-violet-200 transition-all active:scale-95"
+                        >
+                          <Zap className="w-4 h-4 fill-current" />
+                          <span>Quick Balance into 4 Groups (~{Math.round(currentCouples.length / 4 || 1)} couples each)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAutoDistributeCouples(5)}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 transition-all active:scale-95"
+                        >
+                          <Zap className="w-4 h-4 fill-current" />
+                          <span>Quick Balance into 5 Groups (~{Math.round(currentCouples.length / 5 || 1)} couples each)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleAddNewGroup}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Create Custom Group 1</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setGroupingSubTab('generator')}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-violet-700 hover:from-purple-700 hover:to-violet-800 text-white text-xs font-bold shadow-md transition-all active:scale-95"
+                        >
+                          <Sparkles className="w-4 h-4 text-amber-300" />
+                          <span>Use Holy Spirit AI Generator</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* GROUPS CARDS GRID */}
+                  {aiGroupingResult && aiGroupingResult.groups.length > 0 && (
+                    <div className="space-y-4">
+                      {/* AI Summary Banner if present */}
                       {aiGroupingResult.summary && (
-                        <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
-                          <p className="text-xs font-black uppercase tracking-widest text-violet-400 mb-1">AI Pastoral Summary</p>
-                          <p className="text-sm text-violet-900 font-medium">{aiGroupingResult.summary}</p>
+                        <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4 flex items-start gap-3">
+                          <Sparkles className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-violet-500 mb-0.5">
+                              Pastoral &amp; Spirit-Led Rationale
+                            </p>
+                            <p className="text-xs sm:text-sm text-violet-900 font-medium leading-relaxed">
+                              {aiGroupingResult.summary}
+                            </p>
+                          </div>
                         </div>
                       )}
 
@@ -4853,103 +5271,95 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                           const colors = colorSets[gi % colorSets.length];
 
                           return (
-                            <div key={group.groupNumber} className={`rounded-3xl border ${colors.border} overflow-hidden shadow-xs bg-white`}>
-                              {/* Group Header */}
-                              <div className={`${colors.bg} px-5 py-4 text-white`}>
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
-                                      Group {group.groupNumber}
-                                    </p>
-                                    {isEditMode ? (
+                            <div key={group.groupNumber} className={`rounded-3xl border ${colors.border} overflow-hidden shadow-xs bg-white flex flex-col justify-between`}>
+                              <div>
+                                {/* Group Header */}
+                                <div className={`${colors.bg} px-5 py-4 text-white`}>
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/70">
+                                        Group {group.groupNumber}
+                                      </p>
                                       <input
                                         type="text"
                                         value={group.groupName}
                                         onChange={(e) => handleUpdateGroupName(gi, e.target.value)}
-                                        className="w-full bg-white/20 text-white font-black text-base px-2.5 py-1 rounded-lg border border-white/30 focus:outline-hidden focus:bg-white/30"
-                                        placeholder="Group Name"
+                                        className="w-full bg-white/20 text-white font-black text-base px-2.5 py-1 rounded-lg border border-white/30 focus:outline-hidden focus:bg-white/30 mt-0.5"
+                                        placeholder={`Group ${group.groupNumber}`}
+                                        title="Click to rename group"
                                       />
-                                    ) : (
-                                      <h4 className="text-base font-black truncate">{group.groupName}</h4>
-                                    )}
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="bg-white/20 text-white text-[11px] font-bold px-3 py-1 rounded-full">
+                                        {group.couples.length} couples
+                                      </span>
+                                      {aiGroupingResult.groups.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteGroup(gi)}
+                                          className="p-1.5 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-white transition-colors"
+                                          title="Delete this group and return members to unassigned"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
 
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <span className="bg-white/20 text-white text-[11px] font-bold px-3 py-1 rounded-full">
-                                      {group.couples.length} couples
+                                  {/* Facilitator / Discussion Leader Row */}
+                                  <div className="mt-2.5 pt-2 border-t border-white/15 flex items-center gap-2">
+                                    <span className="text-[10px] font-bold uppercase text-white/70 shrink-0">
+                                      Leader / Servant:
                                     </span>
-                                    {isEditMode && aiGroupingResult.groups.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteGroup(gi)}
-                                        className="p-1 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-white transition-colors"
-                                        title="Delete this group"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Facilitator / Discussion Leader Row */}
-                                <div className="mt-2.5 pt-2 border-t border-white/15 flex items-center gap-2">
-                                  <span className="text-[10px] font-bold uppercase text-white/70 shrink-0">
-                                    Leader / Servant:
-                                  </span>
-                                  {isEditMode ? (
                                     <input
                                       type="text"
                                       value={group.facilitator || ''}
                                       onChange={(e) => handleUpdateGroupFacilitator(gi, e.target.value)}
                                       placeholder="e.g. Bro. Joel & Sis. Mary"
                                       className="flex-1 bg-white/20 text-white text-xs font-semibold px-2 py-0.5 rounded border border-white/30 focus:outline-hidden focus:bg-white/30 placeholder:text-white/50"
+                                      title="Enter discussion leader / facilitator couple"
                                     />
-                                  ) : (
-                                    <span className="text-xs font-bold text-amber-200 truncate">
-                                      {group.facilitator || 'To be assigned'}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Rationale */}
-                              {group.rationale && (
-                                <div className={`${colors.light} px-5 py-2.5 border-b ${colors.border}`}>
-                                  <p className={`text-[11px] font-medium ${colors.text} italic`}>{group.rationale}</p>
-                                </div>
-                              )}
-
-                              {/* Couple List */}
-                              <div className="divide-y divide-slate-100">
-                                {group.couples.length === 0 ? (
-                                  <div className="p-6 text-center text-xs text-slate-400 italic">
-                                    No couples in this group. Move couples here from other groups.
                                   </div>
-                                ) : (
-                                  group.couples.map((couple, ci) => (
-                                    <div
-                                      key={couple.id}
-                                      className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
-                                    >
-                                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                                        <span className={`w-6 h-6 rounded-full ${colors.num} text-[11px] font-black flex items-center justify-center shrink-0`}>
-                                          {ci + 1}
-                                        </span>
-                                        <div className="min-w-0">
-                                          <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
-                                            {couple.name}
-                                          </p>
-                                          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                                            <span>Brgy. {couple.barangay}</span>
-                                            {couple.husbandOccupation && (
-                                              <span>• {couple.husbandOccupation}</span>
-                                            )}
+                                </div>
+
+                                {/* Rationale */}
+                                {group.rationale && (
+                                  <div className={`${colors.light} px-5 py-2.5 border-b ${colors.border}`}>
+                                    <p className={`text-[11px] font-medium ${colors.text} italic`}>{group.rationale}</p>
+                                  </div>
+                                )}
+
+                                {/* Couple List */}
+                                <div className="divide-y divide-slate-100">
+                                  {group.couples.length === 0 ? (
+                                    <div className="p-6 text-center text-xs text-slate-400 italic">
+                                      No couples in this group. Click &quot;+ Add Couple&quot; below or assign unassigned couples.
+                                    </div>
+                                  ) : (
+                                    group.couples.map((couple, ci) => (
+                                      <div
+                                        key={couple.id}
+                                        className="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                                      >
+                                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                                          <span className={`w-6 h-6 rounded-full ${colors.num} text-[11px] font-black flex items-center justify-center shrink-0`}>
+                                            {ci + 1}
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                              {couple.name}
+                                            </p>
+                                            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                              <span>Brgy. {couple.barangay}</span>
+                                              {couple.husbandOccupation && (
+                                                <span>• {couple.husbandOccupation}</span>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
-                                      </div>
 
-                                      {/* Edit Mode: Move dropdown and Remove button (Req 5) */}
-                                      {isEditMode && (
+                                        {/* Actions: Move dropdown and Remove button */}
                                         <div className="flex items-center gap-1.5 shrink-0">
                                           <div className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1 text-slate-600">
                                             <ArrowRightLeft className="w-3 h-3 text-slate-400" />
@@ -4973,25 +5383,37 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                                             type="button"
                                             onClick={() => handleRemoveCoupleFromGroup(gi, couple.id)}
                                             className="p-1 text-slate-400 hover:text-red-600 rounded-lg transition-colors"
-                                            title="Remove couple from group"
+                                            title="Remove couple from this group"
                                           >
                                             <X className="w-3.5 h-3.5" />
                                           </button>
                                         </div>
-                                      )}
-                                    </div>
-                                  ))
-                                )}
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Card Footer: Add Couple Button */}
+                              <div className="p-3 bg-slate-50 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowAddCoupleToGroupModal(gi)}
+                                  className="w-full py-2 px-3 rounded-xl border border-dashed border-slate-300 hover:border-violet-400 bg-white hover:bg-violet-50 text-slate-600 hover:text-violet-700 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>Add Couple to {group.groupName}</span>
+                                </button>
                               </div>
                             </div>
                           );
                         })}
                       </div>
 
-                      {/* Print/Download/Save Action Row */}
+                      {/* Bottom Action Footer */}
                       <div className="bg-white rounded-3xl border border-slate-200 p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
                         <p className="text-xs text-slate-500 font-medium">
-                          Created {new Date(aiGroupingResult.generatedAt).toLocaleString('en-PH')} • {aiGroupingResult.groups.length} groups • {aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0)} couples
+                          Last updated {new Date(aiGroupingResult.generatedAt).toLocaleString('en-PH')} • {aiGroupingResult.groups.length} groups • {aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0)} couples
                         </p>
                         <div className="flex items-center gap-2">
                           <button
@@ -6361,6 +6783,88 @@ Generated via Couples for Christ Tuy Chapter Portal`;
         couples={currentCouples}
         onTriggerToast={triggerToast}
       />
+
+      {/* ========================================================================= */}
+      {/* MODAL 8: ADD UNASSIGNED PARTICIPANTS TO SPECIFIC GROUP                     */}
+      {/* ========================================================================= */}
+      {showAddCoupleToGroupModal !== null && aiGroupingResult && aiGroupingResult.groups[showAddCoupleToGroupModal] && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between gap-3 bg-slate-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center shrink-0">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">
+                    Add to {aiGroupingResult.groups[showAddCoupleToGroupModal].groupName}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {unassignedCouples.length} unassigned couples available
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCoupleToGroupModal(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 overflow-y-auto divide-y divide-slate-100 flex-1 space-y-1">
+              {unassignedCouples.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 space-y-2">
+                  <CheckCheck className="w-10 h-10 mx-auto text-emerald-500" />
+                  <p className="text-sm font-bold text-slate-700">All couples are already assigned!</p>
+                  <p className="text-xs text-slate-400">
+                    You can move participants between groups directly on the group cards.
+                  </p>
+                </div>
+              ) : (
+                unassignedCouples.map((couple) => (
+                  <div
+                    key={couple.id}
+                    className="flex items-center justify-between gap-3 py-3 px-2 hover:bg-slate-50 rounded-xl transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                        Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName} {couple.husbandLastName}
+                      </p>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                        <span>Brgy. {couple.barangay}</span>
+                        {couple.husbandOccupation && <span>• {couple.husbandOccupation}</span>}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAddCoupleToSpecificGroup(showAddCoupleToGroupModal, couple.id)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs shadow-2xs transition-all shrink-0 active:scale-95 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add</span>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAddCoupleToGroupModal(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-white cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

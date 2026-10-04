@@ -353,6 +353,8 @@ export async function fetchCLPCouples(clpId?: string): Promise<CLPCouple[]> {
           barangay: row.barangay,
           coordinates: [row.longitude || 120.7289, row.latitude || 14.0228],
           status: row.status || 'Active',
+          groupName: row.group_name || row.groupName || undefined,
+          groupNumber: row.group_number || row.groupNumber || undefined,
         }));
 
         const currentLocal = getLocalCouples().filter((c) => !mapped.some((m) => m.id === c.id));
@@ -402,6 +404,7 @@ export async function saveCLPCouple(couple: CLPCouple): Promise<CLPCouple> {
         latitude: couple.coordinates ? couple.coordinates[1] : null,
         longitude: couple.coordinates ? couple.coordinates[0] : null,
         status: couple.status || 'Active',
+        group_name: couple.groupName || null,
       };
 
       const { data, error } = await supabase
@@ -730,3 +733,62 @@ export async function deleteCLPGrouping(id: string): Promise<void> {
     }
   }
 }
+
+/**
+ * Assign or reassign a CLP participant couple to a group
+ */
+export async function updateCoupleGroupAssignment(
+  coupleId: string,
+  groupName: string,
+  groupNumber?: number
+): Promise<CLPCouple | null> {
+  const couples = getLocalCouples();
+  const couple = couples.find((c) => c.id === coupleId);
+  if (!couple) return null;
+
+  const updated: CLPCouple = {
+    ...couple,
+    groupName: groupName.trim() || undefined,
+    groupNumber: groupNumber || undefined,
+  };
+
+  await saveCLPCouple(updated);
+  return updated;
+}
+
+/**
+ * Bulk assign couples to groups
+ */
+export async function bulkUpdateCoupleGroups(
+  assignments: { coupleId: string; groupName: string; groupNumber?: number }[]
+): Promise<void> {
+  const couples = getLocalCouples();
+  const map = new Map(assignments.map((a) => [a.coupleId, a]));
+
+  const updated = couples.map((c) => {
+    const assignment = map.get(c.id);
+    if (assignment) {
+      return {
+        ...c,
+        groupName: assignment.groupName.trim() || undefined,
+        groupNumber: assignment.groupNumber || undefined,
+      };
+    }
+    return c;
+  });
+
+  setLocalCouples(updated);
+
+  // Background sync each updated couple
+  for (const a of assignments) {
+    const target = updated.find((c) => c.id === a.coupleId);
+    if (target) {
+      try {
+        await saveCLPCouple(target);
+      } catch {
+        // Ignored, saved locally
+      }
+    }
+  }
+}
+

@@ -178,6 +178,12 @@ export interface SavedCLPGroupCouple {
   wifeOccupation?: string;
   address?: string;
   weddingAnniversary?: string;
+  husbandBirthday?: string;
+  wifeBirthday?: string;
+  husbandAge?: string | number | null;
+  wifeAge?: string | number | null;
+  husbandContact?: string;
+  wifeContact?: string;
 }
 
 export interface SavedCLPGroup {

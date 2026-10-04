@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { TUY_BARANGAYS } from '@/lib/data/mock-data';
-import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance, SavedCLPGrouping } from '@/types';
+import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance, SavedCLPGrouping, SavedCLPGroupCouple } from '@/types';
 import TuyMapPicker from '@/components/map/TuyMapPicker';
 import CLPCouplesMapModal from '@/components/map/CLPCouplesMapModal';
 import CLPInviteeFullReportModal from '@/components/clp/CLPInviteeFullReportModal';
@@ -24,6 +24,7 @@ import {
   fetchCLPGroupings,
   saveCLPGrouping,
   deleteCLPGrouping,
+  bulkUpdateCoupleGroups,
   generateUUID,
 } from '@/lib/data/clp-service';
 import {
@@ -133,15 +134,7 @@ export default function CLPAdminPage() {
       groupName: string;
       rationale?: string;
       facilitator?: string;
-      couples: {
-        id: string;
-        name: string;
-        barangay: string;
-        husbandOccupation?: string;
-        wifeOccupation?: string;
-        address?: string;
-        weddingAnniversary?: string;
-      }[];
+      couples: SavedCLPGroupCouple[];
     }[];
     summary?: string;
     prompt?: string;
@@ -1442,15 +1435,25 @@ export default function CLPAdminPage() {
     setAiGroupingResult(null);
 
     try {
-      const couplesPayload = targetCouplesForGrouping.map((c) => ({
-        id: c.id,
-        name: `Bro. ${c.husbandFirstName} & Sis. ${c.wifeFirstName} ${c.husbandLastName}`,
-        barangay: c.barangay,
-        husbandOccupation: c.husbandOccupation || '',
-        wifeOccupation: c.wifeOccupation || '',
-        address: c.address,
-        weddingAnniversary: c.weddingAnniversary || '',
-      }));
+      const couplesPayload = targetCouplesForGrouping.map((c) => {
+        const hAge = computeAge(c.husbandBirthday);
+        const wAge = computeAge(c.wifeBirthday);
+        return {
+          id: c.id,
+          name: `Bro. ${c.husbandFirstName} & Sis. ${c.wifeFirstName} ${c.husbandLastName}`,
+          barangay: c.barangay,
+          husbandOccupation: c.husbandOccupation || '',
+          wifeOccupation: c.wifeOccupation || '',
+          address: c.address,
+          weddingAnniversary: c.weddingAnniversary || '',
+          husbandBirthday: c.husbandBirthday,
+          wifeBirthday: c.wifeBirthday,
+          husbandAge: hAge !== '—' ? hAge : undefined,
+          wifeAge: wAge !== '—' ? wAge : undefined,
+          husbandContact: c.husbandContact || '',
+          wifeContact: c.wifeContact || '',
+        };
+      });
 
       const selectedTalkObj = currentTalks.find((t) => t.id === groupingTalkId);
       const talkTitle =
@@ -1490,7 +1493,20 @@ export default function CLPAdminPage() {
           groupName: g.groupName || `Group ${idx + 1}`,
           rationale: g.rationale || '',
           facilitator: g.facilitator || '',
-          couples: g.couples || [],
+          couples: (g.couples || []).map((cp: any) => {
+            const orig = currentCouples.find((oc) => oc.id === cp.id);
+            const hAge = cp.husbandAge || (orig ? computeAge(orig.husbandBirthday) : undefined);
+            const wAge = cp.wifeAge || (orig ? computeAge(orig.wifeBirthday) : undefined);
+            return {
+              ...cp,
+              husbandAge: hAge !== '—' ? hAge : undefined,
+              wifeAge: wAge !== '—' ? wAge : undefined,
+              husbandContact: cp.husbandContact || orig?.husbandContact || '',
+              wifeContact: cp.wifeContact || orig?.wifeContact || '',
+              husbandBirthday: cp.husbandBirthday || orig?.husbandBirthday || '',
+              wifeBirthday: cp.wifeBirthday || orig?.wifeBirthday || '',
+            };
+          }),
         })),
         summary: data.summary,
         prompt: aiGroupPrompt,
@@ -1507,7 +1523,7 @@ export default function CLPAdminPage() {
     }
   };
 
-  // Save grouping to Supabase & LocalStorage (Req 3)
+  // Save grouping to Supabase & LocalStorage (Req 1 & 2)
   const handleSaveCurrentGrouping = async () => {
     if (!aiGroupingResult || !currentClp) return;
     setIsSavingGrouping(true);
@@ -1529,15 +1545,26 @@ export default function CLPAdminPage() {
           groupName: g.groupName,
           rationale: g.rationale,
           facilitator: g.facilitator,
-          couples: g.couples.map((c) => ({
-            id: c.id,
-            name: c.name,
-            barangay: c.barangay,
-            husbandOccupation: c.husbandOccupation,
-            wifeOccupation: c.wifeOccupation,
-            address: c.address,
-            weddingAnniversary: c.weddingAnniversary,
-          })),
+          couples: g.couples.map((c) => {
+            const orig = currentCouples.find((oc) => oc.id === c.id);
+            const hAge = c.husbandAge || (orig ? computeAge(orig.husbandBirthday) : undefined);
+            const wAge = c.wifeAge || (orig ? computeAge(orig.wifeBirthday) : undefined);
+            return {
+              id: c.id,
+              name: c.name,
+              barangay: c.barangay,
+              husbandOccupation: c.husbandOccupation,
+              wifeOccupation: c.wifeOccupation,
+              address: c.address,
+              weddingAnniversary: c.weddingAnniversary,
+              husbandBirthday: c.husbandBirthday || orig?.husbandBirthday,
+              wifeBirthday: c.wifeBirthday || orig?.wifeBirthday,
+              husbandAge: hAge !== '—' ? hAge : undefined,
+              wifeAge: wAge !== '—' ? wAge : undefined,
+              husbandContact: c.husbandContact || orig?.husbandContact || '',
+              wifeContact: c.wifeContact || orig?.wifeContact || '',
+            };
+          }),
         })),
         createdAt: aiGroupingResult.generatedAt || new Date().toISOString(),
       };
@@ -1545,7 +1572,22 @@ export default function CLPAdminPage() {
       const saved = await saveCLPGrouping(toSave);
       setActiveSavedGroupingId(saved.id);
       setGroupingTitleInput(saved.title);
-      triggerToast(`✓ Grouping "${saved.title}" saved successfully!`);
+
+      // Also bulk update couple group assignments in the background
+      const assignments = aiGroupingResult.groups.flatMap((g) =>
+        g.couples.map((c) => ({
+          coupleId: c.id,
+          groupName: g.groupName,
+          groupNumber: g.groupNumber,
+        }))
+      );
+      if (assignments.length > 0) {
+        bulkUpdateCoupleGroups(assignments).catch((e: any) =>
+          console.warn('Background couple assignment sync warning:', e)
+        );
+      }
+
+      triggerToast(`✓ Grouping "${saved.title}" saved successfully to database!`);
 
       const updated = await fetchCLPGroupings(currentClp.id);
       setSavedGroupings(updated);
@@ -1686,6 +1728,9 @@ export default function CLPAdminPage() {
       couples: g.couples.filter((c) => c.id !== coupleId),
     }));
 
+    const hAge = computeAge(couple.husbandBirthday);
+    const wAge = computeAge(couple.wifeBirthday);
+
     baseGroups[groupIndex] = {
       ...baseGroups[groupIndex],
       couples: [
@@ -1698,6 +1743,12 @@ export default function CLPAdminPage() {
           wifeOccupation: couple.wifeOccupation,
           address: couple.address,
           weddingAnniversary: couple.weddingAnniversary,
+          husbandBirthday: couple.husbandBirthday,
+          wifeBirthday: couple.wifeBirthday,
+          husbandAge: hAge !== '—' ? hAge : undefined,
+          wifeAge: wAge !== '—' ? wAge : undefined,
+          husbandContact: couple.husbandContact || '',
+          wifeContact: couple.wifeContact || '',
         },
       ],
     };
@@ -1744,6 +1795,8 @@ export default function CLPAdminPage() {
           minGroup = g;
         }
       }
+      const hAge = computeAge(couple.husbandBirthday);
+      const wAge = computeAge(couple.wifeBirthday);
       minGroup.couples.push({
         id: couple.id,
         name: `Bro. ${couple.husbandFirstName} & Sis. ${couple.wifeFirstName} ${couple.husbandLastName}`,
@@ -1752,6 +1805,12 @@ export default function CLPAdminPage() {
         wifeOccupation: couple.wifeOccupation,
         address: couple.address,
         weddingAnniversary: couple.weddingAnniversary,
+        husbandBirthday: couple.husbandBirthday,
+        wifeBirthday: couple.wifeBirthday,
+        husbandAge: hAge !== '—' ? hAge : undefined,
+        wifeAge: wAge !== '—' ? wAge : undefined,
+        husbandContact: couple.husbandContact || '',
+        wifeContact: couple.wifeContact || '',
       });
     });
 
@@ -1765,6 +1824,350 @@ export default function CLPAdminPage() {
 
     setAiGroupingResult(newResult);
     triggerToast(`✨ Successfully assigned all couples across ${baseGroups.length} groups!`);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Simple Grouping Table Printing (Req 3)
+  // ---------------------------------------------------------------------------
+  const handlePrintSimpleGroupingTable = () => {
+    if (!aiGroupingResult || !aiGroupingResult.groups || aiGroupingResult.groups.length === 0 || !currentClp) {
+      triggerToast('No discussion groups formed yet to print.');
+      return;
+    }
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      window.print();
+      return;
+    }
+
+    const groupingTitle =
+      groupingTitleInput.trim() || aiGroupingResult.title || `${currentClp.name} Discussion Groups`;
+    const genDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const totalCouples = aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0);
+
+    const groupsHtml = aiGroupingResult.groups
+      .map((g) => {
+        const couplesRows =
+          g.couples.length === 0
+            ? `<tr><td colspan="6" style="text-align:center;padding:12px;color:#94a3b8;font-style:italic">No participants assigned to this group yet.</td></tr>`
+            : g.couples
+                .map((c, idx) => {
+                  const orig = currentCouples.find((oc) => oc.id === c.id);
+                  const hAge = c.husbandAge || (orig ? computeAge(orig.husbandBirthday) : '—');
+                  const wAge = c.wifeAge || (orig ? computeAge(orig.wifeBirthday) : '—');
+                  const ageDisplay = hAge !== '—' || wAge !== '—' ? `${hAge} / ${wAge}` : '—';
+                  const hContact = c.husbandContact || orig?.husbandContact || '';
+                  const wContact = c.wifeContact || orig?.wifeContact || '';
+                  let contactDisplay = '—';
+                  if (hContact && wContact && hContact !== wContact) {
+                    contactDisplay = `H: ${hContact}<br/>W: ${wContact}`;
+                  } else if (hContact || wContact) {
+                    contactDisplay = hContact || wContact;
+                  }
+                  const occupation =
+                    [c.husbandOccupation, c.wifeOccupation].filter(Boolean).join(' • ') || '—';
+
+                  return `
+                    <tr>
+                      <td class="col-num">${idx + 1}</td>
+                      <td class="col-name">${c.name}</td>
+                      <td class="col-brgy">Brgy. ${c.barangay}</td>
+                      <td class="col-age">${ageDisplay}</td>
+                      <td class="col-contact">${contactDisplay}</td>
+                      <td class="col-occ">${occupation}</td>
+                    </tr>
+                  `;
+                })
+                .join('');
+
+        return `
+          <div class="group-card">
+            <div class="group-header">
+              <div class="group-title-box">
+                <span class="group-badge">Group ${g.groupNumber}</span>
+                <span class="group-name">${g.groupName}</span>
+              </div>
+              <div class="group-meta">
+                ${g.facilitator ? `<span class="group-leader">Leader / Servant: <strong>${g.facilitator}</strong></span> • ` : ''}
+                <span class="group-count"><strong>${g.couples.length}</strong> couple${g.couples.length === 1 ? '' : 's'}</span>
+              </div>
+            </div>
+            ${g.rationale ? `<div class="group-rationale"><em>${g.rationale}</em></div>` : ''}
+            <table class="group-table">
+              <thead>
+                <tr>
+                  <th style="width:36px;text-align:center">#</th>
+                  <th>Couple Name (Husband & Wife)</th>
+                  <th style="width:140px">Barangay</th>
+                  <th style="width:90px;text-align:center">Age (H / W)</th>
+                  <th style="width:140px">Contact No.</th>
+                  <th style="width:160px">Occupation / Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${couplesRows}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${groupingTitle} – Grouping Table</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm 14mm;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #0f172a;
+      background: #f8fafc;
+      font-size: 11px;
+      line-height: 1.35;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .no-print-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #1e293b;
+      color: #fff;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.15);
+    }
+    .no-print-bar h3 { font-size: 13px; font-weight: 800; color: #fff; }
+    .no-print-bar p { font-size: 11px; color: #94a3b8; }
+    .btn {
+      padding: 7px 16px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-print { background: #2563eb; color: #fff; }
+    .btn-print:hover { background: #1d4ed8; }
+    .btn-close { background: #475569; color: #fff; }
+    .btn-close:hover { background: #334155; }
+    @media print {
+      .no-print-bar { display: none !important; }
+      body { background: #fff; padding: 0; }
+      .container { max-width: 100% !important; padding: 0 !important; }
+      .group-card { break-inside: avoid !important; page-break-inside: avoid !important; }
+    }
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px 20px 40px;
+    }
+    .header-box {
+      text-align: center;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 14px;
+      margin-bottom: 20px;
+    }
+    .header-org {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #475569;
+    }
+    .header-prog {
+      font-size: 18px;
+      font-weight: 900;
+      color: #0f172a;
+      margin: 3px 0;
+      text-transform: uppercase;
+    }
+    .header-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #243c81;
+    }
+    .meta-bar {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px dashed #cbd5e1;
+    }
+    .group-card {
+      margin-bottom: 20px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .group-header {
+      background: #f1f5f9;
+      border-bottom: 1px solid #cbd5e1;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .group-title-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .group-badge {
+      background: #243c81;
+      color: #fff;
+      font-size: 9.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .group-name {
+      font-size: 13px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .group-meta {
+      font-size: 10.5px;
+      color: #475569;
+    }
+    .group-leader strong {
+      color: #0f172a;
+    }
+    .group-rationale {
+      font-size: 10px;
+      color: #64748b;
+      background: #fafafa;
+      padding: 5px 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    table.group-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    table.group-table th {
+      background: #f8fafc;
+      color: #334155;
+      font-size: 9.5px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 6px 10px;
+      border-bottom: 1px solid #cbd5e1;
+      text-align: left;
+    }
+    table.group-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
+      color: #1e293b;
+    }
+    table.group-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+    table.group-table tbody tr:nth-child(even) {
+      background: #fcfcfd;
+    }
+    .col-num {
+      text-align: center;
+      font-weight: 700;
+      color: #64748b;
+    }
+    .col-name {
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .col-brgy {
+      color: #475569;
+    }
+    .col-age {
+      text-align: center;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .col-contact {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-size: 10.5px;
+      color: #0f172a;
+      line-height: 1.25;
+    }
+    .col-occ {
+      font-size: 10px;
+      color: #64748b;
+    }
+    .footer-note {
+      text-align: center;
+      font-size: 9.5px;
+      color: #94a3b8;
+      margin-top: 24px;
+      padding-top: 10px;
+      border-top: 1px solid #e2e8f0;
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-bar">
+    <div>
+      <h3>Discussion Grouping Table – ${currentClp.name}</h3>
+      <p>${aiGroupingResult.groups.length} Groups • ${totalCouples} Couples Assigned • Generated ${genDate}</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-print" onclick="window.print()">🖨 Print / Save PDF</button>
+      <button class="btn btn-close" onclick="window.close()">✕ Close</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="header-box">
+      <div class="header-org">Couples For Christ • Tuy Chapter • Batangas</div>
+      <div class="header-prog">${currentClp.name}</div>
+      <div class="header-title">${groupingTitle}</div>
+      <div class="meta-bar">
+        <span>Date: <strong>${genDate}</strong></span>
+        <span>Venue: <strong>${currentClp.venue}</strong></span>
+        <span>Summary: <strong>${aiGroupingResult.groups.length} Groups • ${totalCouples} Couples</strong></span>
+      </div>
+    </div>
+
+    ${groupsHtml}
+
+    <div class="footer-note">
+      Couples For Christ – Tuy Chapter • Christian Life Program (CLP) • Confidential Pastoral Record
+    </div>
+  </div>
+</body>
+</html>`;
+
+    printWin.document.open();
+    printWin.document.write(html);
+    printWin.document.close();
   };
 
   const handleDeleteGroup = (groupIndex: number) => {
@@ -4496,6 +4899,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
           {/* ========================================================================= */}
           {activeTab === 'ai-groups' && (
             <div className="space-y-6">
+              <div className="print:hidden space-y-6">
               {/* Header Banner */}
               <div className="bg-gradient-to-br from-violet-600 via-purple-700 to-[#243c81] p-6 sm:p-7 rounded-3xl shadow-xl shadow-purple-900/10 text-white">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -5079,16 +5483,16 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                           </button>
                         )}
 
-                        {/* Print */}
+                        {/* Print Simple Table */}
                         {aiGroupingResult && aiGroupingResult.groups.length > 0 && (
                           <button
                             type="button"
-                            onClick={() => window.print()}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all"
-                            title="Print Roster Sheets"
+                            onClick={handlePrintSimpleGroupingTable}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            title="Print Simple Grouping Table"
                           >
-                            <Printer className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">Print</span>
+                            <Printer className="w-3.5 h-3.5 text-blue-600" />
+                            <span className="hidden sm:inline">Print Table</span>
                           </button>
                         )}
 
@@ -5146,9 +5550,18 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                               <p className="text-xs font-bold text-slate-900 truncate">
                                 Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName} {couple.husbandLastName}
                               </p>
-                              <p className="text-[11px] text-slate-500 truncate">
-                                Brgy. {couple.barangay}
-                              </p>
+                              <div className="flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-500 mt-0.5">
+                                <span>Brgy. {couple.barangay}</span>
+                                <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded text-[10px]">
+                                  Age: {computeAge(couple.husbandBirthday)} / {computeAge(couple.wifeBirthday)}
+                                </span>
+                              </div>
+                              {(couple.husbandContact || couple.wifeContact) && (
+                                <p className="text-[10px] text-blue-700 truncate mt-1 font-medium flex items-center gap-1">
+                                  <Phone className="w-2.5 h-2.5 shrink-0" />
+                                  <span>{couple.husbandContact || couple.wifeContact}</span>
+                                </p>
+                              )}
                             </div>
 
                             {aiGroupingResult && aiGroupingResult.groups.length > 0 ? (
@@ -5346,15 +5759,39 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                                           <span className={`w-6 h-6 rounded-full ${colors.num} text-[11px] font-black flex items-center justify-center shrink-0`}>
                                             {ci + 1}
                                           </span>
-                                          <div className="min-w-0">
+                                          <div className="min-w-0 flex-1">
                                             <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                                               {couple.name}
                                             </p>
-                                            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 mt-0.5">
                                               <span>Brgy. {couple.barangay}</span>
                                               {couple.husbandOccupation && (
                                                 <span>• {couple.husbandOccupation}</span>
                                               )}
+                                              {(() => {
+                                                const orig = currentCouples.find((oc) => oc.id === couple.id);
+                                                const hAge = couple.husbandAge || (orig ? computeAge(orig.husbandBirthday) : '—');
+                                                const wAge = couple.wifeAge || (orig ? computeAge(orig.wifeBirthday) : '—');
+                                                const hContact = couple.husbandContact || orig?.husbandContact || '';
+                                                const wContact = couple.wifeContact || orig?.wifeContact || '';
+                                                return (
+                                                  <>
+                                                    {(hAge !== '—' || wAge !== '—') && (
+                                                      <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded text-[10px]">
+                                                        Age: H {hAge} / W {wAge}
+                                                      </span>
+                                                    )}
+                                                    {(hContact || wContact) && (
+                                                      <span className="text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded text-[10px] font-medium flex items-center gap-1">
+                                                        <Phone className="w-2.5 h-2.5" />
+                                                        {hContact && wContact && hContact !== wContact
+                                                          ? `${hContact} / ${wContact}`
+                                                          : hContact || wContact}
+                                                      </span>
+                                                    )}
+                                                  </>
+                                                );
+                                              })()}
                                             </div>
                                           </div>
                                         </div>
@@ -5435,16 +5872,110 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                           </button>
                           <button
                             type="button"
-                            onClick={() => window.print()}
-                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all"
+                            onClick={handlePrintSimpleGroupingTable}
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-xs cursor-pointer"
                           >
-                            <Printer className="w-4 h-4" />
-                            <span>Print</span>
+                            <Printer className="w-4 h-4 text-blue-600" />
+                            <span>Print Table</span>
                           </button>
                         </div>
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+
+            {/* DEDICATED PRINT-ONLY SIMPLE GROUPING TABLE (Req 3) */}
+              {aiGroupingResult && aiGroupingResult.groups.length > 0 && currentClp && (
+                <div id="clp-print-simple-table-container" className="hidden print:block w-full text-slate-900 bg-white p-2">
+                  <div className="text-center border-b-2 border-slate-900 pb-3 mb-4">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600">
+                      Couples For Christ • Tuy Chapter • Batangas
+                    </div>
+                    <h1 className="text-xl font-black text-slate-900 uppercase my-1">
+                      {currentClp.name}
+                    </h1>
+                    <h2 className="text-sm font-bold text-[#243c81]">
+                      {groupingTitleInput.trim() || aiGroupingResult.title || `${currentClp.name} Discussion Groups`}
+                    </h2>
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 mt-2 pt-1 border-t border-dashed border-slate-300">
+                      <span>Date: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <span>Venue: {currentClp.venue}</span>
+                      <span>Total: {aiGroupingResult.groups.length} Groups • {aiGroupingResult.groups.reduce((acc, g) => acc + g.couples.length, 0)} Couples</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {aiGroupingResult.groups.map((g) => (
+                      <div key={g.groupNumber} className="border border-slate-300 rounded-lg overflow-hidden break-inside-avoid page-break-inside-avoid mb-4">
+                        <div className="bg-slate-100 px-3 py-2 border-b border-slate-300 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-[#243c81] text-white text-[10px] font-black uppercase px-2 py-0.5 rounded">
+                              Group {g.groupNumber}
+                            </span>
+                            <span className="font-extrabold text-slate-900 text-sm">{g.groupName}</span>
+                          </div>
+                          <div className="text-slate-600 text-[11px]">
+                            {g.facilitator && <span>Leader: <strong>{g.facilitator}</strong> • </span>}
+                            <span><strong>{g.couples.length}</strong> couples</span>
+                          </div>
+                        </div>
+                        {g.rationale && (
+                          <div className="bg-slate-50 px-3 py-1 text-[10px] text-slate-500 italic border-b border-slate-200">
+                            {g.rationale}
+                          </div>
+                        )}
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                              <th className="py-1.5 px-2 w-8 text-center">#</th>
+                              <th className="py-1.5 px-2">Couple Name (Husband &amp; Wife)</th>
+                              <th className="py-1.5 px-2 w-32">Barangay</th>
+                              <th className="py-1.5 px-2 w-24 text-center">Age (H / W)</th>
+                              <th className="py-1.5 px-2 w-36">Contact No.</th>
+                              <th className="py-1.5 px-2 w-44">Occupation / Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {g.couples.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="py-3 px-2 text-center text-slate-400 italic">
+                                  No couples in this group.
+                                </td>
+                              </tr>
+                            ) : (
+                              g.couples.map((c, idx) => {
+                                const orig = currentCouples.find((oc) => oc.id === c.id);
+                                const hAge = c.husbandAge || (orig ? computeAge(orig.husbandBirthday) : '—');
+                                const wAge = c.wifeAge || (orig ? computeAge(orig.wifeBirthday) : '—');
+                                const hContact = c.husbandContact || orig?.husbandContact || '';
+                                const wContact = c.wifeContact || orig?.wifeContact || '';
+                                return (
+                                  <tr key={c.id} className={idx % 2 === 1 ? 'bg-slate-50/50' : 'bg-white'}>
+                                    <td className="py-1.5 px-2 text-center font-bold text-slate-500">{idx + 1}</td>
+                                    <td className="py-1.5 px-2 font-bold text-slate-900">{c.name}</td>
+                                    <td className="py-1.5 px-2 text-slate-600">Brgy. {c.barangay}</td>
+                                    <td className="py-1.5 px-2 text-center font-semibold text-slate-800">
+                                      {hAge !== '—' || wAge !== '—' ? `${hAge} / ${wAge}` : '—'}
+                                    </td>
+                                    <td className="py-1.5 px-2 text-slate-800 font-mono text-[10px]">
+                                      {hContact && wContact && hContact !== wContact
+                                        ? `${hContact} / ${wContact}`
+                                        : hContact || wContact || '—'}
+                                    </td>
+                                    <td className="py-1.5 px-2 text-slate-600 text-[10px]">
+                                      {[c.husbandOccupation, c.wifeOccupation].filter(Boolean).join(' • ') || '—'}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -6834,9 +7365,18 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       <p className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                         Bro. {couple.husbandFirstName} &amp; Sis. {couple.wifeFirstName} {couple.husbandLastName}
                       </p>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
                         <span>Brgy. {couple.barangay}</span>
                         {couple.husbandOccupation && <span>• {couple.husbandOccupation}</span>}
+                        <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded text-[10px]">
+                          Age: {computeAge(couple.husbandBirthday)} / {computeAge(couple.wifeBirthday)}
+                        </span>
+                        {(couple.husbandContact || couple.wifeContact) && (
+                          <span className="text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded text-[10px] font-medium flex items-center gap-1">
+                            <Phone className="w-2.5 h-2.5" />
+                            <span>{couple.husbandContact || couple.wifeContact}</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                     <button

@@ -144,7 +144,7 @@ export default function AdminLayout({
 
       {/* Sidebar Navigation with Brand Color #243c81 */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 bg-[#243c81] text-white border-r border-[#1a2c60] flex flex-col justify-between transition-all duration-300 ease-in-out shadow-xl ${
+        className={`fixed top-0 bottom-0 left-0 z-50 bg-[#243c81] text-white border-r border-[#1a2c60] flex flex-col justify-between transition-all duration-300 ease-in-out shadow-xl print:hidden ${
           // Mobile state
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         } ${
@@ -488,12 +488,12 @@ export default function AdminLayout({
 
       {/* Main Content Viewport - Smoothly adjusts left padding based on collapsed state */}
       <div
-        className={`flex-1 flex flex-col min-h-screen min-w-0 w-full max-w-full bg-slate-50 transition-all duration-300 ease-in-out ${
+        className={`flex-1 flex flex-col min-h-screen min-w-0 w-full max-w-full bg-slate-50 transition-all duration-300 ease-in-out print:pl-0 print:bg-white ${
           isCollapsed ? 'lg:pl-[72px]' : 'lg:pl-64'
         }`}
       >
         {/* Top Header Bar */}
-        <header className="sticky top-0 z-30 h-16 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs">
+        <header className="sticky top-0 z-30 h-16 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-xs print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile Sidebar Open Toggle */}
             <button
@@ -534,7 +534,7 @@ export default function AdminLayout({
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-50 min-w-0 w-full max-w-full overflow-x-auto">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-slate-50 min-w-0 w-full max-w-full overflow-x-auto print:p-0 print:bg-white">{children}</main>
       </div>
     </div>
   );

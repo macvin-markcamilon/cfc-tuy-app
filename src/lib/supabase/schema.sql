@@ -319,4 +319,29 @@ CREATE POLICY "Allow all deletions from song audio bucket"
   ON storage.objects FOR DELETE
   USING (bucket_id = 'songs');
 
+-- 15. CLP Groupings Table (Discussion Circles)
+CREATE TABLE IF NOT EXISTS public.clp_groupings (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  clp_id UUID REFERENCES public.clp_programs(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  talk_id UUID REFERENCES public.clp_talks(id) ON DELETE SET NULL,
+  talk_title TEXT,
+  prompt TEXT,
+  summary TEXT,
+  filter_type TEXT DEFAULT 'all',
+  groups_data JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.clp_groupings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow full access on clp_groupings" ON public.clp_groupings;
+CREATE POLICY "Allow full access on clp_groupings"
+  ON public.clp_groupings FOR ALL USING (true) WITH CHECK (true);
+
+-- Add group_name and group_number to clp_couples if not yet present
+ALTER TABLE public.clp_couples ADD COLUMN IF NOT EXISTS group_name TEXT;
+ALTER TABLE public.clp_couples ADD COLUMN IF NOT EXISTS group_number INTEGER;
+
 

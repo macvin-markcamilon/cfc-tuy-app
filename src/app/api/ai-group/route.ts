@@ -8,6 +8,10 @@ export interface CoupleForGrouping {
   wifeOccupation: string;
   address: string;
   weddingAnniversary?: string;
+  husbandAge?: string | number | null;
+  wifeAge?: string | number | null;
+  husbandContact?: string;
+  wifeContact?: string;
 }
 
 export interface AIGroup {
@@ -254,7 +258,7 @@ export async function POST(req: NextRequest) {
     const couplesData = couples
       .map(
         (c, i) =>
-          `${i + 1}. ID: "${c.id}" | ${c.name} | Barangay: ${c.barangay} | Husband Job: ${c.husbandOccupation || 'N/A'} | Wife Job: ${c.wifeOccupation || 'N/A'} | Address: ${c.address}${c.weddingAnniversary ? ` | Anniversary: ${c.weddingAnniversary}` : ''}`
+          `${i + 1}. ID: "${c.id}" | ${c.name} | Barangay: ${c.barangay} | Husband Job: ${c.husbandOccupation || 'N/A'} | Wife Job: ${c.wifeOccupation || 'N/A'}${c.husbandAge ? ` | Husband Age: ${c.husbandAge}` : ''}${c.wifeAge ? ` | Wife Age: ${c.wifeAge}` : ''}${c.husbandContact ? ` | Contact: ${c.husbandContact}` : ''} | Address: ${c.address}${c.weddingAnniversary ? ` | Anniversary: ${c.weddingAnniversary}` : ''}`
       )
       .join('\n');
 

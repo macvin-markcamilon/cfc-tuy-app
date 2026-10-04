@@ -197,18 +197,25 @@ export async function fetchCLPPrograms(): Promise<CLPProgram[]> {
         .order('created_at', { ascending: false });
 
       if (!error && data && data.length > 0) {
-        const mapped: CLPProgram[] = data.map((row: any) => ({
-          id: row.id,
-          name: row.name,
-          venue: row.venue,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          status: row.status || 'Upcoming',
-          batchNumber: row.batch_number || '',
-          teamLeader: row.team_leader || 'Bro. Mark & Sis. Grace Camilon',
-          couplesCount: 0,
-          talksCount: 8,
-        }));
+        const mapped: CLPProgram[] = data.map((row: any) => {
+          const rawLeader = row.team_leader || 'Bro. Mark & Sis. Grace Camilon';
+          const cleanLeader = rawLeader.includes('<!--CLP_GROUPINGS_JSON:::')
+            ? rawLeader.split('<!--CLP_GROUPINGS_JSON:::')[0].trim()
+            : rawLeader;
+
+          return {
+            id: row.id,
+            name: row.name,
+            venue: row.venue,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            status: row.status || 'Upcoming',
+            batchNumber: row.batch_number || '',
+            teamLeader: cleanLeader || 'Bro. Mark & Sis. Grace Camilon',
+            couplesCount: 0,
+            talksCount: 8,
+          };
+        });
 
         setLocalPrograms(mapped);
         return mapped;
@@ -407,11 +414,22 @@ export async function saveCLPCouple(couple: CLPCouple): Promise<CLPCouple> {
         group_name: couple.groupName || null,
       };
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('clp_couples')
         .upsert(payload, { onConflict: 'id' })
         .select()
         .single();
+
+      if (error && error.message && error.message.includes('group_name')) {
+        delete payload.group_name;
+        const retry = await supabase
+          .from('clp_couples')
+          .upsert(payload, { onConflict: 'id' })
+          .select()
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
 
       if (!error && data) {
         saved = { ...saved, id: data.id };
@@ -649,6 +667,7 @@ export async function fetchCLPGroupings(clpId?: string): Promise<SavedCLPGroupin
   const supabase = createClient();
 
   if (supabase) {
+    // 1. Try dedicated clp_groupings table first
     try {
       let query = supabase.from('clp_groupings').select('*').order('created_at', { ascending: false });
       if (clpId && isValidUUID(clpId)) {
@@ -675,7 +694,47 @@ export async function fetchCLPGroupings(clpId?: string): Promise<SavedCLPGroupin
         return clpId ? mapped.filter((g) => g.clpId === clpId) : mapped;
       }
     } catch (err) {
-      console.warn('Supabase fetchCLPGroupings fallback:', err);
+      console.warn('Supabase fetchCLPGroupings table check fallback:', err);
+    }
+
+    // 2. Fetch from active clp_programs database storage (guaranteed writable and cloud persistent)
+    try {
+      let progQuery = supabase.from('clp_programs').select('id, team_leader');
+      if (clpId && isValidUUID(clpId)) {
+        progQuery = progQuery.eq('id', clpId);
+      }
+      const { data: progs, error: pErr } = await progQuery;
+      if (!pErr && progs && progs.length > 0) {
+        const extractedFromDb: SavedCLPGrouping[] = [];
+        for (const p of progs) {
+          if (p.team_leader && typeof p.team_leader === 'string' && p.team_leader.includes('<!--CLP_GROUPINGS_JSON:::')) {
+            try {
+              const rawJson = p.team_leader.split('<!--CLP_GROUPINGS_JSON:::')[1].split(':::-->')[0];
+              const parsed = JSON.parse(rawJson);
+              if (Array.isArray(parsed)) {
+                extractedFromDb.push(...parsed);
+              }
+            } catch (jsonErr) {
+              console.warn('Error parsing cloud groupings JSON:', jsonErr);
+            }
+          }
+        }
+
+        if (extractedFromDb.length > 0) {
+          // Merge with local storage ensuring unique IDs
+          const existingLocal = getLocalGroupings();
+          const combined = [...extractedFromDb];
+          for (const loc of existingLocal) {
+            if (!combined.some((c) => c.id === loc.id)) {
+              combined.push(loc);
+            }
+          }
+          setLocalGroupings(combined);
+          return clpId ? combined.filter((g) => g.clpId === clpId) : combined;
+        }
+      }
+    } catch (dbErr) {
+      console.warn('Supabase fetchCLPGroupings from clp_programs exception:', dbErr);
     }
   }
 
@@ -693,11 +752,13 @@ export async function saveCLPGrouping(grouping: SavedCLPGrouping): Promise<Saved
     updatedAt: now,
   };
 
+  // 1. Immediately update local storage
   const current = getLocalGroupings().filter((g) => g.id !== savedRecord.id);
   setLocalGroupings([savedRecord, ...current]);
 
   const supabase = createClient();
   if (supabase) {
+    // 2. Persist to dedicated clp_groupings table (if table exists)
     try {
       await supabase.from('clp_groupings').upsert({
         id: groupingId,
@@ -713,7 +774,37 @@ export async function saveCLPGrouping(grouping: SavedCLPGrouping): Promise<Saved
         updated_at: savedRecord.updatedAt,
       });
     } catch (err) {
-      console.warn('Supabase saveCLPGrouping exception, stored locally:', err);
+      console.warn('Supabase clp_groupings table upsert warning:', err);
+    }
+
+    // 3. Persist directly into clp_programs in Supabase to ensure cross-device persistence
+    if (savedRecord.clpId && isValidUUID(savedRecord.clpId)) {
+      try {
+        const { data: prog } = await supabase
+          .from('clp_programs')
+          .select('team_leader')
+          .eq('id', savedRecord.clpId)
+          .single();
+
+        const rawLeader = prog?.team_leader || '';
+        const cleanLeader = rawLeader.includes('<!--CLP_GROUPINGS_JSON:::')
+          ? rawLeader.split('<!--CLP_GROUPINGS_JSON:::')[0].trim()
+          : rawLeader.trim() || 'Bro. Mark & Sis. Grace Camilon';
+
+        // Keep all groupings for this program
+        const forThisClp = [
+          savedRecord,
+          ...getLocalGroupings().filter((g) => g.clpId === savedRecord.clpId && g.id !== savedRecord.id),
+        ];
+
+        const encodedLeader = `${cleanLeader} <!--CLP_GROUPINGS_JSON:::${JSON.stringify(forThisClp)}:::-->`;
+        await supabase
+          .from('clp_programs')
+          .update({ team_leader: encodedLeader })
+          .eq('id', savedRecord.clpId);
+      } catch (syncErr) {
+        console.warn('Supabase clp_programs cloud sync warning:', syncErr);
+      }
     }
   }
 
@@ -721,15 +812,46 @@ export async function saveCLPGrouping(grouping: SavedCLPGrouping): Promise<Saved
 }
 
 export async function deleteCLPGrouping(id: string): Promise<void> {
-  const all = getLocalGroupings().filter((g) => g.id !== id);
-  setLocalGroupings(all);
+  const target = getLocalGroupings().find((g) => g.id === id);
+  const remaining = getLocalGroupings().filter((g) => g.id !== id);
+  setLocalGroupings(remaining);
 
   const supabase = createClient();
-  if (supabase && isValidUUID(id)) {
-    try {
-      await supabase.from('clp_groupings').delete().eq('id', id);
-    } catch (err) {
-      console.warn('Supabase deleteCLPGrouping error:', err);
+  if (supabase) {
+    if (isValidUUID(id)) {
+      try {
+        await supabase.from('clp_groupings').delete().eq('id', id);
+      } catch (err) {
+        console.warn('Supabase deleteCLPGrouping error:', err);
+      }
+    }
+
+    // Sync deletion back to clp_programs in Supabase
+    if (target?.clpId && isValidUUID(target.clpId)) {
+      try {
+        const { data: prog } = await supabase
+          .from('clp_programs')
+          .select('team_leader')
+          .eq('id', target.clpId)
+          .single();
+
+        const rawLeader = prog?.team_leader || '';
+        const cleanLeader = rawLeader.includes('<!--CLP_GROUPINGS_JSON:::')
+          ? rawLeader.split('<!--CLP_GROUPINGS_JSON:::')[0].trim()
+          : rawLeader.trim() || 'Bro. Mark & Sis. Grace Camilon';
+
+        const forThisClp = remaining.filter((g) => g.clpId === target.clpId);
+        const encodedLeader = forThisClp.length > 0
+          ? `${cleanLeader} <!--CLP_GROUPINGS_JSON:::${JSON.stringify(forThisClp)}:::-->`
+          : cleanLeader;
+
+        await supabase
+          .from('clp_programs')
+          .update({ team_leader: encodedLeader })
+          .eq('id', target.clpId);
+      } catch (delSyncErr) {
+        console.warn('Supabase delete cloud sync warning:', delSyncErr);
+      }
     }
   }
 }

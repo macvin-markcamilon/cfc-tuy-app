@@ -33,17 +33,31 @@ export default function AdminLayout({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [userEmail, setUserEmail] = useState('markcamilon@gmail.com');
   const [userName, setUserName] = useState('Bro. Mark Camilon');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   // If on login page, just render children without sidebar
   const isLoginPage = pathname === '/admin/login';
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      if (isLoginPage) {
+        setIsAuthenticated(true);
+        return;
+      }
+
+      const isAuth = localStorage.getItem('cfc_tuy_admin_auth') === 'true';
+      if (!isAuth) {
+        setIsAuthenticated(false);
+        const redirectParam = pathname ? `?redirect=${encodeURIComponent(pathname)}` : '';
+        router.replace(`/admin/login${redirectParam}`);
+        return;
+      }
+
+      setIsAuthenticated(true);
+
       const stored = localStorage.getItem('cfc_tuy_admin_user');
       if (stored) {
         setUserEmail(stored);
-      } else {
-        localStorage.setItem('cfc_tuy_admin_user', 'markcamilon@gmail.com');
       }
 
       const storedProfile = localStorage.getItem('cfc_tuy_current_user_profile_v1');
@@ -63,7 +77,7 @@ export default function AdminLayout({
         setIsCollapsed(savedCollapsed === 'true');
       }
     }
-  }, [pathname]);
+  }, [pathname, isLoginPage, router]);
 
   const toggleCollapse = () => {
     setIsCollapsed((prev) => {
@@ -80,11 +94,22 @@ export default function AdminLayout({
       localStorage.removeItem('cfc_tuy_admin_auth');
       localStorage.removeItem('cfc_tuy_admin_user');
     }
+    setIsAuthenticated(false);
     router.push('/admin/login');
   };
 
   if (isLoginPage) {
     return <>{children}</>;
+  }
+
+  if (isAuthenticated !== true) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white p-6">
+        <div className="w-10 h-10 rounded-full border-3 border-amber-400 border-t-transparent animate-spin mb-4" />
+        <p className="text-slate-200 font-bold text-sm tracking-wide">Verifying Administrator Access...</p>
+        <p className="text-slate-400 text-xs mt-1">Please sign in to access the admin portal</p>
+      </div>
+    );
   }
 
   const navItems = [

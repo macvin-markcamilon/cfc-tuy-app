@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { fetchWorshipSongs, WorshipSong } from '@/lib/data/songs-service';
-import SongDetailModal from '@/components/music/SongDetailModal';
 import {
   Music,
   ChevronLeft,
@@ -18,11 +18,10 @@ import {
 } from 'lucide-react';
 
 export default function SongsCarousel() {
+  const router = useRouter();
   const [songs, setSongs] = useState<WorshipSong[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [selectedSong, setSelectedSong] = useState<WorshipSong | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -142,7 +141,7 @@ export default function SongsCarousel() {
             </button>
 
             <Link
-              href="/admin/songs"
+              href="/songbook"
               className="ml-2 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[#243c81] font-bold text-xs sm:text-sm transition-all"
             >
               <span>Songbook</span>
@@ -199,8 +198,7 @@ export default function SongsCarousel() {
                 <div
                   key={song.id}
                   onClick={() => {
-                    setSelectedSong(song);
-                    setModalOpen(true);
+                    router.push(`/songbook/${song.id}`);
                   }}
                   className="snap-start shrink-0 w-[300px] sm:w-[350px] lg:w-[380px] bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 shadow-xs hover:shadow-lg hover:border-[#243c81] hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between cursor-pointer group"
                 >
@@ -301,18 +299,6 @@ export default function SongsCarousel() {
         )}
 
       </div>
-
-      {/* Interactive Song Chords & Lyrics Modal */}
-      {selectedSong && (
-        <SongDetailModal
-          isOpen={modalOpen}
-          song={selectedSong}
-          onClose={() => {
-            setModalOpen(false);
-            setSelectedSong(null);
-          }}
-        />
-      )}
     </section>
   );
 }

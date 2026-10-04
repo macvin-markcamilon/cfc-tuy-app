@@ -1,18 +1,30 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
-export default function AdminLoginPage() {
+function AdminLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTarget = searchParams.get('redirect') || '/admin/clp';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isAuth = localStorage.getItem('cfc_tuy_admin_auth') === 'true';
+      if (isAuth) {
+        router.replace(redirectTarget);
+      }
+    }
+  }, [redirectTarget, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +48,7 @@ export default function AdminLoginPage() {
               localStorage.setItem('cfc_tuy_admin_auth', 'true');
               localStorage.setItem('cfc_tuy_admin_user', 'markcamilon@gmail.com');
             }
-            router.push('/admin/clp');
+            router.push(redirectTarget);
             return;
           }
           setError(authError.message || 'Invalid email or password.');
@@ -49,7 +61,7 @@ export default function AdminLoginPage() {
             localStorage.setItem('cfc_tuy_admin_auth', 'true');
             localStorage.setItem('cfc_tuy_admin_user', data.user?.email || email);
           }
-          router.push('/admin/clp');
+          router.push(redirectTarget);
           return;
         }
       } catch (err: any) {
@@ -67,7 +79,7 @@ export default function AdminLoginPage() {
           localStorage.setItem('cfc_tuy_admin_auth', 'true');
           localStorage.setItem('cfc_tuy_admin_user', email.trim());
         }
-        router.push('/admin/clp');
+        router.push(redirectTarget);
       } else {
         setError('Invalid email or password. Please check your credentials and try again.');
         setLoading(false);
@@ -186,5 +198,19 @@ export default function AdminLoginPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-[#101c42] text-white">
+          <div className="w-10 h-10 border-3 border-amber-400 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <AdminLoginForm />
+    </Suspense>
   );
 }

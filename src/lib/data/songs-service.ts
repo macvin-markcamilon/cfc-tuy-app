@@ -299,6 +299,11 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
   return getLocalSongs();
 }
 
+export async function fetchWorshipSongById(id: string): Promise<WorshipSong | null> {
+  const songs = await fetchWorshipSongs();
+  return songs.find((s) => s.id === id || encodeURIComponent(s.id) === id) || null;
+}
+
 export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<WorshipSong> {
   const current = getLocalSongs();
   const id = song.id || `song-${Date.now()}`;

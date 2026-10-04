@@ -114,6 +114,11 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/songbook" className="hover:text-amber-300 transition-colors">
+                  Praise &amp; Worship Songbook
+                </Link>
+              </li>
+              <li>
                 <Link href="/portal" className="hover:text-amber-300 transition-colors flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Leader Portal</span>

@@ -136,7 +136,7 @@ export default function MapPage() {
                     {hh.membersCount} member couples/brethren
                   </span>
                   <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${hh.coordinates[1]},${hh.coordinates[0]}`}
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${hh.coordinates ? `${hh.coordinates[1]},${hh.coordinates[0]}` : '14.0228,120.7289'}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-bold text-[#243c81] hover:text-[#1a2d63] transition-colors"

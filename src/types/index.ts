@@ -13,18 +13,36 @@ export interface ChapterEvent {
   isFeatured?: boolean;
 }
 
+export interface HouseholdMember {
+  id: string;
+  name: string;
+  spouseName?: string;
+  role?: 'Leader' | 'Assistant' | 'Member';
+  contact?: string;
+  email?: string;
+  notes?: string;
+}
+
 export interface HouseholdGroup {
   id: string;
   name: string;
   leaderName: string;
   leaderContact?: string;
   coLeaderName?: string;
+  coLeaderContact?: string;
   ministry: MinistryType;
   barangay: string;
   meetingSchedule: string;
   meetingDay: string;
-  coordinates: [number, number]; // [lng, lat] in Tuy
+  meetingVenue?: string;
+  coordinates?: [number, number]; // [lng, lat] in Tuy
   membersCount: number;
+  members?: HouseholdMember[];
+  unitLeaderName?: string;
+  status?: 'Active' | 'On-Break' | 'Inactive';
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MapLocationPin {

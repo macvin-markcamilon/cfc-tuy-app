@@ -14,31 +14,36 @@ import {
   Clock,
   Sparkles,
   FileText,
+  Layers,
 } from 'lucide-react';
 import {
   fetchCLPPrograms,
   fetchCLPCouples,
   fetchCLPTalks,
 } from '@/lib/data/clp-service';
-import { CLPProgram, CLPCouple, CLPTalk } from '@/types';
+import { fetchHouseholdGroups } from '@/lib/data/groups-service';
+import { CLPProgram, CLPCouple, CLPTalk, HouseholdGroup } from '@/types';
 
 export default function AdminDashboardPage() {
   const [programs, setPrograms] = useState<CLPProgram[]>([]);
   const [couples, setCouples] = useState<CLPCouple[]>([]);
   const [talks, setTalks] = useState<CLPTalk[]>([]);
+  const [groups, setGroups] = useState<HouseholdGroup[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [progs, coupls, tlks] = await Promise.all([
+        const [progs, coupls, tlks, grps] = await Promise.all([
           fetchCLPPrograms(),
           fetchCLPCouples(),
           fetchCLPTalks(),
+          fetchHouseholdGroups(),
         ]);
         setPrograms(progs);
         setCouples(coupls);
         setTalks(tlks);
+        setGroups(grps);
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
@@ -76,6 +81,14 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="flex flex-wrap gap-3">
+          <Link
+            href="/admin/groups"
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/20 transition-all shadow-xs"
+          >
+            <Layers className="w-4 h-4 text-amber-300" />
+            <span>Manage Groups ({groups.length})</span>
+          </Link>
+
           <Link
             href="/admin/clp"
             className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#243c81] font-black text-xs sm:text-sm shadow-md transition-all active:scale-95"

@@ -19,6 +19,7 @@ import {
   PanelLeftOpen,
   UserCheck,
   User,
+  Layers,
 } from 'lucide-react';
 
 export default function AdminLayout({
@@ -98,6 +99,12 @@ export default function AdminLayout({
       href: '/admin/clp',
       icon: BookOpenCheck,
       description: 'Programs, Couples & Talks',
+    },
+    {
+      name: 'Group Management',
+      href: '/admin/groups',
+      icon: Layers,
+      description: 'Households & CLP Circles',
     },
     {
       name: 'Members Directory',

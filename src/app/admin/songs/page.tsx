@@ -1,34 +1,30 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   WorshipSong,
   fetchWorshipSongs,
-  saveWorshipSong,
   deleteWorshipSong,
 } from '@/lib/data/songs-service';
-import SongEditorModal from '@/components/music/SongEditorModal';
 import SongDetailModal from '@/components/music/SongDetailModal';
 import {
   Music,
   Plus,
   Search,
-  Play,
-  Pause,
   BookOpen,
-  Filter,
   Trash2,
   Edit3,
   FileAudio,
   Sparkles,
-  Layers,
-  CheckCircle2,
-  Volume2,
   Mic2,
-  Compass,
 } from 'lucide-react';
 
-export default function SongsAdminPage() {
+function SongsAdminContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [songs, setSongs] = useState<WorshipSong[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,9 +34,7 @@ export default function SongsAdminPage() {
   const [selectedKey, setSelectedKey] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<'title-asc' | 'title-desc' | 'key-asc' | 'category-asc'>('title-asc');
 
-  // Modals
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [editingSong, setEditingSong] = useState<WorshipSong | null>(null);
+  // Modals & Detail View
   const [viewingSong, setViewingSong] = useState<WorshipSong | null>(null);
 
   // Toast
@@ -50,6 +44,16 @@ export default function SongsAdminPage() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  // Check for saved searchParam from redirect
+  useEffect(() => {
+    const savedTitle = searchParams.get('saved');
+    if (savedTitle) {
+      triggerToast(`"${savedTitle}" saved successfully!`);
+      // Clean up search param URL without refreshing
+      window.history.replaceState({}, '', '/admin/songs');
+    }
+  }, [searchParams]);
 
   // Load songs
   useEffect(() => {
@@ -93,27 +97,6 @@ export default function SongsAdminPage() {
       return 0;
     });
   }, [songs, searchQuery, selectedCategory, selectedKey, sortBy]);
-
-  // Save handler (Add or Edit)
-  const handleSaveSong = async (songData: Partial<WorshipSong>) => {
-    const saved = await saveWorshipSong(songData);
-    setSongs((prev) => {
-      const idx = prev.findIndex((s) => s.id === saved.id);
-      if (idx >= 0) {
-        const next = [...prev];
-        next[idx] = saved;
-        return next;
-      }
-      return [saved, ...prev];
-    });
-
-    // If currently viewing, update viewing song
-    if (viewingSong?.id === saved.id) {
-      setViewingSong(saved);
-    }
-
-    triggerToast(`"${saved.title}" saved successfully!`);
-  };
 
   // Delete handler
   const handleDeleteSong = async (id: string, title: string) => {
@@ -181,17 +164,13 @@ export default function SongsAdminPage() {
         </div>
 
         <div className="relative z-10 flex items-center gap-2.5 self-start md:self-center shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setEditingSong(null);
-              setIsEditorOpen(true);
-            }}
+          <Link
+            href="/admin/songs/new"
             className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg transition-all active:scale-95"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>Add Worship Song</span>
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -340,17 +319,13 @@ export default function SongsAdminPage() {
               ? 'Try changing your search terms or filters.'
               : 'Start by clicking "Add Worship Song" above to create your first song sheet with chords and MP3.'}
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              setEditingSong(null);
-              setIsEditorOpen(true);
-            }}
+          <Link
+            href="/admin/songs/new"
             className="mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-sm"
           >
             <Plus className="w-4 h-4" />
             <span>Add Worship Song</span>
-          </button>
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -430,18 +405,14 @@ export default function SongsAdminPage() {
                   </button>
 
                   <div className="flex items-center gap-1">
-                    {/* Edit Button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingSong(song);
-                        setIsEditorOpen(true);
-                      }}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-colors"
-                      title="Edit Song"
+                    {/* Edit Button -> Navigates to full page editor */}
+                    <Link
+                      href={`/admin/songs/${song.id}/edit`}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-colors inline-flex items-center justify-center"
+                      title="Edit Song in Full Page Editor"
                     >
                       <Edit3 className="w-4 h-4" />
-                    </button>
+                    </Link>
 
                     {/* Delete Button */}
                     <button
@@ -469,23 +440,24 @@ export default function SongsAdminPage() {
         onClose={() => setViewingSong(null)}
         onEdit={(song) => {
           setViewingSong(null);
-          setEditingSong(song);
-          setIsEditorOpen(true);
+          router.push(`/admin/songs/${song.id}/edit`);
         }}
-      />
-
-      {/* ===================================================================== */}
-      {/* SONG EDITOR MODAL (Add / Edit Lyrics, MP3 & Ultimate Guitar Chords)   */}
-      {/* ===================================================================== */}
-      <SongEditorModal
-        isOpen={isEditorOpen}
-        onClose={() => {
-          setIsEditorOpen(false);
-          setEditingSong(null);
-        }}
-        onSave={handleSaveSong}
-        initialSong={editingSong}
       />
     </div>
+  );
+}
+
+export default function SongsAdminPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-12 text-center text-slate-500 font-bold">
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-xs">Loading songs repertoire...</p>
+        </div>
+      }
+    >
+      <SongsAdminContent />
+    </Suspense>
   );
 }

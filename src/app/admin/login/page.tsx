@@ -7,6 +7,8 @@ import Image from 'next/image';
 import { Lock, Mail, ArrowRight, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
+import { authenticateUser } from '@/lib/data/user-service';
+
 function AdminLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -31,60 +33,19 @@ function AdminLoginForm() {
     setError('');
     setLoading(true);
 
-    const supabase = createClient();
-
-    // If Supabase is connected, attempt real Supabase Auth
-    if (supabase) {
-      try {
-        const { data, error: authError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password.trim(),
-        });
-
-        if (authError) {
-          // If error is invalid credentials, but matches main admin offline preset
-          if (email.trim() === 'markcamilon@gmail.com' && password.trim() === 'weakPassword') {
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('cfc_tuy_admin_auth', 'true');
-              localStorage.setItem('cfc_tuy_admin_user', 'markcamilon@gmail.com');
-            }
-            router.push(redirectTarget);
-            return;
-          }
-          setError(authError.message || 'Invalid email or password.');
-          setLoading(false);
-          return;
-        }
-
-        if (data.session) {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('cfc_tuy_admin_auth', 'true');
-            localStorage.setItem('cfc_tuy_admin_user', data.user?.email || email);
-          }
-          router.push(redirectTarget);
-          return;
-        }
-      } catch (err: any) {
-        console.error('Supabase auth error:', err);
-      }
-    }
-
-    // Local / Offline authentication fallback
-    setTimeout(() => {
-      if (
-        (email.trim() === 'markcamilon@gmail.com' && password.trim() === 'weakPassword') ||
-        (email.trim().length > 3 && password.trim().length >= 4)
-      ) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('cfc_tuy_admin_auth', 'true');
-          localStorage.setItem('cfc_tuy_admin_user', email.trim());
-        }
+    try {
+      const result = await authenticateUser(email, password);
+      if (result.success) {
         router.push(redirectTarget);
       } else {
-        setError('Invalid email or password. Please check your credentials and try again.');
-        setLoading(false);
+        setError(result.message || 'Invalid email or password.');
       }
-    }, 400);
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err?.message || 'An error occurred during authentication. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

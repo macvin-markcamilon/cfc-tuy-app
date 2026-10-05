@@ -112,6 +112,16 @@ export default function AdminUsersPage() {
       setFormError('Please enter a valid email address.');
       return;
     }
+
+    const emailToSave = formEmail.trim().toLowerCase();
+    const isDuplicate = users.some(
+      (u) => u.email.toLowerCase() === emailToSave && u.id !== editingUser?.id
+    );
+    if (isDuplicate) {
+      setFormError(`An account with email address "${emailToSave}" already exists.`);
+      return;
+    }
+
     if (!editingUser && (!formPassword || formPassword.length < 6)) {
       setFormError('Temporary password must be at least 6 characters.');
       return;
@@ -125,7 +135,7 @@ export default function AdminUsersPage() {
         id: editingUser?.id,
         fullName: formFullName.trim(),
         spouseName: formSpouseName.trim() || undefined,
-        email: formEmail.trim().toLowerCase(),
+        email: emailToSave,
         phoneNumber: formPhone.trim() || undefined,
         barangay: formBarangay,
         ministry: formMinistry,
@@ -387,6 +397,17 @@ export default function AdminUsersPage() {
                         <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
                           {u.ministry}
                         </span>
+                        {u.role !== 'member' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black uppercase tracking-wide" title="Authorized to sign into the Admin Portal">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                            Admin Access
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-semibold uppercase tracking-wide" title="Member account without Admin Portal access">
+                            <Lock className="w-3 h-3 text-slate-400" />
+                            Public Member
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-slate-500">

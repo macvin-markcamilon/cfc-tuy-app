@@ -162,6 +162,7 @@ export interface UserProfile {
   ministry: MinistryType;
   role: UserRole;
   clpBatch?: string;
+  password?: string;
   createdAt?: string;
   updatedAt?: string;
 }

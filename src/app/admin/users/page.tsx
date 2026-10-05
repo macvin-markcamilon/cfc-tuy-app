@@ -33,6 +33,8 @@ export default function AdminUsersPage() {
 
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [formFullName, setFormFullName] = useState('');
   const [formSpouseName, setFormSpouseName] = useState('');
@@ -158,19 +160,34 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleDeleteUser = async (u: UserProfile) => {
-    if (u.email === 'markcamilon@gmail.com') {
-      alert('The primary chapter administrator account cannot be deleted.');
+  const handleRequestDelete = (u: UserProfile) => {
+    setUserToDelete(u);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+
+    if (userToDelete.email === 'markcamilon@gmail.com') {
+      showToast('The primary chapter administrator account cannot be deleted.');
+      setUserToDelete(null);
       return;
     }
-    if (confirm(`Are you sure you want to remove user "${u.fullName}" (${u.email})?`)) {
-      try {
-        await deleteUser(u.id);
-        showToast(`User "${u.fullName}" removed.`);
-        loadUsers();
-      } catch (err) {
-        console.error('Delete failed:', err);
+
+    setDeletingUser(true);
+    try {
+      const result = await deleteUser(userToDelete.id, userToDelete.email);
+      if (result?.message) {
+        showToast(`User "${userToDelete.fullName}" removed (${result.message}).`);
+      } else {
+        showToast(`✓ User "${userToDelete.fullName}" removed successfully.`);
       }
+      setUserToDelete(null);
+      await loadUsers();
+    } catch (err: any) {
+      console.error('Delete failed:', err);
+      showToast(`Failed to delete user: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setDeletingUser(false);
     }
   };
 
@@ -445,7 +462,7 @@ export default function AdminUsersPage() {
                     </button>
                     {u.email !== 'markcamilon@gmail.com' && (
                       <button
-                        onClick={() => handleDeleteUser(u)}
+                        onClick={() => handleRequestDelete(u)}
                         className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors border border-slate-200"
                         title="Delete User"
                       >
@@ -660,6 +677,111 @@ export default function AdminUsersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Branded Delete User Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-rose-100 overflow-hidden flex flex-col">
+            {/* Header Banner */}
+            <div className="bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 text-white p-5 flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/25 shadow-inner">
+                <Trash2 className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-extrabold text-lg text-white leading-tight">
+                  Delete User Account?
+                </h3>
+                <p className="text-xs text-rose-100 mt-1 font-medium">
+                  Confirm permanent account removal from CFC Tuy
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="text-rose-200 hover:text-white p-1 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body Content */}
+            <div className="p-5 sm:p-6 space-y-4 bg-white">
+              {/* User Details Preview Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black text-slate-900 text-sm truncate">
+                    {userToDelete.fullName}
+                  </span>
+                  <div className="shrink-0">{getRoleBadge(userToDelete.role)}</div>
+                </div>
+
+                {userToDelete.spouseName && (
+                  <p className="text-xs text-slate-600 font-medium">
+                    Spouse: <span className="font-bold text-slate-800">{userToDelete.spouseName}</span>
+                  </p>
+                )}
+
+                <div className="text-xs text-slate-500 space-y-1 pt-1.5 border-t border-slate-200/60">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate font-medium">{userToDelete.email}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                    <span>Ministry: <strong className="text-slate-800">{userToDelete.ministry}</strong></span>
+                    <span>Brgy: <strong className="text-slate-800">{userToDelete.barangay}</strong></span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Warning Box */}
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  Are you sure you want to permanently delete this user? This will revoke access to the CFC Tuy admin portal.
+                </span>
+              </div>
+
+              {/* Primary Admin Safeguard Warning */}
+              {userToDelete.email === 'markcamilon@gmail.com' && (
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold">
+                  🔒 Primary Administrator Account Protected: The primary chapter administrator account cannot be deleted.
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+
+              {userToDelete.email !== 'markcamilon@gmail.com' && (
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deletingUser}
+                  className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {deletingUser ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Delete User Account</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

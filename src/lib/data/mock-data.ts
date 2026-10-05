@@ -16,7 +16,7 @@ export const TUY_CENTER_COORDINATES: [number, number] = [120.7289, 14.0228];
 export const TUY_BARANGAYS = [
   'Acle',
   'Bayudbud',
-  'Bolboc (Maligas)',
+  'Bolboc',
   'Burgos (Pob.)',
   'Dalima',
   'Dao',

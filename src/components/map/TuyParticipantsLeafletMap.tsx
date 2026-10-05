@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CLPCouple } from '@/types';
 import { TUY_CENTER_COORDINATES } from '@/lib/data/mock-data';
 import { BARANGAY_COORDINATES } from '@/components/map/TuyMapPicker';
+import { BARANGAY_BOUNDARIES } from '@/lib/data/tuyBarangayBoundaries';
 import { computeAgeString, getCoupleAgeBracketKey, REPORT_AGE_BRACKETS } from '@/lib/reports/reportHelpers';
 import { Navigation, Compass, Layers, Crosshair, MapPin } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
@@ -26,6 +27,8 @@ export default function TuyParticipantsLeafletMap({
   const mapRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersGroupRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const polygonsGroupRef = useRef<Record<string, any>>({});
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markersMapRef = useRef<Record<string, any>>({});
   const [mapReady, setMapReady] = useState(false);
@@ -64,7 +67,7 @@ export default function TuyParticipantsLeafletMap({
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      // Google Maps Streets layer (crisp, authentic Google Maps roads, street names and Tuy barangays with NO watermark)
+      // Google Maps Streets layer
       const streetsLayer = L.tileLayer(
         'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
         {
@@ -76,6 +79,21 @@ export default function TuyParticipantsLeafletMap({
 
       streetsLayer.addTo(map);
       mapRef.current = map;
+
+      // Render Barangay Boundaries Layer
+      const polygonsMap: Record<string, any> = {};
+      Object.entries(BARANGAY_BOUNDARIES).forEach(([bName, pts]) => {
+        const latLngs = pts.map(([lng, lat]) => [lat, lng] as [number, number]);
+        const poly = L.polygon(latLngs, {
+          color: '#2563eb',
+          weight: 1.2,
+          opacity: 0.35,
+          fillColor: '#3b82f6',
+          fillOpacity: 0.02,
+        }).addTo(map);
+        polygonsMap[bName] = poly;
+      });
+      polygonsGroupRef.current = polygonsMap;
 
       const markersGroup = L.featureGroup().addTo(map);
       markersGroupRef.current = markersGroup;
@@ -273,6 +291,35 @@ export default function TuyParticipantsLeafletMap({
       marker.openPopup();
     }
   }, [selectedCoupleId, mapReady]);
+
+  // Highlight selected couple's barangay boundary polygon
+  useEffect(() => {
+    if (!mapReady || !polygonsGroupRef.current) return;
+    const selectedCouple = couples.find((c) => c.id === selectedCoupleId);
+    const selectedBarangay = selectedCouple?.barangay;
+
+    Object.entries(polygonsGroupRef.current).forEach(([bName, poly]) => {
+      const isSelected = bName === selectedBarangay;
+      if (isSelected) {
+        poly.setStyle({
+          color: '#d97706',
+          weight: 4,
+          opacity: 1,
+          fillColor: '#f59e0b',
+          fillOpacity: 0.35,
+        });
+        if (poly.bringToFront) poly.bringToFront();
+      } else {
+        poly.setStyle({
+          color: '#2563eb',
+          weight: 1.5,
+          opacity: 0.6,
+          fillColor: '#3b82f6',
+          fillOpacity: 0.08,
+        });
+      }
+    });
+  }, [selectedCoupleId, couples, mapReady]);
 
   // Fit bounds helper button
   const handleFitAll = () => {

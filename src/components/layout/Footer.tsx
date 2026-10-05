@@ -1,10 +1,9 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Heart, MapPin, Mail, Phone, ExternalLink, ShieldCheck } from 'lucide-react';
+import { Phone, MapPin, Heart } from 'lucide-react';
 
 export default function Footer() {
   const pathname = usePathname();
@@ -13,157 +12,178 @@ export default function Footer() {
   if (pathname?.startsWith('/admin')) {
     return null;
   }
+
   return (
-    <footer className="border-t border-blue-900/40 bg-[#182b5c] text-blue-100/90">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
+    <footer className="bg-[#181818] text-slate-300 text-xs sm:text-sm border-t border-slate-800">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-10 gap-8 lg:gap-8 items-start">
           
-          {/* Column 1: Chapter Brand & Mission */}
-          <div className="space-y-4">
+          {/* Column 1: Logo & Tagline & Address (4 cols) */}
+          <div className="lg:col-span-4 space-y-5">
             <div className="flex items-center gap-3">
-              <div className="h-10 px-2 rounded-xl bg-white flex items-center justify-center shadow-md">
+              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center p-1.5 border border-white/20">
                 <Image
-                  src="/images/cfc-logo.png"
+                  src="/images/cfc_logo_only_blue.png"
                   alt="Couples for Christ Logo"
-                  width={140}
-                  height={34}
-                  className="h-7 w-auto object-contain"
+                  width={40}
+                  height={40}
+                  className="w-full h-full object-contain brightness-200"
                 />
               </div>
               <div>
-                <span className="font-extrabold text-white text-base tracking-tight block">
+                <span className="font-serif italic text-white font-extrabold text-base block">
                   Couples for Christ
                 </span>
-                <span className="text-xs text-amber-400 font-bold uppercase tracking-wider">
+                <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider block">
                   Tuy Chapter • Batangas
                 </span>
               </div>
             </div>
-            <p className="text-sm text-blue-100/80 leading-relaxed">
-              &quot;Families in the Holy Spirit Renewing the Face of the Earth.&quot; Dedicated to supporting marriages, families, and youth through Christ-centered fellowship.
-            </p>
-            <div className="flex items-center gap-2 text-xs text-blue-200/80">
-              <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Saint Vincent Ferrer Parish, Tuy, Batangas</span>
+
+            <div className="space-y-1 text-slate-300 font-medium text-xs leading-relaxed">
+              <p>Building the Church of the Home.</p>
+              <p>Building the Church of the Poor.</p>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-300 font-normal">
+              <div className="flex items-center gap-2">
+                <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <a href="tel:+63287094867" className="hover:text-white transition-colors">+63 2 87094867</a>
+              </div>
+              <div className="flex items-center gap-2">
+                <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <a href="tel:+639209545031" className="hover:text-white transition-colors">+63 920 954 5031</a>
+              </div>
+              <div className="flex items-start gap-2 pt-1 text-slate-400">
+                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                <span>156 20th Ave., Brgy. Mangga, Cubao, Quezon City 1109, Philippines.</span>
+              </div>
             </div>
           </div>
 
-          {/* Column 2: Family Ministries */}
-          <div>
-            <h4 className="text-white font-bold text-sm tracking-wider uppercase mb-4 text-amber-400">
-              Family Ministries
+          {/* Column 2: About & Programs (2 cols) */}
+          <div className="lg:col-span-2 space-y-6">
+            <div>
+              <h4 className="font-serif italic font-extrabold text-white text-base mb-3">
+                About
+              </h4>
+              <ul className="space-y-2 text-xs text-slate-300 font-medium">
+                <li>
+                  <a href="https://couplesforchristglobal.org/who-we-are/#mission-vision" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    Vision
+                  </a>
+                </li>
+                <li>
+                  <a href="https://couplesforchristglobal.org/who-we-are/#mission-vision" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    Mission
+                  </a>
+                </li>
+                <li>
+                  <a href="https://couplesforchristglobal.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    CFC Members Portal
+                  </a>
+                </li>
+                <li>
+                  <a href="https://couplesforchristglobal.org/event-calendar/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    Events
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-serif italic font-extrabold text-white text-base mb-2">
+                Programs
+              </h4>
+              <ul className="space-y-2 text-xs text-slate-300 font-medium">
+                <li>
+                  <a href="https://couplesforchristglobal.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    Family is a Gift
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Column 3: Related Companies (2 cols) */}
+          <div className="lg:col-span-2 space-y-3">
+            <h4 className="font-serif italic font-extrabold text-white text-base mb-3">
+              Related Companies
             </h4>
-            <ul className="space-y-2.5 text-sm">
+            <ul className="space-y-2.5 text-xs text-slate-300 font-medium">
               <li>
-                <Link href="/ministries#cfc" className="hover:text-amber-300 transition-colors">
-                  Couples for Christ (Married)
-                </Link>
+                <a href="https://couplesforchristglobal.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  Missio Amare
+                </a>
               </li>
               <li>
-                <Link href="/ministries#sfc" className="hover:text-amber-300 transition-colors">
-                  Singles for Christ (SFC)
-                </Link>
+                <a href="https://couplesforchristglobal.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  ANCOP
+                </a>
               </li>
               <li>
-                <Link href="/ministries#yfc" className="hover:text-amber-300 transition-colors">
-                  Youth for Christ (YFC)
-                </Link>
+                <a href="https://couplesforchristglobal.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  Ablaze
+                </a>
               </li>
               <li>
-                <Link href="/ministries#kfc" className="hover:text-amber-300 transition-colors">
-                  Kids for Christ (KFC)
-                </Link>
+                <a href="https://couplesforchristglobal.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  GCare
+                </a>
               </li>
               <li>
-                <Link href="/ministries#hold" className="hover:text-amber-300 transition-colors">
-                  Handmaids of the Lord (HOLD)
-                </Link>
-              </li>
-              <li>
-                <Link href="/ministries#sold" className="hover:text-amber-300 transition-colors">
-                  Servants of the Lord (SOLD)
-                </Link>
+                <a href="https://couplesforchristglobal.org/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  CFC Institute
+                </a>
               </li>
             </ul>
           </div>
 
-          {/* Column 3: Quick Links & Programs */}
-          <div>
-            <h4 className="text-white font-bold text-sm tracking-wider uppercase mb-4 text-amber-400">
-              Programs & Activities
+          {/* Column 4: Ministries (2 cols) */}
+          <div className="lg:col-span-2 space-y-3">
+            <h4 className="font-serif italic font-extrabold text-white text-base mb-3">
+              Ministries
             </h4>
-            <ul className="space-y-2.5 text-sm">
+            <ul className="space-y-2.5 text-xs text-slate-300 font-medium">
               <li>
-                <Link href="/events#clp" className="hover:text-amber-300 transition-colors">
-                  Christian Life Program (CLP)
-                </Link>
+                <a href="https://couplesforchristglobal.org/cfc-kids-for-christ/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  CFC Kids for Christ
+                </a>
               </li>
               <li>
-                <Link href="/map" className="hover:text-amber-300 transition-colors">
-                  Tuy Barangay Household Map
-                </Link>
+                <a href="https://couplesforchristglobal.org/cfc-youth-for-christ/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  CFC Youth for Christ
+                </a>
               </li>
               <li>
-                <Link href="/events" className="hover:text-amber-300 transition-colors">
-                  Monthly General Assemblies
-                </Link>
+                <a href="https://couplesforchristglobal.org/cfc-singles-for-christ/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  CFC Singles for Christ
+                </a>
               </li>
               <li>
-                <Link href="/prayer-requests" className="hover:text-amber-300 transition-colors">
-                  Community Prayer Wall
-                </Link>
+                <a href="https://couplesforchristglobal.org/cfc-handmaids-of-the-lord/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  CFC Handmaids of the Lord
+                </a>
               </li>
               <li>
-                <Link href="/songbook" className="hover:text-amber-300 transition-colors">
-                  Praise &amp; Worship Songbook
-                </Link>
-              </li>
-              <li>
-                <Link href="/portal" className="hover:text-amber-300 transition-colors flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Leader Portal</span>
-                </Link>
+                <a href="https://couplesforchristglobal.org/cfc-servants-of-the-lord/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  CFC Servants of the Lord
+                </a>
               </li>
             </ul>
-          </div>
-
-          {/* Column 4: Contact & Social */}
-          <div className="space-y-4">
-            <h4 className="text-white font-bold text-sm tracking-wider uppercase text-amber-400">
-              Connect With Us
-            </h4>
-            <p className="text-xs text-blue-200/80">
-              Want to join a household or learn more about Couples for Christ Tuy? Reach out to our chapter servants.
-            </p>
-            <div className="space-y-2 text-sm text-blue-100">
-              <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>+63 917 123 4567 (Tuy Secretariat)</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>contact@cfctuy.com</span>
-              </div>
-            </div>
-            <div className="pt-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900/60 text-xs text-blue-200 border border-blue-800/80">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Archdiocese of Lipa • Batangas
-              </span>
-            </div>
           </div>
 
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-blue-900/60 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-blue-200/60">
-          <p>© {new Date().getFullYear()} Couples for Christ - Tuy Chapter. All rights reserved.</p>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1">
-              Built with love <Heart className="w-3 h-3 text-red-400 fill-red-400" /> for the Tuy Community
-            </span>
+        <div className="mt-12 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 font-medium">
+          <p>© {new Date().getFullYear()} Couples for Christ Global. All rights reserved.</p>
+          <div className="flex items-center gap-3">
+            <span>Official Portal: <a href="https://couplesforchristglobal.org" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline">couplesforchristglobal.org</a></span>
             <span>•</span>
-            <span>Couples for Christ Official Brand Theme</span>
+            <span className="flex items-center gap-1">
+              Tuy Chapter <Heart className="w-3 h-3 text-rose-500 fill-rose-500" /> Saint Vincent Ferrer Parish
+            </span>
           </div>
         </div>
 

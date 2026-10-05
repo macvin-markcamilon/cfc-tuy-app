@@ -1,31 +1,31 @@
 import React from 'react';
 import Hero from '@/components/home/Hero';
+import GlobalCommunitySection from '@/components/home/GlobalCommunitySection';
+import OnlyByGraceReflections from '@/components/home/OnlyByGraceReflections';
 import SongsCarousel from '@/components/home/SongsCarousel';
 import MinistriesGrid from '@/components/home/MinistriesGrid';
-import EventsPreview from '@/components/home/EventsPreview';
-import CLPCallout from '@/components/home/CLPCallout';
-import PrayerWallSection from '@/components/home/PrayerWallSection';
+import FacebookSection from '@/components/home/FacebookSection';
 
 export default function Home() {
   return (
-    <div className="flex flex-col w-full">
-      {/* Hero Section */}
+    <div className="flex flex-col w-full min-h-screen">
+      {/* 1. Hero Section (600px height) */}
       <Hero />
 
-      {/* Worship Songs Carousel from Database */}
+      {/* 2. United Global Community Section */}
+      <GlobalCommunitySection />
+
+      {/* 3. Only by Grace Reflection Section (Latest 3 YouTube videos) */}
+      <OnlyByGraceReflections />
+
+      {/* 4. Worship & Praise Songs */}
       <SongsCarousel />
 
-      {/* Ministries Overview */}
+      {/* 5. Family Ministries (Official CFC Ministries) */}
       <MinistriesGrid />
 
-      {/* Upcoming Events */}
-      <EventsPreview />
-
-      {/* Christian Life Program (CLP) Banner */}
-      <CLPCallout />
-
-      {/* Prayer Request Wall */}
-      <PrayerWallSection />
+      {/* 6. Facebook Community Section (below Family Ministries) */}
+      <FacebookSection />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { MAP_PINS, TUY_CENTER_COORDINATES } from '@/lib/data/mock-data';
+import { BARANGAY_BOUNDARIES } from '@/lib/data/tuyBarangayBoundaries';
 import { MapLocationPin, MinistryType } from '@/types';
 import {
   MapPin,
@@ -65,6 +66,7 @@ export default function TuyGoogleMap({
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
+  const polygonsRef = useRef<Record<string, google.maps.Polygon>>({});
 
   const [selectedMinistry, setSelectedMinistry] = useState<MinistryType | 'ALL'>(initialMinistry);
   const [selectedPin, setSelectedPin] = useState<MapLocationPin | null>(null);
@@ -130,6 +132,26 @@ export default function TuyGoogleMap({
           });
 
           mapInstanceRef.current = map;
+
+          // Draw Barangay Boundaries on Google Maps
+          Object.entries(BARANGAY_BOUNDARIES).forEach(([bName, pts]) => {
+            const path = pts.map(([lng, lat]) => ({ lat, lng }));
+            const isSelected = selectedPin?.barangay === bName;
+
+            const poly = new maps.Polygon({
+              paths: path,
+              strokeColor: isSelected ? '#D97706' : '#2563EB',
+              strokeOpacity: isSelected ? 1.0 : 0.35,
+              strokeWeight: isSelected ? 4 : 1.2,
+              fillColor: isSelected ? '#F59E0B' : '#3B82F6',
+              fillOpacity: isSelected ? 0.25 : 0.02,
+              zIndex: isSelected ? 100 : 1,
+              map,
+            });
+
+            polygonsRef.current[bName] = poly;
+          });
+
           setIsMapReady(true);
         } else {
           mapInstanceRef.current.setMapTypeId(mapTypeId);
@@ -178,6 +200,22 @@ export default function TuyGoogleMap({
       markersRef.current.push(marker);
     });
   }, [filteredPins, isMapReady]);
+
+  // Update polygon highlight when selected pin changes
+  useEffect(() => {
+    const selectedBarangay = selectedPin?.barangay;
+    Object.entries(polygonsRef.current).forEach(([bName, poly]) => {
+      const isSelected = bName === selectedBarangay;
+      poly.setOptions({
+        strokeColor: isSelected ? '#D97706' : '#2563EB',
+        strokeOpacity: isSelected ? 1.0 : 0.35,
+        strokeWeight: isSelected ? 4 : 1.2,
+        fillColor: isSelected ? '#F59E0B' : '#3B82F6',
+        fillOpacity: isSelected ? 0.25 : 0.02,
+        zIndex: isSelected ? 100 : 1,
+      });
+    });
+  }, [selectedPin]);
 
   // Locate User in Tuy
   const handleLocateMe = () => {
@@ -291,6 +329,35 @@ export default function TuyGoogleMap({
           <div className="w-full h-full relative overflow-hidden flex flex-col justify-between p-6 bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white">
             {/* Background Grid & Compass Rose */}
             <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
+
+            {/* SVG Barangay Boundaries Layer */}
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 1000 1000"
+              preserveAspectRatio="none"
+            >
+              {Object.entries(BARANGAY_BOUNDARIES).map(([bName, pts]) => {
+                const isSelected = selectedPin?.barangay === bName;
+                const svgPts = pts
+                  .map(([lng, lat]) => {
+                    const x = ((lng - 120.700) / (120.765 - 120.700)) * 1000;
+                    const y = ((14.055 - lat) / (14.055 - 13.995)) * 1000;
+                    return `${x.toFixed(1)},${y.toFixed(1)}`;
+                  })
+                  .join(' ');
+
+                return (
+                  <polygon
+                    key={bName}
+                    points={svgPts}
+                    fill={isSelected ? 'rgba(245, 158, 11, 0.35)' : 'rgba(59, 130, 246, 0.12)'}
+                    stroke={isSelected ? '#F59E0B' : '#3B82F6'}
+                    strokeWidth={isSelected ? '4' : '1.5'}
+                    strokeOpacity={isSelected ? '1' : '0.6'}
+                  />
+                );
+              })}
+            </svg>
 
             {/* Notice Banner */}
             <div className="relative z-10 max-w-xl mx-auto glass-panel border-amber-500/30 bg-amber-950/70 p-3 sm:p-4 rounded-2xl shadow-xl flex items-start gap-3 text-xs sm:text-sm">

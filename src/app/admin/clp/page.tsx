@@ -7,6 +7,8 @@ import { CLPProgram, CLPCouple, CLPTalk, CLPAttendance, SavedCLPGrouping, SavedC
 import TuyMapPicker from '@/components/map/TuyMapPicker';
 import CLPCouplesMapModal from '@/components/map/CLPCouplesMapModal';
 import CLPInviteeFullReportModal from '@/components/clp/CLPInviteeFullReportModal';
+import { AgeGroupPieChart } from '@/components/clp/AgeGroupPieChart';
+import { TalkStatisticsCharts } from '@/components/clp/TalkStatisticsCharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -4719,6 +4721,13 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       )}
                     </div>
 
+                    {/* Opened Talk Demographic Analytics */}
+                    <AgeGroupPieChart
+                      couples={openedTalkAnyPresentCouples}
+                      title={`Talk #${activeOpenedTalk.talkNumber} Attendee Age Demographics`}
+                      subtitle={`Age group distribution for ${openedTalkAnyPresentCouples.length} couples attending Talk #${activeOpenedTalk.talkNumber}: ${activeOpenedTalk.title}`}
+                    />
+
                     {/* Attendance Controls Bar (Search, Status Filter, Barangay Filter, Quick Actions) */}
                     <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                       {/* Search & Filters */}
@@ -5098,6 +5107,24 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                   </div>
                 </div>
               </div>
+
+              {/* Overall Age Group Demographics Pie Chart */}
+              <AgeGroupPieChart
+                couples={currentCouples}
+                title="CLP Invitee Demographic & Age Group Analytics"
+                subtitle={`Age bracket distribution and demographic breakdown for ${currentCouples.length} invited couples (${currentCouples.length * 2} individual participants) in ${currentClp.name}`}
+              />
+
+              {/* Talk Progression & Barangay Analytics Charts */}
+              <TalkStatisticsCharts
+                talks={currentTalks}
+                couples={currentCouples}
+                attendance={attendance}
+                onOpenTalk={(talkId) => {
+                  setActiveTab('talks');
+                  setOpenedAttendanceTalkId(talkId);
+                }}
+              />
 
               {/* Per-Talk Progression Table */}
               <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
@@ -7022,7 +7049,7 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                 <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3.5 shadow-2xs">
                   <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
                     <Heart className="w-4 h-4 text-rose-500" />
-                    <span>Wedding Anniversary &amp; Pinned Home Location</span>
+                    <span>Wedding Anniversary &amp; Address</span>
                   </span>
 
                   <div>
@@ -7035,27 +7062,6 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                       onChange={(e) => setWeddingAnniv(e.target.value)}
                       className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs max-w-[220px] outline-hidden"
                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Pinned Tuy Location
-                    </label>
-                    <div className="p-3.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs shadow-2xs">
-                      <div>
-                        <span className="font-bold text-slate-900 block">{coupleAddress}</span>
-                        <span className="text-[11px] text-slate-500 font-mono mt-0.5 block">
-                          Brgy. {coupleBarangay} • {coupleCoords[1].toFixed(4)}, {coupleCoords[0].toFixed(4)}
-                        </span>
-                      </div>
-                      <span className="flex items-center gap-1 text-emerald-600 font-bold text-[10px] bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0">
-                        <MapPin className="w-3 h-3" /> Pinned
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1.5">
-                      <Compass className="w-3.5 h-3.5 text-[#243c81] shrink-0" />
-                      <span>Click anywhere on the map to update the pinpoint in real-time.</span>
-                    </p>
                   </div>
 
                   <div>

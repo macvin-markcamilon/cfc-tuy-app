@@ -81,7 +81,7 @@ export default function BirthdayGreetingCardModal({
   const [dateDisplay, setDateDisplay] = useState('');
   const [ageDisplay, setAgeDisplay] = useState('');
   const [customMessage, setCustomMessage] = useState(BLESSING_PRESETS[0]);
-  const [theme, setTheme] = useState<'ROYAL' | 'ROSE' | 'GOLD' | 'EMERALD' | 'PURPLE'>('ROYAL');
+  const [theme, setTheme] = useState<'CFC_BRAND' | 'ROYAL' | 'ROSE' | 'GOLD' | 'EMERALD' | 'PURPLE'>('CFC_BRAND');
   const [aspectRatio, setAspectRatio] = useState<'SQUARE' | 'LANDSCAPE'>('SQUARE');
   const [includePhoto, setIncludePhoto] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -281,7 +281,19 @@ export default function BirthdayGreetingCardModal({
     let subTextColor = '#cbd5e1';
     let starColor = 'rgba(253, 230, 138, 0.4)';
 
-    if (theme === 'ROSE') {
+    if (theme === 'CFC_BRAND') {
+      bgGrad = ctx.createLinearGradient(0, 0, width, height);
+      bgGrad.addColorStop(0, '#09132b');
+      bgGrad.addColorStop(0.45, '#243c81');
+      bgGrad.addColorStop(0.85, '#152452');
+      bgGrad.addColorStop(1, '#0b142d');
+      accentColor = '#f59e0b';
+      badgeFill = 'rgba(245, 158, 11, 0.28)';
+      titleColor = '#fef08a';
+      badgeTextColor = '#fde68a';
+      subTextColor = '#93c5fd';
+      starColor = 'rgba(253, 230, 138, 0.45)';
+    } else if (theme === 'ROSE') {
       bgGrad = ctx.createLinearGradient(0, 0, width, height);
       bgGrad.addColorStop(0, '#4c0519');
       bgGrad.addColorStop(0.5, '#881337');
@@ -360,7 +372,18 @@ export default function BirthdayGreetingCardModal({
 
     // Top Radial Glow
     const topGlow = ctx.createRadialGradient(width / 2, 0, 10, width / 2, 0, height * 0.75);
-    topGlow.addColorStop(0, theme === 'ROSE' ? 'rgba(244, 63, 94, 0.3)' : theme === 'EMERALD' ? 'rgba(52, 211, 153, 0.25)' : 'rgba(245, 158, 11, 0.25)');
+    topGlow.addColorStop(
+      0,
+      theme === 'ROSE'
+        ? 'rgba(244, 63, 94, 0.3)'
+        : theme === 'EMERALD'
+        ? 'rgba(52, 211, 153, 0.25)'
+        : theme === 'PURPLE'
+        ? 'rgba(192, 132, 252, 0.3)'
+        : theme === 'CFC_BRAND'
+        ? 'rgba(36, 60, 129, 0.45)'
+        : 'rgba(245, 158, 11, 0.25)'
+    );
     topGlow.addColorStop(1, 'transparent');
     ctx.fillStyle = topGlow;
     ctx.fillRect(0, 0, width, height);
@@ -863,6 +886,24 @@ export default function BirthdayGreetingCardModal({
               </label>
 
               <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTheme('CFC_BRAND')}
+                  className={`col-span-2 px-2.5 py-2 rounded-xl border font-bold text-[11px] text-left transition-all flex items-center justify-between ${
+                    theme === 'CFC_BRAND'
+                      ? 'border-amber-400 bg-blue-950/80 text-white ring-2 ring-amber-400/40 shadow-sm'
+                      : 'border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:border-slate-700'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#243c81] ring-1 ring-amber-400 inline-block" />
+                    🛡️ CFC Brand Navy &amp; Gold
+                  </span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold uppercase tracking-wider border border-amber-500/30">
+                    Official
+                  </span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setTheme('ROYAL')}

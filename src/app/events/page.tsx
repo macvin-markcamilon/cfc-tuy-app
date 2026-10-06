@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
+import CalendarWithCelebrants from '@/components/calendar/CalendarWithCelebrants';
 import { CHAPTER_EVENTS } from '@/lib/data/mock-data';
-import { Calendar, Clock, MapPin, CheckCircle2, Send, BookOpen, ExternalLink, Sparkles } from 'lucide-react';
+import { Calendar, Clock, MapPin, CheckCircle2, Send, BookOpen, ExternalLink, Sparkles, LayoutGrid, Cake, Heart } from 'lucide-react';
 import Link from 'next/link';
 
 export default function EventsPage() {
+  const [activeView, setActiveView] = useState<'calendar' | 'cards'>('calendar');
   const [selectedFilter, setSelectedFilter] = useState<string>('ALL');
 
   // CLP Registration state
@@ -30,38 +32,76 @@ export default function EventsPage() {
 
   return (
     <div className="py-8 sm:py-12 bg-white min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         
-        {/* Header */}
-        <div className="max-w-3xl mb-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#243c81] text-xs font-bold mb-3">
-            <Calendar className="w-3.5 h-3.5 text-[#243c81]" />
-            <span>Chapter Activities & Calendar</span>
+        {/* Header & View Switcher */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-200 pb-6">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#243c81] text-xs font-bold mb-3">
+              <Calendar className="w-3.5 h-3.5 text-[#243c81]" />
+              <span>Chapter Activities, Birthdays &amp; Anniversaries</span>
+            </div>
+            <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
+              Events &amp; Celebrants Calendar
+            </h1>
+            <p className="mt-2 text-sm sm:text-base text-slate-600 font-medium">
+              View monthly assemblies, CLP sessions, member birthdays, and wedding anniversaries across all 22 barangays in Tuy.
+            </p>
           </div>
-          <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
-            Events & Gatherings in Tuy
-          </h1>
-          <p className="mt-2 text-sm sm:text-base text-slate-600">
-            Join our monthly general assemblies, youth camps, and register for the next Christian Life Program (CLP).
-          </p>
-        </div>
 
-        {/* Filter Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-8 scrollbar-none">
-          {['ALL', 'Assembly', 'CLP', 'Fellowship', 'Conference'].map((cat) => (
+          {/* View Switcher Buttons */}
+          <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex items-center gap-1 shrink-0 self-start md:self-auto">
             <button
-              key={cat}
-              onClick={() => setSelectedFilter(cat)}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
-                selectedFilter === cat
+              type="button"
+              onClick={() => setActiveView('calendar')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
+                activeView === 'calendar'
                   ? 'bg-[#243c81] text-white shadow-md'
-                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-blue-50 hover:text-[#243c81]'
+                  : 'text-slate-700 hover:text-slate-900'
               }`}
             >
-              {cat === 'ALL' ? 'All Events' : cat}
+              <Calendar className="w-4 h-4 text-amber-300" />
+              <span>Calendar &amp; Celebrants</span>
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setActiveView('cards')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
+                activeView === 'cards'
+                  ? 'bg-[#243c81] text-white shadow-md'
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4 text-amber-300" />
+              <span>Events List View</span>
+            </button>
+          </div>
         </div>
+
+        {/* View 1: Calendar & Celebrants Component */}
+        {activeView === 'calendar' ? (
+          <div className="mb-12">
+            <CalendarWithCelebrants isAdmin={false} />
+          </div>
+        ) : (
+          /* View 2: Events List View */
+          <div>
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 scrollbar-none">
+              {['ALL', 'Assembly', 'CLP', 'Fellowship', 'Conference'].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedFilter(cat)}
+                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+                    selectedFilter === cat
+                      ? 'bg-[#243c81] text-white shadow-md'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-blue-50 hover:text-[#243c81]'
+                  }`}
+                >
+                  {cat === 'ALL' ? 'All Events' : cat}
+                </button>
+              ))}
+            </div>
 
         {/* Events Grid */}
         {filteredEvents.length > 0 ? (
@@ -142,6 +182,8 @@ export default function EventsPage() {
             </p>
           </div>
         )}
+      </div>
+    )}
 
         {/* CLP Registration Section */}
         <div id="clp" className="scroll-mt-24 rounded-3xl bg-[#243c81] text-white p-6 sm:p-10 lg:p-12 shadow-xl border border-blue-900/60">

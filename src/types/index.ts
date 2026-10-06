@@ -23,6 +23,43 @@ export interface HouseholdMember {
   notes?: string;
 }
 
+export interface DirectoryCouple {
+  id: string;
+  // Husband Information
+  husbandFirstName: string;
+  husbandLastName: string;
+  husbandNickname?: string;
+  husbandPhotoUrl?: string;
+  husbandBirthday?: string;
+  husbandOccupation?: string;
+  husbandContact?: string;
+  husbandEmail?: string;
+
+  // Wife Information
+  wifeFirstName: string;
+  wifeLastName: string;
+  wifeNickname?: string;
+  wifePhotoUrl?: string;
+  wifeBirthday?: string;
+  wifeOccupation?: string;
+  wifeContact?: string;
+  wifeEmail?: string;
+
+  // Couple / Household Information
+  couplePhotoUrl?: string; // Photo of Husband & Wife together!
+  weddingAnniversary?: string;
+  ministry: MinistryType;
+  householdGroupId?: string;
+  householdGroupName?: string;
+  barangay: string;
+  address: string;
+  coordinates?: [number, number]; // [longitude, latitude] in Tuy
+  status: 'Active' | 'On-Break' | 'Transferred' | 'Inactive';
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface HouseholdGroup {
   id: string;
   name: string;

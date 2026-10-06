@@ -22,6 +22,9 @@ import {
   SlidersHorizontal,
   Palette,
   ListMusic,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
 } from 'lucide-react';
 
 interface SongPresentationModalProps {
@@ -68,7 +71,8 @@ export default function SongPresentationModal({
 }: SongPresentationModalProps) {
   // Transposition & display settings
   const [transposeOffset, setTransposeOffset] = useState<number>(0);
-  const [showChords, setShowChords] = useState<boolean>(true);
+  const [showChords, setShowChords] = useState<boolean>(false); // Chords OFF by default for presentation
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
   const [fontSizeMultiplier, setFontSizeMultiplier] = useState<number>(1); // 0.7x to 1.8x scale
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
@@ -92,6 +96,7 @@ export default function SongPresentationModal({
     if (isOpen) {
       setCurrentSlideIndex(0);
       setTransposeOffset(0);
+      setShowChords(false); // Chords OFF as default when opening presentation
       setIsAutoPlay(false);
     }
   }, [isOpen, song?.id, playlist?.length]);
@@ -195,6 +200,87 @@ export default function SongPresentationModal({
             continue;
           }
 
+          // Check if current line is a chord-only line (e.g. "[G]  [C]  [G]" or "G   C   G")
+          const isCurrentChordOnly = (() => {
+            const trimmed = currentLine.trim();
+            if (!trimmed) return false;
+            if (trimmed.includes('[')) {
+              const cleaned = trimmed.replace(/\[[A-G][#b]?[^\]]*\]/g, '').trim();
+              return cleaned.length === 0;
+            }
+            return isChordLine(currentLine);
+          })();
+
+          // Check if next line is a lyric line
+          const hasNextLyricLine = lineIdx + 1 < stanzaLines.length && (() => {
+            const nextTrimmed = stanzaLines[lineIdx + 1].trim();
+            if (!nextTrimmed) return false;
+            if (parseExplicitHeader(nextTrimmed)) return false;
+            const isNextChordOnly = nextTrimmed.includes('[')
+              ? nextTrimmed.replace(/\[[A-G][#b]?[^\]]*\]/g, '').trim().length === 0
+              : isChordLine(nextTrimmed);
+            return !isNextChordOnly;
+          })();
+
+          // PAIRING: If current line is chord-only and next line is lyrics, pair them word-by-word
+          if (isCurrentChordOnly && hasNextLyricLine) {
+            const chordLineStr = currentLine;
+            const lyricLineStr = stanzaLines[lineIdx + 1];
+
+            // Extract chord tokens
+            let chordTokens: string[] = [];
+            if (chordLineStr.includes('[')) {
+              const matches = chordLineStr.match(/\[([A-G][#b]?[^\]]*)\]/g);
+              if (matches) {
+                chordTokens = matches.map((m) => m.slice(1, -1).trim());
+              }
+            } else {
+              chordTokens = chordLineStr.trim().split(/\s+/).map((t) => t.replace(/[^A-Ga-g#0-9/]/g, '')).filter(Boolean);
+            }
+
+            // Extract lyric words
+            const lyricWords = lyricLineStr.trim().split(/\s+/);
+            const segments: { chord?: string; text: string }[] = [];
+
+            if (lyricWords.length > 0) {
+              let cTracker = 0;
+              lyricWords.forEach((word, wIdx) => {
+                let chordForWord: string | undefined = undefined;
+                if (chordTokens.length === lyricWords.length) {
+                  chordForWord = chordTokens[wIdx];
+                } else if (cTracker < chordTokens.length) {
+                  const targetWordIdx = Math.min(
+                    Math.round((cTracker / Math.max(1, chordTokens.length - 1)) * (lyricWords.length - 1)),
+                    lyricWords.length - 1
+                  );
+                  if (wIdx >= targetWordIdx) {
+                    chordForWord = chordTokens[cTracker];
+                    cTracker++;
+                  }
+                }
+
+                segments.push({
+                  chord: chordForWord,
+                  text: word + (wIdx < lyricWords.length - 1 ? ' ' : ''),
+                });
+              });
+            } else {
+              segments.push({
+                chord: chordLineStr,
+                text: lyricLineStr,
+              });
+            }
+
+            parsedLines.push({
+              cleanLyricText: lyricLineStr.trim(),
+              segments,
+            });
+
+            lineIdx += 2;
+            continue;
+          }
+
+          // INLINE BRACKET CHORDS (e.g. "[G]You died [C]on the cross [G]")
           if (currentLine.includes('[')) {
             const parts = currentLine.split(/(\[[A-G][#b]?[^\]]*\])/g);
             const segments: { chord?: string; text: string }[] = [];
@@ -214,11 +300,26 @@ export default function SongPresentationModal({
                   pendingChord = inner;
                 }
               } else {
-                segments.push({
-                  chord: pendingChord,
-                  text: part,
+                // Break text into words to align chords on individual words
+                const words = part.split(/(\s+)/);
+                let firstWordFound = false;
+
+                words.forEach((w) => {
+                  if (!w) return;
+                  if (!firstWordFound && w.trim().length > 0) {
+                    segments.push({
+                      chord: pendingChord,
+                      text: w,
+                    });
+                    pendingChord = undefined;
+                    firstWordFound = true;
+                  } else {
+                    segments.push({
+                      chord: undefined,
+                      text: w,
+                    });
+                  }
                 });
-                pendingChord = undefined;
               }
             });
 
@@ -237,47 +338,23 @@ export default function SongPresentationModal({
               });
             }
             lineIdx++;
-          } else if (isChordLine(currentLine) && lineIdx + 1 < stanzaLines.length && !isChordLine(stanzaLines[lineIdx + 1])) {
-            const chordLineStr = currentLine;
-            const lyricLineStr = stanzaLines[lineIdx + 1];
-
-            const chordTokens = chordLineStr.trim().split(/\s+/);
-            const lyricWords = lyricLineStr.trim().split(/\s+/);
-
-            const segments: { chord?: string; text: string }[] = [];
-            if (lyricWords.length > 0) {
-              lyricWords.forEach((word, wIdx) => {
-                segments.push({
-                  chord: chordTokens[wIdx] || undefined,
-                  text: word + (wIdx < lyricWords.length - 1 ? ' ' : ''),
-                });
-              });
-            } else {
-              segments.push({
-                chord: chordLineStr,
-                text: lyricLineStr,
-              });
-            }
-
-            parsedLines.push({
-              cleanLyricText: lyricLineStr.trim(),
-              segments,
-            });
-
-            lineIdx += 2;
           } else {
+            // PLAIN LYRIC LINE OR UNPAIRED CHORD LINE
             const isChordsOnly = isChordLine(currentLine);
             const cleanText = isChordsOnly ? '' : currentLine.trim();
+            const words = currentLine.trim().split(/\s+/);
+            const segments: { chord?: string; text: string }[] = isChordsOnly
+              ? [{ chord: currentLine.trim(), text: '' }]
+              : words.map((w, idx) => ({
+                  chord: undefined,
+                  text: w + (idx < words.length - 1 ? ' ' : ''),
+                }));
+
             parsedLines.push({
               isChordOnly: isChordsOnly,
               rawChordLine: isChordsOnly ? currentLine : undefined,
               cleanLyricText: cleanText,
-              segments: [
-                {
-                  chord: isChordsOnly ? currentLine.trim() : undefined,
-                  text: isChordsOnly ? '' : currentLine,
-                },
-              ],
+              segments,
             });
             lineIdx++;
           }
@@ -634,6 +711,40 @@ export default function SongPresentationModal({
             </div>
           )}
 
+          {/* Text Alignment Selector (Left, Center, Right) */}
+          <div className={`flex items-center rounded-xl p-0.5 border border-white/10 ${themeClasses.btnBg}`}>
+            <button
+              type="button"
+              onClick={() => setTextAlign('left')}
+              className={`p-1.5 rounded-lg transition-all ${
+                textAlign === 'left' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
+              }`}
+              title="Align Left"
+            >
+              <AlignLeft className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setTextAlign('center')}
+              className={`p-1.5 rounded-lg transition-all ${
+                textAlign === 'center' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
+              }`}
+              title="Align Center"
+            >
+              <AlignCenter className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setTextAlign('right')}
+              className={`p-1.5 rounded-lg transition-all ${
+                textAlign === 'right' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
+              }`}
+              title="Align Right"
+            >
+              <AlignRight className="w-4 h-4" />
+            </button>
+          </div>
+
           {/* Toggle Chords */}
           <button
             type="button"
@@ -707,16 +818,18 @@ export default function SongPresentationModal({
       {/* =================================================================== */}
       {/* PRESENTATION SLIDE CANVAS (FILLED SCREEN CONTENT)                   */}
       {/* =================================================================== */}
-      <main className="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 max-w-7xl mx-auto w-full text-center relative overflow-y-auto no-scrollbar">
+      <main className="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 max-w-7xl mx-auto w-full relative overflow-y-auto no-scrollbar">
 
         {/* SLIDE CONTENT AREA */}
         {activeSlide ? (
           <div
             key={activeSlide.globalSlideId}
-            className="w-full max-w-6xl my-auto flex flex-col items-center justify-center py-1 px-4 space-y-2 sm:space-y-3 animate-in fade-in zoom-in-95 duration-200"
+            className={`w-full max-w-6xl my-auto flex flex-col ${
+              textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
+            } justify-center py-1 px-4 space-y-2 sm:space-y-3 animate-in fade-in zoom-in-95 duration-200`}
           >
             {/* Section Tag Badge (Song Title & Verse 1, Chorus, etc.) */}
-            <div className="flex flex-col items-center gap-1">
+            <div className={`flex flex-col ${textAlign === 'left' ? 'items-start' : textAlign === 'right' ? 'items-end' : 'items-center'} gap-1`}>
               {activeSongInfo.totalSongs > 1 && (
                 <div className="text-xs font-black uppercase tracking-widest text-slate-400">
                   {activeSlide.songTitle}
@@ -732,12 +845,16 @@ export default function SongPresentationModal({
 
             {/* STANZA LINES DISPLAY */}
             {!showChords ? (
-              /* CLEAN CENTERED LYRICS WHEN CHORDS ARE OFF */
-              <div className="space-y-1 sm:space-y-1.5 md:space-y-2 w-full max-w-6xl mx-auto flex flex-col items-center justify-center">
+              /* CLEAN LYRICS WHEN CHORDS ARE OFF */
+              <div className={`space-y-1 sm:space-y-1.5 md:space-y-2 w-full max-w-6xl mx-auto flex flex-col ${
+                textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
+              }`}>
                 {activeLyricLines.map((line, lIdx) => (
                   <p
                     key={lIdx}
-                    className={`${themeClasses.lyricText} text-center leading-tight tracking-tight w-full px-2 transition-all`}
+                    className={`${themeClasses.lyricText} ${
+                      textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'
+                    } leading-tight tracking-tight w-full px-2 transition-all`}
                     style={{
                       fontSize: `${dynamicLyricFontSize}rem`,
                       lineHeight: 1.15,
@@ -749,35 +866,52 @@ export default function SongPresentationModal({
               </div>
             ) : (
               /* LYRICS WITH CHORDS ABOVE WHEN CHORDS ARE ON */
-              <div className="space-y-2 sm:space-y-3 w-full max-w-6xl mx-auto flex flex-col items-center justify-center">
+              <div className={`space-y-2.5 sm:space-y-4 w-full max-w-6xl mx-auto flex flex-col ${
+                textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
+              }`}>
                 {activeLyricLines.map((line, lIdx) => (
                   <div
                     key={lIdx}
-                    className="flex flex-wrap items-end justify-center gap-x-3 sm:gap-x-4 gap-y-0.5 leading-tight text-center"
+                    className={`flex flex-wrap items-end ${
+                      textAlign === 'left' ? 'justify-start text-left' : textAlign === 'right' ? 'justify-end text-right' : 'justify-center text-center'
+                    } gap-x-2 sm:gap-x-3 gap-y-1 leading-tight w-full`}
                   >
                     {line.isChordOnly ? (
-                      <div className={`font-mono font-extrabold ${themeClasses.chordText} bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-xl text-lg sm:text-2xl tracking-widest shadow-xs my-0.5`}>
-                        {line.rawChordLine || line.segments.map((s) => s.chord).join('   ')}
+                      <div
+                        className={`font-mono font-extrabold ${themeClasses.chordText} bg-amber-500/10 border border-amber-500/30 px-3.5 py-1.5 rounded-2xl tracking-widest shadow-xs my-0.5 inline-flex items-center justify-center gap-3 mx-auto`}
+                        style={{
+                          fontSize: `${dynamicLyricFontSize * 0.7}rem`,
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {line.rawChordLine || line.segments.map((s) => s.chord).filter(Boolean).join('   ')}
                       </div>
                     ) : (
                       line.segments.map((seg, sIdx) => (
                         <div
                           key={sIdx}
-                          className="inline-flex flex-col items-center justify-end text-center"
+                          className="inline-flex flex-col items-center justify-end"
                         >
-                          {seg.chord && (
+                          {seg.chord ? (
                             <span
-                              className={`font-mono font-black ${themeClasses.chordText} tracking-wider transition-all select-none mb-0 opacity-95`}
+                              className={`font-mono font-black ${themeClasses.chordText} tracking-wider transition-all select-none mb-0.5 opacity-95 text-center px-0.5`}
                               style={{
-                                fontSize: `${Math.max(1.2, dynamicLyricFontSize * 0.48)}rem`,
-                                lineHeight: 1.1,
+                                fontSize: `${Math.max(0.75, dynamicLyricFontSize * 0.52)}rem`,
+                                lineHeight: 1.0,
                               }}
                             >
                               {seg.chord}
                             </span>
+                          ) : (
+                            <span
+                              className="inline-block"
+                              style={{
+                                height: `${Math.max(0.75, dynamicLyricFontSize * 0.52)}rem`,
+                              }}
+                            />
                           )}
                           <span
-                            className={`${themeClasses.lyricText} transition-all tracking-tight leading-tight`}
+                            className={`${themeClasses.lyricText} transition-all tracking-tight leading-tight whitespace-pre`}
                             style={{
                               fontSize: `${dynamicLyricFontSize}rem`,
                               lineHeight: 1.15,

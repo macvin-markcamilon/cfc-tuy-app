@@ -19,6 +19,9 @@ import {
   Music,
   ChevronUp,
   ChevronDown,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
 } from 'lucide-react';
 
 interface InteractiveChordSheetProps {
@@ -38,8 +41,9 @@ export default function InteractiveChordSheet({
   const [transposeOffset, setTransposeOffset] = useState<number>(0);
   const [capoFret, setCapoFret] = useState<number>(0);
 
-  // Font size
+  // Font size & Alignment
   const [fontSize, setFontSize] = useState<number>(initialFontSize);
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left');
 
   // Auto-scroll
   const [isAutoScrolling, setIsAutoScrolling] = useState<boolean>(false);
@@ -290,6 +294,40 @@ export default function InteractiveChordSheet({
 
         {/* Right: Hands-free Auto-Scroll & Font Size Controls */}
         <div className="flex items-center gap-2">
+          {/* Text Alignment Selector */}
+          <div className="flex items-center bg-white/10 rounded-xl p-0.5 border border-white/10">
+            <button
+              type="button"
+              onClick={() => setTextAlign('left')}
+              className={`p-1.5 rounded-lg transition-all ${
+                textAlign === 'left' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
+              }`}
+              title="Align Left"
+            >
+              <AlignLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setTextAlign('center')}
+              className={`p-1.5 rounded-lg transition-all ${
+                textAlign === 'center' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
+              }`}
+              title="Align Center"
+            >
+              <AlignCenter className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setTextAlign('right')}
+              className={`p-1.5 rounded-lg transition-all ${
+                textAlign === 'right' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
+              }`}
+              title="Align Right"
+            >
+              <AlignRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Font Resizer */}
           <div className="flex items-center bg-white/10 rounded-xl p-0.5 border border-white/10">
             <button
@@ -377,7 +415,9 @@ export default function InteractiveChordSheet({
       {/* =================================================================== */}
       {/* SONG SHEET BODY: CHORDS & LYRICS                                   */}
       {/* =================================================================== */}
-      <div className="p-6 sm:p-8 bg-white overflow-x-auto min-h-[400px]">
+      <div className={`p-6 sm:p-8 bg-white overflow-x-auto min-h-[400px] ${
+        textAlign === 'center' ? 'text-center' : textAlign === 'right' ? 'text-right' : 'text-left'
+      }`}>
         {transposedContent.split('\n').map((line, idx) => renderChordProLine(line, idx))}
       </div>
 

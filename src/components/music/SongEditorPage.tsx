@@ -9,6 +9,7 @@ import {
   saveWorshipSong,
   uploadSongAudio,
   fileToAudioDataUrl,
+  isYouTubeUrl,
 } from '@/lib/data/songs-service';
 import InteractiveChordSheet from './InteractiveChordSheet';
 import SongAudioPlayer from './SongAudioPlayer';
@@ -59,6 +60,7 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
   );
   const [audioUrl, setAudioUrl] = useState('');
   const [audioFileName, setAudioFileName] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
   const [ccliNumber, setCcliNumber] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -91,6 +93,7 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
             setLyricsAndChords(fetched.lyricsAndChords || '');
             setAudioUrl(fetched.audioUrl || '');
             setAudioFileName(fetched.audioFileName || '');
+            setYoutubeUrl(fetched.youtubeUrl || '');
             setCcliNumber(fetched.ccliNumber || '');
             setNotes(fetched.notes || '');
           }
@@ -204,6 +207,7 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
         ccliNumber,
         audioUrl,
         audioFileName,
+        youtubeUrl,
         notes,
       });
 
@@ -496,16 +500,37 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
             </div>
           )}
 
-          {/* MP3 Audio Track Upload */}
-          <div className="mt-3 p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/90">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* YouTube Video / Audio Link & MP3 Upload */}
+          <div className="mt-3 p-4 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50 to-rose-50 border border-blue-200/90 space-y-4">
+            {/* YouTube Link Input Field */}
+            <div>
+              <label className="block text-xs font-black uppercase text-[#243c81] mb-1 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-600" />
+                <span>YouTube Link (Audio / Video backing track)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="url"
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
+                  className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs font-mono text-slate-900 focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Paste a YouTube URL to let music ministry members listen or watch backing video performance directly alongside chord sheets.
+              </p>
+            </div>
+
+            {/* MP3 Audio Track Upload */}
+            <div className="pt-3 border-t border-blue-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="font-extrabold text-sm text-[#243c81] flex items-center gap-2">
                   <FileAudio className="w-4.5 h-4.5 text-blue-600" />
-                  <span>MP3 Audio Recording</span>
+                  <span>MP3 Audio File</span>
                 </h3>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Attach audio track so music ministry members can practice directly with the chord sheet.
+                  Upload an MP3 track directly to Supabase Storage.
                 </p>
               </div>
 
@@ -543,25 +568,36 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
               </div>
             </div>
 
-            {/* Audio URL Input fallback & Live Audio Player preview */}
-            <div className="mt-3 pt-3 border-t border-blue-200/60 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-xs text-slate-500 font-semibold shrink-0">Direct Audio URL:</span>
-                <input
-                  type="url"
-                  value={audioUrl.startsWith('data:') ? '' : audioUrl}
-                  onChange={(e) => setAudioUrl(e.target.value)}
-                  placeholder="https://example.com/audio-track.mp3"
-                  className="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-mono"
+            {/* Audio URL Input fallback */}
+            <div className="pt-3 border-t border-blue-200/60 flex items-center gap-2">
+              <span className="text-xs text-slate-500 font-semibold shrink-0">Direct Audio URL:</span>
+              <input
+                type="url"
+                value={audioUrl.startsWith('data:') ? '' : audioUrl}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setAudioUrl(val);
+                  if (isYouTubeUrl(val)) {
+                    setYoutubeUrl(val);
+                  }
+                }}
+                placeholder="https://example.com/audio-track.mp3"
+                className="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-mono"
+              />
+            </div>
+
+            {/* Live Player Preview */}
+            {(audioUrl || youtubeUrl) && (
+              <div className="pt-3 border-t border-blue-200/60">
+                <p className="text-xs font-bold text-slate-700 mb-2">Live Player Preview:</p>
+                <SongAudioPlayer
+                  audioUrl={audioUrl}
+                  youtubeUrl={youtubeUrl}
+                  songTitle={title || 'Song Recording'}
+                  artist={artist || 'CFC Music Ministry'}
                 />
               </div>
-
-              {audioUrl && (
-                <div className="shrink-0 max-w-sm w-full md:w-auto">
-                  <SongAudioPlayer audioUrl={audioUrl} songTitle={title || 'Song Recording'} />
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
 

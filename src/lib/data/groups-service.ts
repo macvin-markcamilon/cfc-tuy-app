@@ -10,137 +10,31 @@ function isBrowser(): boolean {
   return typeof window !== 'undefined';
 }
 
-export const INITIAL_HOUSEHOLD_GROUPS: HouseholdGroup[] = [
-  {
-    id: '00000000-0001-0000-0000-000000000001',
-    name: 'Household 1 - St. Joseph',
-    leaderName: 'Bro. Mark & Sis. Grace Camilon',
-    leaderContact: '0917-123-4567',
-    coLeaderName: 'Bro. Ronald & Sis. Karen Bautista',
-    coLeaderContact: '0918-234-5678',
-    ministry: 'CFC',
-    barangay: 'Rizal (Pob.)',
-    meetingVenue: 'Camilon Residence, Rizal St., Tuy',
-    meetingSchedule: 'Every 2nd & 4th Saturday • 7:30 PM',
-    meetingDay: 'Saturday',
-    membersCount: 8,
-    unitLeaderName: 'Bro. Michael Hernandez',
-    status: 'Active',
-    notes: 'Focusing on family prayer and scripture reflection for married couples.',
-    createdAt: '2024-01-10T10:00:00.000Z',
-    members: [
-      { id: 'm-1', name: 'Bro. Mark Camilon', spouseName: 'Sis. Grace Camilon', role: 'Leader', contact: '0917-123-4567' },
-      { id: 'm-2', name: 'Bro. Ronald Bautista', spouseName: 'Sis. Karen Bautista', role: 'Assistant', contact: '0918-234-5678' },
-      { id: 'm-3', name: 'Bro. Joel De Castro', spouseName: 'Sis. Mary Ann De Castro', role: 'Member', contact: '0920-456-7890' },
-      { id: 'm-4', name: 'Bro. Arjay Reyes', spouseName: 'Sis. Katrina Reyes', role: 'Member', contact: '0922-333-4444' },
-    ],
-  },
-  {
-    id: '00000000-0001-0000-0000-000000000002',
-    name: 'Household 2 - Holy Family',
-    leaderName: 'Bro. Michael & Sis. Joy Hernandez',
-    leaderContact: '0919-345-6789',
-    coLeaderName: 'Bro. Lito & Sis. Carmen Perez',
-    coLeaderContact: '0921-987-6543',
-    ministry: 'CFC',
-    barangay: 'Putol',
-    meetingVenue: 'Hernandez Residence, Brgy. Putol',
-    meetingSchedule: 'Every 1st & 3rd Friday • 7:00 PM',
-    meetingDay: 'Friday',
-    membersCount: 6,
-    unitLeaderName: 'Bro. Mark Camilon',
-    status: 'Active',
-    notes: 'Pastoral household catering to couples in Putol and adjacent barangays.',
-    createdAt: '2024-02-15T14:30:00.000Z',
-    members: [
-      { id: 'm-5', name: 'Bro. Michael Hernandez', spouseName: 'Sis. Joy Hernandez', role: 'Leader', contact: '0919-345-6789' },
-      { id: 'm-6', name: 'Bro. Lito Perez', spouseName: 'Sis. Carmen Perez', role: 'Assistant', contact: '0921-987-6543' },
-      { id: 'm-7', name: 'Bro. Dennis Ramos', spouseName: 'Sis. Maricar Ramos', role: 'Member', contact: '0925-111-2222' },
-    ],
-  },
-  {
-    id: '00000000-0001-0000-0000-000000000003',
-    name: 'SFC Cell Group - St. Therese',
-    leaderName: 'Bro. Jeric Mendoza',
-    leaderContact: '0926-555-8888',
-    coLeaderName: 'Sis. Diane Perez',
-    coLeaderContact: '0927-444-9999',
-    ministry: 'SFC',
-    barangay: 'Burgos (Pob.)',
-    meetingVenue: 'Tuy Parish Pastoral Center Room 3',
-    meetingSchedule: 'Weekly Thursday • 7:30 PM',
-    meetingDay: 'Thursday',
-    membersCount: 10,
-    unitLeaderName: 'Bro. Mark Camilon',
-    status: 'Active',
-    notes: 'Young professionals and working singles spiritual nourishment circle.',
-    createdAt: '2024-03-01T08:00:00.000Z',
-    members: [
-      { id: 'm-8', name: 'Bro. Jeric Mendoza', role: 'Leader', contact: '0926-555-8888' },
-      { id: 'm-9', name: 'Sis. Diane Perez', role: 'Assistant', contact: '0927-444-9999' },
-      { id: 'm-10', name: 'Bro. Christian Santos', role: 'Member', contact: '0928-123-9876' },
-      { id: 'm-11', name: 'Sis. Bea Dimaculangan', role: 'Member', contact: '0929-321-6543' },
-    ],
-  },
-  {
-    id: '00000000-0001-0000-0000-000000000004',
-    name: 'HOLD Tuy Circle - St. Anne',
-    leaderName: 'Sis. Rosario "Tita Charing" Mercado',
-    leaderContact: '0930-111-2233',
-    coLeaderName: 'Sis. Elena Santos',
-    coLeaderContact: '0931-222-3344',
-    ministry: 'HOLD',
-    barangay: 'Luna (Pob.)',
-    meetingVenue: 'Parish Multipurpose Hall, Luna St.',
-    meetingSchedule: '1st & 3rd Wednesday • 2:30 PM',
-    meetingDay: 'Wednesday',
-    membersCount: 12,
-    unitLeaderName: 'Sis. Rosario Mercado',
-    status: 'Active',
-    notes: 'Intercessory prayer warriors and pastoral sisterhood in Tuy.',
-    createdAt: '2024-03-20T11:00:00.000Z',
-    members: [
-      { id: 'm-12', name: 'Sis. Rosario Mercado', role: 'Leader', contact: '0930-111-2233' },
-      { id: 'm-13', name: 'Sis. Elena Santos', role: 'Assistant', contact: '0931-222-3344' },
-      { id: 'm-14', name: 'Sis. Teresa Mendoza', role: 'Member', contact: '0921-567-8901' },
-    ],
-  },
-  {
-    id: '00000000-0001-0000-0000-000000000005',
-    name: 'SOLD Brotherhood - St. Peter',
-    leaderName: 'Bro. Rolando "Tito Lando" Bautista',
-    leaderContact: '0932-333-4455',
-    coLeaderName: 'Bro. Nestor Garcia',
-    coLeaderContact: '0933-444-5566',
-    ministry: 'SOLD',
-    barangay: 'Guinhawa',
-    meetingVenue: 'Bautista Residence, Brgy. Guinhawa',
-    meetingSchedule: '2nd & 4th Saturday • 8:00 AM',
-    meetingDay: 'Saturday',
-    membersCount: 7,
-    unitLeaderName: 'Bro. Mark Camilon',
-    status: 'Active',
-    notes: 'Mature men brotherhood, Bible sharing, and church physical service.',
-    createdAt: '2024-04-05T09:00:00.000Z',
-    members: [
-      { id: 'm-15', name: 'Bro. Rolando Bautista', role: 'Leader', contact: '0932-333-4455' },
-      { id: 'm-16', name: 'Bro. Nestor Garcia', role: 'Assistant', contact: '0933-444-5566' },
-    ],
-  },
-];
+export const INITIAL_HOUSEHOLD_GROUPS: HouseholdGroup[] = [];
+
+const LEGACY_MOCK_GROUP_IDS = new Set([
+  '00000000-0001-0000-0000-000000000001',
+  '00000000-0001-0000-0000-000000000002',
+  '00000000-0001-0000-0000-000000000003',
+  '00000000-0001-0000-0000-000000000004',
+  '00000000-0001-0000-0000-000000000005',
+]);
 
 function getLocalGroups(): HouseholdGroup[] {
-  if (!isBrowser()) return INITIAL_HOUSEHOLD_GROUPS;
+  if (!isBrowser()) return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.GROUPS);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(INITIAL_HOUSEHOLD_GROUPS));
-      return INITIAL_HOUSEHOLD_GROUPS;
+      localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify([]));
+      return [];
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_HOUSEHOLD_GROUPS;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((g: HouseholdGroup) => !LEGACY_MOCK_GROUP_IDS.has(g.id));
+    }
+    return [];
   } catch {
-    return INITIAL_HOUSEHOLD_GROUPS;
+    return [];
   }
 }
 

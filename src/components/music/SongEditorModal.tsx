@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { WorshipSong, uploadSongAudio, fileToAudioDataUrl } from '@/lib/data/songs-service';
+import React, { useState, useRef, useEffect } from 'react';
+import { WorshipSong, uploadSongAudio, fileToAudioDataUrl, isYouTubeUrl } from '@/lib/data/songs-service';
 import InteractiveChordSheet from './InteractiveChordSheet';
 import {
   X,
@@ -45,6 +45,7 @@ export default function SongEditorModal({
   );
   const [audioUrl, setAudioUrl] = useState(initialSong?.audioUrl || '');
   const [audioFileName, setAudioFileName] = useState(initialSong?.audioFileName || '');
+  const [youtubeUrl, setYoutubeUrl] = useState(initialSong?.youtubeUrl || '');
   const [ccliNumber, setCcliNumber] = useState(initialSong?.ccliNumber || '');
 
   // Editor View: 'edit' | 'split' | 'preview'
@@ -54,6 +55,25 @@ export default function SongEditorModal({
   const [uploadingAudio, setUploadingAudio] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync state whenever modal opens or initialSong changes
+  useEffect(() => {
+    if (isOpen && initialSong) {
+      setTitle(initialSong.title || '');
+      setArtist(initialSong.artist || 'CFC Music Ministry');
+      setKey(initialSong.key || 'G');
+      setTempo(initialSong.tempo || 'Moderate (85 BPM)');
+      setTimeSignature(initialSong.timeSignature || '4/4');
+      setCategory(initialSong.category || 'Praise');
+      setMinistry(initialSong.ministry || 'CFC');
+      setLyricsAndChords(initialSong.lyricsAndChords || '');
+      setAudioUrl(initialSong.audioUrl || '');
+      setAudioFileName(initialSong.audioFileName || '');
+      const defaultYt = initialSong.youtubeUrl || (isYouTubeUrl(initialSong.audioUrl) ? initialSong.audioUrl : '') || '';
+      setYoutubeUrl(defaultYt);
+      setCcliNumber(initialSong.ccliNumber || '');
+    }
+  }, [isOpen, initialSong]);
 
   if (!isOpen) return null;
 
@@ -156,6 +176,7 @@ export default function SongEditorModal({
         ccliNumber,
         audioUrl,
         audioFileName,
+        youtubeUrl,
       });
       onClose();
     } catch (err) {
@@ -362,9 +383,25 @@ export default function SongEditorModal({
             </div>
           </div>
 
-          {/* Row 2: MP3 Audio Attachment */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Row 2: YouTube & MP3 Audio Attachment */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50 to-rose-50 border border-blue-200 space-y-3">
+            {/* YouTube Link Input Field */}
+            <div>
+              <label className="block text-xs font-black uppercase text-[#243c81] mb-1 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-600" />
+                <span>YouTube Link (Audio / Video backing track)</span>
+              </label>
+              <input
+                type="url"
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
+                className="w-full px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-mono text-slate-900 focus:ring-2 focus:ring-red-500"
+              />
+            </div>
+
+            {/* MP3 File Attachment */}
+            <div className="pt-3 border-t border-blue-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="font-extrabold text-sm text-[#243c81] flex items-center gap-2">
                   <FileAudio className="w-4 h-4 text-blue-600" />
@@ -410,12 +447,18 @@ export default function SongEditorModal({
             </div>
 
             {/* Audio URL Manual Input */}
-            <div className="mt-3 pt-3 border-t border-blue-200/60 flex items-center gap-2">
+            <div className="pt-3 border-t border-blue-200/60 flex items-center gap-2">
               <span className="text-xs text-slate-500 font-medium shrink-0">Or stream URL:</span>
               <input
                 type="url"
                 value={audioUrl.startsWith('data:') ? '' : audioUrl}
-                onChange={(e) => setAudioUrl(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setAudioUrl(val);
+                  if (isYouTubeUrl(val)) {
+                    setYoutubeUrl(val);
+                  }
+                }}
                 placeholder="https://example.com/worship-song.mp3"
                 className="flex-1 px-3 py-1 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-mono"
               />

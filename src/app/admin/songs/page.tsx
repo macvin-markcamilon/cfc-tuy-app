@@ -7,6 +7,7 @@ import {
   WorshipSong,
   fetchWorshipSongs,
   deleteWorshipSong,
+  isYouTubeUrl,
 } from '@/lib/data/songs-service';
 import SongDetailModal from '@/components/music/SongDetailModal';
 import {
@@ -345,7 +346,17 @@ function SongsAdminContent() {
                     </span>
 
                     <div className="flex items-center gap-1.5">
-                      {song.audioUrl && (
+                      {(song.youtubeUrl || (song.audioUrl && isYouTubeUrl(song.audioUrl))) && (
+                        <span
+                          className="px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-[10px] font-bold border border-red-200 flex items-center gap-1"
+                          title="YouTube Track Attached"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-600" />
+                          <span>YouTube</span>
+                        </span>
+                      )}
+
+                      {song.audioUrl && !isYouTubeUrl(song.audioUrl) && (
                         <span
                           className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200 flex items-center gap-1"
                           title="MP3 Audio Attached"

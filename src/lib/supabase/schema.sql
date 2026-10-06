@@ -344,4 +344,48 @@ CREATE POLICY "Allow full access on clp_groupings"
 ALTER TABLE public.clp_couples ADD COLUMN IF NOT EXISTS group_name TEXT;
 ALTER TABLE public.clp_couples ADD COLUMN IF NOT EXISTS group_number INTEGER;
 
+-- 16. Directory Couples Table (Pastoral Directory Roster)
+CREATE TABLE IF NOT EXISTS public.directory_couples (
+  id TEXT PRIMARY KEY,
+  husband_first_name TEXT NOT NULL,
+  husband_last_name TEXT NOT NULL,
+  husband_nickname TEXT,
+  husband_photo_url TEXT,
+  husband_birthday DATE,
+  husband_occupation TEXT,
+  husband_contact TEXT,
+  husband_email TEXT,
+  wife_first_name TEXT NOT NULL,
+  wife_last_name TEXT NOT NULL,
+  wife_nickname TEXT,
+  wife_photo_url TEXT,
+  wife_birthday DATE,
+  wife_occupation TEXT,
+  wife_contact TEXT,
+  wife_email TEXT,
+  couple_photo_url TEXT,
+  wedding_anniversary DATE,
+  ministry TEXT DEFAULT 'CFC',
+  household_group_id TEXT,
+  household_group_name TEXT,
+  barangay TEXT NOT NULL,
+  address TEXT,
+  coordinates DOUBLE PRECISION[],
+  status TEXT DEFAULT 'Active',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.directory_couples ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow public read access on directory_couples" ON public.directory_couples;
+CREATE POLICY "Allow public read access on directory_couples"
+  ON public.directory_couples FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow full access on directory_couples" ON public.directory_couples;
+CREATE POLICY "Allow full access on directory_couples"
+  ON public.directory_couples FOR ALL USING (true) WITH CHECK (true);
+
+
 

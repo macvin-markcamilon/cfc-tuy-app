@@ -317,6 +317,7 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
         {/* MP3 Audio Player Track (if attached or available) */}
         <SongAudioPlayer
           audioUrl={song.audioUrl}
+          youtubeUrl={song.youtubeUrl}
           songTitle={song.title}
           artist={song.artist}
         />

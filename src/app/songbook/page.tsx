@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import {
   WorshipSong,
   fetchWorshipSongs,
+  isYouTubeUrl,
+  extractYouTubeId,
 } from '@/lib/data/songs-service';
 import {
   getActivePlaylistIds,
@@ -66,6 +68,7 @@ export default function SongbookPage() {
 
   // Audio preview state
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+  const [activeYouTubeId, setActiveYouTubeId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Load songs & playlists on mount
@@ -201,25 +204,38 @@ export default function SongbookPage() {
     });
   }, [songs, searchQuery, selectedCategory, selectedKey, sortBy]);
 
-  // Audio preview toggle
+  // Audio / YouTube preview toggle
   const toggleAudio = (song: WorshipSong, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (!song.audioUrl) return;
+    if (!song.audioUrl && !song.youtubeUrl) return;
 
     if (playingSongId === song.id) {
       if (audioRef.current) {
         audioRef.current.pause();
       }
       setPlayingSongId(null);
+      setActiveYouTubeId(null);
     } else {
       if (audioRef.current) {
         audioRef.current.pause();
       }
-      const audio = new Audio(song.audioUrl);
-      audioRef.current = audio;
-      audio.play().catch(() => {});
-      setPlayingSongId(song.id);
-      audio.onended = () => setPlayingSongId(null);
+
+      const ytId = extractYouTubeId(song.youtubeUrl) || (isYouTubeUrl(song.audioUrl) ? extractYouTubeId(song.audioUrl) : null);
+
+      if (ytId) {
+        setActiveYouTubeId(ytId);
+        setPlayingSongId(song.id);
+      } else if (song.audioUrl) {
+        setActiveYouTubeId(null);
+        const audio = new Audio(song.audioUrl);
+        audioRef.current = audio;
+        audio.play().catch(() => {});
+        setPlayingSongId(song.id);
+        audio.onended = () => {
+          setPlayingSongId(null);
+          setActiveYouTubeId(null);
+        };
+      }
     }
   };
 
@@ -723,8 +739,8 @@ export default function SongbookPage() {
 
                   {/* Bottom Row: Chords Badges + Audio / Open Action */}
                   <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between gap-2">
-                    {/* Audio Preview Button */}
-                    {song.audioUrl ? (
+                    {/* Audio / YouTube Preview Button */}
+                    {(song.audioUrl || song.youtubeUrl) ? (
                       <button
                         type="button"
                         onClick={(e) => toggleAudio(song, e)}
@@ -737,7 +753,7 @@ export default function SongbookPage() {
                       >
                         {isPlaying ? (
                           <>
-                            <Pause className="w-3.5 h-3.5 fill-current" />
+                            <Pause className="w-3.5 h-3.5 fill-current text-amber-400" />
                             <span>Playing</span>
                           </>
                         ) : (
@@ -857,19 +873,19 @@ export default function SongbookPage() {
                         </td>
 
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                          {song.audioUrl ? (
+                          {(song.audioUrl || song.youtubeUrl) ? (
                             <button
                               type="button"
                               onClick={(e) => toggleAudio(song, e)}
                               className={`p-2 rounded-full transition-all active:scale-90 ${
                                 isPlaying
-                                  ? 'bg-[#243c81] text-white shadow-md'
+                                  ? 'bg-[#243c81] text-white shadow-md animate-pulse'
                                   : 'bg-blue-50 text-[#243c81] hover:bg-blue-100'
                               }`}
-                              title={isPlaying ? 'Pause preview' : 'Play audio preview'}
+                              title={isPlaying ? 'Pause audio' : 'Play audio preview'}
                             >
                               {isPlaying ? (
-                                <Pause className="w-3.5 h-3.5 fill-current" />
+                                <Pause className="w-3.5 h-3.5 fill-current text-amber-400" />
                               ) : (
                                 <Play className="w-3.5 h-3.5 fill-current" />
                               )}
@@ -967,6 +983,48 @@ export default function SongbookPage() {
         playlist={playlistSongs}
         onClose={() => setIsPresentingPlaylist(false)}
       />
+
+      {/* Invisible YouTube Audio Player */}
+      {activeYouTubeId && (
+        <iframe
+          key={activeYouTubeId}
+          width="1"
+          height="1"
+          src={`https://www.youtube.com/embed/${activeYouTubeId}?autoplay=1&enablejsapi=1`}
+          title="YouTube Audio Player"
+          allow="autoplay; encrypted-media"
+          className="fixed -top-[1000px] -left-[1000px] opacity-0 pointer-events-none"
+        />
+      )}
+
+      {/* Floating Audio Player Control Toast */}
+      {playingSongId && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#243c81] text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4">
+          <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center font-black shrink-0 animate-pulse">
+            <Music className="w-4 h-4" />
+          </div>
+          <div className="max-w-[200px] sm:max-w-[280px]">
+            <p className="text-xs font-black truncate text-white">
+              {songs.find((s) => s.id === playingSongId)?.title || 'Playing Audio'}
+            </p>
+            <p className="text-[10px] text-blue-200 font-medium truncate">
+              {activeYouTubeId ? 'YouTube Audio Backing Track' : 'MP3 Audio Recording'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (audioRef.current) audioRef.current.pause();
+              setPlayingSongId(null);
+              setActiveYouTubeId(null);
+            }}
+            className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all active:scale-90 ml-1"
+            title="Stop Audio"
+          >
+            <Pause className="w-4 h-4 fill-current text-amber-300" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

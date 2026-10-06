@@ -38,65 +38,21 @@ export const INITIAL_CFC_TUY_USERS: UserProfile[] = [
     spouseName: 'Sis. Grace Camilon',
     email: 'markcamilon@gmail.com',
     phoneNumber: '0917-123-4567',
-    barangay: 'Poblacion 1',
+    barangay: 'Rizal (Pob.)',
     ministry: 'CFC',
     role: 'admin',
     clpBatch: 'Batch 28',
     password: 'weakPassword',
     createdAt: '2024-01-15T08:00:00.000Z',
   },
-  {
-    id: '00000000-0000-0000-0000-000000000002',
-    fullName: 'Bro. Ronald Bautista',
-    spouseName: 'Sis. Karen Bautista',
-    email: 'ronald.bautista@cfctuy.org',
-    phoneNumber: '0918-234-5678',
-    barangay: 'Rizal (Pob.)',
-    ministry: 'CFC',
-    role: 'chapter_servant',
-    clpBatch: 'Batch 26',
-    password: 'password123',
-    createdAt: '2024-02-10T09:30:00.000Z',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000003',
-    fullName: 'Bro. Michael Hernandez',
-    spouseName: 'Sis. Joy Hernandez',
-    email: 'michael.hernandez@cfctuy.org',
-    phoneNumber: '0919-345-6789',
-    barangay: 'Luna (Pob.)',
-    ministry: 'CFC',
-    role: 'unit_leader',
-    clpBatch: 'Batch 29',
-    password: 'password123',
-    createdAt: '2024-03-01T10:15:00.000Z',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000004',
-    fullName: 'Bro. Joel De Castro',
-    spouseName: 'Sis. Mary Ann De Castro',
-    email: 'joel.decastro@cfctuy.org',
-    phoneNumber: '0920-456-7890',
-    barangay: 'Putol',
-    ministry: 'CFC',
-    role: 'household_head',
-    clpBatch: 'Batch 30',
-    password: 'password123',
-    createdAt: '2024-04-12T14:20:00.000Z',
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000005',
-    fullName: 'Sis. Teresa Mendoza',
-    email: 'teresa.mendoza@cfctuy.org',
-    phoneNumber: '0921-567-8901',
-    barangay: 'Guinhawa',
-    ministry: 'HOLD',
-    role: 'household_head',
-    clpBatch: 'Batch 27',
-    password: 'password123',
-    createdAt: '2024-05-18T11:00:00.000Z',
-  },
 ];
+
+const LEGACY_MOCK_USER_IDS = new Set([
+  '00000000-0000-0000-0000-000000000002',
+  '00000000-0000-0000-0000-000000000003',
+  '00000000-0000-0000-0000-000000000004',
+  '00000000-0000-0000-0000-000000000005',
+]);
 
 function getLocalUsers(): UserProfile[] {
   if (!isBrowser()) return INITIAL_CFC_TUY_USERS;
@@ -112,12 +68,18 @@ function getLocalUsers(): UserProfile[] {
       usersList = Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_CFC_TUY_USERS;
     }
     return usersList.filter(
-      (u) => !deleted.includes(u.id) && !deleted.includes((u.email || '').toLowerCase())
+      (u) =>
+        !deleted.includes(u.id) &&
+        !deleted.includes((u.email || '').toLowerCase()) &&
+        !LEGACY_MOCK_USER_IDS.has(u.id)
     );
   } catch {
     const deleted = getDeletedUsers();
     return INITIAL_CFC_TUY_USERS.filter(
-      (u) => !deleted.includes(u.id) && !deleted.includes((u.email || '').toLowerCase())
+      (u) =>
+        !deleted.includes(u.id) &&
+        !deleted.includes((u.email || '').toLowerCase()) &&
+        !LEGACY_MOCK_USER_IDS.has(u.id)
     );
   }
 }

@@ -20,6 +20,7 @@ import {
   UserCheck,
   User,
   Layers,
+  Calendar,
 } from 'lucide-react';
 
 export default function AdminLayout({
@@ -136,6 +137,12 @@ export default function AdminLayout({
       href: '/admin/members',
       icon: Users,
       description: 'Households & Pastoral Records',
+    },
+    {
+      name: 'Events & Calendar',
+      href: '/admin/calendar',
+      icon: Calendar,
+      description: 'Activities, Birthdays & Anniversaries',
     },
     {
       name: 'Worship Songs',

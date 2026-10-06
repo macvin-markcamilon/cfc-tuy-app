@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { fetchWorshipSongs, WorshipSong } from '@/lib/data/songs-service';
+import { fetchWorshipSongs, WorshipSong, isYouTubeUrl, extractYouTubeId } from '@/lib/data/songs-service';
 import {
   Music,
   ChevronLeft,
@@ -23,6 +23,7 @@ export default function SongsCarousel() {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+  const [activeYouTubeId, setActiveYouTubeId] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -62,22 +63,35 @@ export default function SongsCarousel() {
   // Quick audio toggle
   const togglePlayAudio = (song: WorshipSong, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!song.audioUrl) return;
+    if (!song.audioUrl && !song.youtubeUrl) return;
 
     if (playingSongId === song.id) {
       if (audioRef.current) {
         audioRef.current.pause();
       }
       setPlayingSongId(null);
+      setActiveYouTubeId(null);
     } else {
       if (audioRef.current) {
         audioRef.current.pause();
       }
-      const audio = new Audio(song.audioUrl);
-      audioRef.current = audio;
-      audio.play().catch(() => {});
-      setPlayingSongId(song.id);
-      audio.onended = () => setPlayingSongId(null);
+
+      const ytId = extractYouTubeId(song.youtubeUrl) || (isYouTubeUrl(song.audioUrl) ? extractYouTubeId(song.audioUrl) : null);
+
+      if (ytId) {
+        setActiveYouTubeId(ytId);
+        setPlayingSongId(song.id);
+      } else if (song.audioUrl) {
+        setActiveYouTubeId(null);
+        const audio = new Audio(song.audioUrl);
+        audioRef.current = audio;
+        audio.play().catch(() => {});
+        setPlayingSongId(song.id);
+        audio.onended = () => {
+          setPlayingSongId(null);
+          setActiveYouTubeId(null);
+        };
+      }
     }
   };
 
@@ -223,20 +237,20 @@ export default function SongsCarousel() {
                         </span>
                       </div>
 
-                      {song.audioUrl && (
+                      {(song.audioUrl || song.youtubeUrl) && (
                         <button
                           type="button"
                           onClick={(e) => togglePlayAudio(song, e)}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all active:scale-95 ${
                             isPlaying
-                              ? 'bg-[#243c81] text-white animate-pulse'
+                              ? 'bg-[#243c81] text-white animate-pulse shadow-md'
                               : 'bg-blue-50 text-[#243c81] hover:bg-blue-100 border border-blue-200'
                           }`}
-                          title={isPlaying ? 'Pause Audio' : 'Preview Audio'}
+                          title={isPlaying ? 'Pause Audio' : 'Play Audio Preview'}
                         >
                           {isPlaying ? (
                             <>
-                              <Pause className="w-3 h-3 fill-current" />
+                              <Pause className="w-3 h-3 fill-current text-amber-400" />
                               <span>Playing</span>
                             </>
                           ) : (
@@ -299,6 +313,48 @@ export default function SongsCarousel() {
         )}
 
       </div>
+
+      {/* Invisible YouTube Audio Player */}
+      {activeYouTubeId && (
+        <iframe
+          key={activeYouTubeId}
+          width="1"
+          height="1"
+          src={`https://www.youtube.com/embed/${activeYouTubeId}?autoplay=1&enablejsapi=1`}
+          title="YouTube Audio Player"
+          allow="autoplay; encrypted-media"
+          className="fixed -top-[1000px] -left-[1000px] opacity-0 pointer-events-none"
+        />
+      )}
+
+      {/* Floating Audio Player Control Toast */}
+      {playingSongId && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#243c81] text-white px-4 py-2.5 rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4">
+          <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center font-black shrink-0 animate-pulse">
+            <Headphones className="w-4 h-4" />
+          </div>
+          <div className="max-w-[200px] sm:max-w-[280px]">
+            <p className="text-xs font-black truncate text-white">
+              {songs.find((s) => s.id === playingSongId)?.title || 'Playing Audio'}
+            </p>
+            <p className="text-[10px] text-blue-200 font-medium truncate">
+              {activeYouTubeId ? 'YouTube Audio Backing Track' : 'MP3 Audio Recording'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (audioRef.current) audioRef.current.pause();
+              setPlayingSongId(null);
+              setActiveYouTubeId(null);
+            }}
+            className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all active:scale-90 ml-1"
+            title="Stop Audio"
+          >
+            <Pause className="w-4 h-4 fill-current text-amber-300" />
+          </button>
+        </div>
+      )}
     </section>
   );
 }

@@ -14,10 +14,35 @@ export interface WorshipSong {
   ccliNumber?: string;
   audioUrl?: string; // MP3 URL or base64 data URI
   audioFileName?: string;
+  youtubeUrl?: string; // YouTube video or audio link
   tags?: string[];
   notes?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+/**
+ * Helper to extract YouTube video ID from various YouTube URL formats
+ */
+export function extractYouTubeId(url?: string): string | null {
+  if (!url) return null;
+  const str = url.trim();
+  const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+  const match = str.match(regExp);
+  if (match && match[1]) {
+    return match[1];
+  }
+  if (/^[a-zA-Z0-9_-]{11}$/.test(str)) {
+    return str;
+  }
+  return null;
+}
+
+/**
+ * Checks whether a given URL is a YouTube link
+ */
+export function isYouTubeUrl(url?: string): boolean {
+  return extractYouTubeId(url) !== null;
 }
 
 const STORAGE_KEY = 'cfc_tuy_worship_songs_v1';
@@ -35,6 +60,7 @@ export const DEFAULT_CFC_SONGS: WorshipSong[] = [
     ministry: 'CFC',
     tags: ['Gathering', 'Praise', 'Assembly'],
     audioUrl: '',
+    youtubeUrl: 'https://www.youtube.com/watch?v=uwKeGjfZbhv',
     createdAt: new Date().toISOString(),
     lyricsAndChords: `[Intro]
 [G]  [C]  [D]  [G]
@@ -261,6 +287,9 @@ function setLocalSongs(songs: WorshipSong[]): void {
 
 
 export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
+  const localSongs = getLocalSongs();
+  const localMap = new Map<string, WorshipSong>(localSongs.map((s) => [s.id, s]));
+
   try {
     const supabase = createClient();
     if (supabase) {
@@ -270,33 +299,54 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
         .order('title', { ascending: true });
 
       if (!error && data && data.length > 0) {
-        const mapped = data.map((d: any) => ({
-          id: d.id,
-          title: d.title,
-          artist: d.artist || 'CFC Music Ministry',
-          key: d.key_signature || d.key || 'G',
-          tempo: d.tempo,
-          timeSignature: d.time_signature,
-          category: d.category || 'Praise',
-          ministry: d.ministry || 'CFC',
-          lyricsAndChords: d.lyrics_and_chords || d.lyricsAndChords || '',
-          ccliNumber: d.ccli_number,
-          audioUrl: d.audio_url || d.audioUrl || '',
-          audioFileName: d.audio_file_name,
-          tags: d.tags || [],
-          notes: d.notes,
-          createdAt: d.created_at || new Date().toISOString(),
-          updatedAt: d.updated_at,
-        }));
-        setLocalSongs(mapped);
-        return mapped;
+        const merged: WorshipSong[] = data.map((d: any) => {
+          const local = localMap.get(d.id);
+          const supabaseUpdatedAt = d.updated_at ? new Date(d.updated_at).getTime() : 0;
+          const localUpdatedAt = local?.updatedAt ? new Date(local.updatedAt).getTime() : 0;
+
+          // If local version has a strictly newer update timestamp, preserve local edits
+          if (local && localUpdatedAt > supabaseUpdatedAt) {
+            return local;
+          }
+
+          return {
+            id: d.id,
+            title: d.title || local?.title || 'Untitled Worship Song',
+            artist: d.artist || local?.artist || 'CFC Music Ministry',
+            key: d.key_signature || d.key || local?.key || 'G',
+            tempo: d.tempo || local?.tempo,
+            timeSignature: d.time_signature || local?.timeSignature,
+            category: d.category || local?.category || 'Praise',
+            ministry: d.ministry || local?.ministry || 'CFC',
+            lyricsAndChords: d.lyrics_and_chords || d.lyricsAndChords || local?.lyricsAndChords || '',
+            ccliNumber: d.ccli_number || local?.ccliNumber,
+            audioUrl: d.audio_url || d.audioUrl || local?.audioUrl || '',
+            audioFileName: d.audio_file_name || local?.audioFileName,
+            youtubeUrl: d.youtube_url || d.youtubeUrl || local?.youtubeUrl || '',
+            tags: d.tags || local?.tags || [],
+            notes: d.notes || local?.notes,
+            createdAt: d.created_at || local?.createdAt || new Date().toISOString(),
+            updatedAt: d.updated_at || local?.updatedAt,
+          };
+        });
+
+        // Append any local-only songs that are not present in Supabase database
+        const supabaseIds = new Set(merged.map((s) => s.id));
+        for (const [id, localSong] of localMap.entries()) {
+          if (!supabaseIds.has(id)) {
+            merged.push(localSong);
+          }
+        }
+
+        setLocalSongs(merged);
+        return merged;
       }
     }
   } catch {
     // Fall back to local storage
   }
 
-  return getLocalSongs();
+  return localSongs;
 }
 
 export async function fetchWorshipSongById(id: string): Promise<WorshipSong | null> {
@@ -309,6 +359,19 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
   const id = song.id || `song-${Date.now()}`;
   const now = new Date().toISOString();
 
+  let finalYoutubeUrl = song.youtubeUrl?.trim() || '';
+  let finalAudioUrl = song.audioUrl?.trim() || '';
+
+  // Auto-detect YouTube URL pasted into audioUrl
+  if (isYouTubeUrl(finalAudioUrl) && !finalYoutubeUrl) {
+    finalYoutubeUrl = finalAudioUrl;
+  }
+
+  // If audioUrl is a YouTube link, clean audioUrl so MP3 player doesn't try to play HTML webpage as MP3
+  if (isYouTubeUrl(finalAudioUrl)) {
+    finalAudioUrl = '';
+  }
+
   const completeSong: WorshipSong = {
     id,
     title: song.title?.trim() || 'Untitled Worship Song',
@@ -320,8 +383,9 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
     ministry: song.ministry || 'CFC',
     lyricsAndChords: song.lyricsAndChords || '',
     ccliNumber: song.ccliNumber || '',
-    audioUrl: song.audioUrl || '',
+    audioUrl: finalAudioUrl,
     audioFileName: song.audioFileName || '',
+    youtubeUrl: finalYoutubeUrl,
     tags: song.tags || [],
     notes: song.notes || '',
     createdAt: song.createdAt || now,
@@ -357,6 +421,7 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
         ccli_number: completeSong.ccliNumber,
         audio_url: completeSong.audioUrl,
         audio_file_name: completeSong.audioFileName,
+        youtube_url: completeSong.youtubeUrl,
         tags: completeSong.tags,
         notes: completeSong.notes,
         updated_at: completeSong.updatedAt,

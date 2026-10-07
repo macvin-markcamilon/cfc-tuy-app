@@ -289,3 +289,120 @@ export function fileToDataUrl(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+/**
+ * Bulk save multiple directory couples / members
+ */
+export async function saveDirectoryCouplesBulk(
+  couplesList: Partial<DirectoryCouple>[]
+): Promise<{ success: boolean; savedCount: number; couples: DirectoryCouple[]; error?: string }> {
+  if (!couplesList || couplesList.length === 0) {
+    return { success: true, savedCount: 0, couples: [] };
+  }
+
+  const current = getLocalDirectoryCouples();
+  const currentMap = new Map<string, DirectoryCouple>(current.map((c) => [c.id, c]));
+  const now = new Date().toISOString();
+
+  const processedCouples: DirectoryCouple[] = couplesList.map((couple, index) => {
+    const id = couple.id || `couple-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 7)}`;
+    removeDeletedDirectoryCoupleId(id);
+
+    const completeCouple: DirectoryCouple = {
+      id,
+      husbandFirstName: couple.husbandFirstName?.trim() || '',
+      husbandLastName: couple.husbandLastName?.trim() || '',
+      husbandNickname: couple.husbandNickname?.trim() || '',
+      husbandPhotoUrl: couple.husbandPhotoUrl || '',
+      husbandBirthday: couple.husbandBirthday || '',
+      husbandOccupation: couple.husbandOccupation?.trim() || '',
+      husbandContact: couple.husbandContact?.trim() || '',
+      husbandEmail: couple.husbandEmail?.trim() || '',
+      wifeFirstName: couple.wifeFirstName?.trim() || '',
+      wifeLastName: couple.wifeLastName?.trim() || '',
+      wifeNickname: couple.wifeNickname?.trim() || '',
+      wifePhotoUrl: couple.wifePhotoUrl || '',
+      wifeBirthday: couple.wifeBirthday || '',
+      wifeOccupation: couple.wifeOccupation?.trim() || '',
+      wifeContact: couple.wifeContact?.trim() || '',
+      wifeEmail: couple.wifeEmail?.trim() || '',
+      couplePhotoUrl: couple.couplePhotoUrl || '',
+      weddingAnniversary: couple.weddingAnniversary || '',
+      ministry: couple.ministry || 'CFC',
+      householdGroupId: couple.householdGroupId || '',
+      householdGroupName: couple.householdGroupName || '',
+      barangay: couple.barangay || 'Rizal (Pob.)',
+      address: couple.address?.trim() || '',
+      coordinates: couple.coordinates || [120.7289, 14.0228],
+      status: couple.status || 'Active',
+      notes: couple.notes?.trim() || '',
+      createdAt: couple.createdAt || now,
+      updatedAt: now,
+    };
+
+    return completeCouple;
+  });
+
+  // Prepend new couples and maintain local list
+  const newCouplesList = [...processedCouples];
+  for (const c of current) {
+    if (!newCouplesList.some((nc) => nc.id === c.id)) {
+      newCouplesList.push(c);
+    }
+  }
+
+  setLocalDirectoryCouples(newCouplesList);
+
+  // Sync to Supabase in batch
+  try {
+    const supabase = createClient();
+    if (supabase) {
+      const payloadBatch = processedCouples.map((completeCouple) => ({
+        id: completeCouple.id,
+        husband_first_name: completeCouple.husbandFirstName,
+        husband_last_name: completeCouple.husbandLastName,
+        husband_nickname: completeCouple.husbandNickname || null,
+        husband_photo_url: completeCouple.husbandPhotoUrl || null,
+        husband_birthday: completeCouple.husbandBirthday ? completeCouple.husbandBirthday : null,
+        husband_occupation: completeCouple.husbandOccupation || null,
+        husband_contact: completeCouple.husbandContact || null,
+        husband_email: completeCouple.husbandEmail || null,
+        wife_first_name: completeCouple.wifeFirstName,
+        wife_last_name: completeCouple.wifeLastName,
+        wife_nickname: completeCouple.wifeNickname || null,
+        wife_photo_url: completeCouple.wifePhotoUrl || null,
+        wife_birthday: completeCouple.wifeBirthday ? completeCouple.wifeBirthday : null,
+        wife_occupation: completeCouple.wifeOccupation || null,
+        wife_contact: completeCouple.wifeContact || null,
+        wife_email: completeCouple.wifeEmail || null,
+        couple_photo_url: completeCouple.couplePhotoUrl || null,
+        wedding_anniversary: completeCouple.weddingAnniversary ? completeCouple.weddingAnniversary : null,
+        ministry: completeCouple.ministry,
+        household_group_id: completeCouple.householdGroupId || null,
+        household_group_name: completeCouple.householdGroupName || null,
+        barangay: completeCouple.barangay,
+        address: completeCouple.address || null,
+        coordinates: completeCouple.coordinates,
+        status: completeCouple.status,
+        notes: completeCouple.notes || null,
+        updated_at: completeCouple.updatedAt,
+      }));
+
+      const { error } = await supabase.from('directory_couples').upsert(payloadBatch);
+      if (error) {
+        console.error('Supabase directory_couples bulk upsert error:', error);
+      } else {
+        console.log(`Successfully batch saved ${processedCouples.length} couples to Supabase.`);
+      }
+    }
+  } catch (err) {
+    console.warn('Supabase directory_couples bulk sync warning:', err);
+  }
+
+  return {
+    success: true,
+    savedCount: processedCouples.length,
+    couples: processedCouples,
+  };
+}
+

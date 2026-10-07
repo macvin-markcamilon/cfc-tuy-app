@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import AnniversaryGreetingCardModal from '@/components/common/AnniversaryGreetingCardModal';
 import BirthdayGreetingCardModal from '@/components/common/BirthdayGreetingCardModal';
+import BulkUploadMembersModal from '@/components/admin/BulkUploadMembersModal';
 
 export default function MembersAdminPage() {
   // Directory Couples & Household Groups State
@@ -66,6 +67,7 @@ export default function MembersAdminPage() {
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedCouple, setSelectedCouple] = useState<DirectoryCouple | null>(null);
@@ -463,6 +465,15 @@ export default function MembersAdminPage() {
           >
             <Plus className="w-4.5 h-4.5 stroke-[2.5]" />
             <span>+ Add Member / Couple</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowBulkUploadModal(true)}
+            className="px-4.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs sm:text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
+          >
+            <FileSpreadsheet className="w-4.5 h-4.5 stroke-[2.5]" />
+            <span>Bulk Upload CSV</span>
           </button>
 
           <Link
@@ -2044,6 +2055,25 @@ export default function MembersAdminPage() {
         isOpen={!!birthdayCardCouple}
         onClose={() => setBirthdayCardCouple(null)}
         celebrant={birthdayCardCouple}
+      />
+
+      {/* BULK UPLOAD MEMBERS MODAL */}
+      <BulkUploadMembersModal
+        isOpen={showBulkUploadModal}
+        onClose={() => setShowBulkUploadModal(false)}
+        householdGroups={householdGroups}
+        onImportSuccess={(newCouples, createdUsersCount) => {
+          setCouples((prev) => {
+            const existingIds = new Set(prev.map((c) => c.id));
+            const fresh = newCouples.filter((nc) => !existingIds.has(nc.id));
+            return [...fresh, ...prev];
+          });
+          triggerToast(
+            `Successfully imported ${newCouples.length} member(s)${
+              createdUsersCount > 0 ? ` and created ${createdUsersCount} user account(s)` : ''
+            }!`
+          );
+        }}
       />
     </div>
   );

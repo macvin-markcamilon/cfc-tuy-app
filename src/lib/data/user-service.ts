@@ -491,3 +491,23 @@ export async function updateUserPassword(newPassword: string): Promise<{ success
     return { success: false, message: err?.message || 'Failed to update password' };
   }
 }
+
+/**
+ * Save multiple user profiles in bulk
+ */
+export async function saveUsersBulk(
+  usersList: Array<Partial<UserProfile> & { password?: string }>
+): Promise<UserProfile[]> {
+  const saved: UserProfile[] = [];
+  for (const u of usersList) {
+    if (!u.email) continue;
+    try {
+      const user = await saveUser(u);
+      saved.push(user);
+    } catch (err) {
+      console.error('Failed to save bulk user profile:', u.email, err);
+    }
+  }
+  return saved;
+}
+

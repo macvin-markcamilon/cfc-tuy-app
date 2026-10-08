@@ -320,10 +320,21 @@ export default function CLPAdminPage() {
     return programs.find((p) => p.id === selectedClpId) || programs[0] || null;
   }, [programs, selectedClpId]);
 
-  // Current program's couples
+  // Current program's couples (sorted in alphabetical order via last name)
   const currentCouples = useMemo(() => {
     if (!currentClp) return [];
-    return couples.filter((c) => c.clpId === currentClp.id);
+    return couples
+      .filter((c) => c.clpId === currentClp.id)
+      .sort((a, b) => {
+        const lastA = (a.husbandLastName || a.wifeLastName || '').trim();
+        const lastB = (b.husbandLastName || b.wifeLastName || '').trim();
+        const cmpLast = lastA.localeCompare(lastB, undefined, { sensitivity: 'base' });
+        if (cmpLast !== 0) return cmpLast;
+
+        const firstA = (a.husbandFirstName || a.wifeFirstName || '').trim();
+        const firstB = (b.husbandFirstName || b.wifeFirstName || '').trim();
+        return firstA.localeCompare(firstB, undefined, { sensitivity: 'base' });
+      });
   }, [couples, currentClp]);
 
   // Current program's talks
@@ -1124,10 +1135,10 @@ export default function CLPAdminPage() {
     return { returnees, newCouples };
   }, [activeOpenedTalk, currentTalks, openedTalkAnyPresentCouples, attendance]);
 
-  // Filtered couples in attendance sheet
+  // Filtered couples in attendance sheet (sorted in alphabetical order via last name)
   const attendanceCouples = useMemo(() => {
     if (!activeOpenedTalk) return [];
-    return currentCouples.filter((c) => {
+    const list = currentCouples.filter((c) => {
       const matchesSearch =
         attendanceSearchQuery.trim() === '' ||
         c.husbandFirstName.toLowerCase().includes(attendanceSearchQuery.toLowerCase()) ||
@@ -1153,6 +1164,17 @@ export default function CLPAdminPage() {
       }
 
       return matchesSearch && matchesBarangay && matchesStatus;
+    });
+
+    return list.sort((a, b) => {
+      const lastA = (a.husbandLastName || a.wifeLastName || '').trim();
+      const lastB = (b.husbandLastName || b.wifeLastName || '').trim();
+      const cmpLast = lastA.localeCompare(lastB, undefined, { sensitivity: 'base' });
+      if (cmpLast !== 0) return cmpLast;
+
+      const firstA = (a.husbandFirstName || a.wifeFirstName || '').trim();
+      const firstB = (b.husbandFirstName || b.wifeFirstName || '').trim();
+      return firstA.localeCompare(firstB, undefined, { sensitivity: 'base' });
     });
   }, [currentCouples, openedTalkAttendance, activeOpenedTalk, attendanceSearchQuery, attendanceFilterBarangay, attendanceFilterStatus]);
 

@@ -9,6 +9,7 @@ import {
   Filter,
   Trash2,
   Edit2,
+  Eye,
   X,
   Check,
   Phone,
@@ -32,7 +33,7 @@ import {
   UserPlus,
   BookOpenCheck,
 } from 'lucide-react';
-import { HouseholdGroup, HouseholdMember, MinistryType, SavedCLPGrouping } from '@/types';
+import { HouseholdGroup, HouseholdMember, MinistryType, SavedCLPGrouping, DirectoryCouple } from '@/types';
 import {
   fetchHouseholdGroups,
   saveHouseholdGroup,
@@ -42,12 +43,14 @@ import {
   exportGroupsToCSV,
 } from '@/lib/data/groups-service';
 import { fetchCLPGroupings } from '@/lib/data/clp-service';
+import { fetchDirectoryCouples } from '@/lib/data/members-service';
 import { TUY_BARANGAYS, MINISTRIES_DATA } from '@/lib/data/mock-data';
 
 export default function AdminGroupsPage() {
   const [activeMainTab, setActiveMainTab] = useState<'households' | 'clp_circles'>('households');
   const [groups, setGroups] = useState<HouseholdGroup[]>([]);
   const [clpGroupings, setClpGroupings] = useState<SavedCLPGrouping[]>([]);
+  const [directoryMembers, setDirectoryMembers] = useState<DirectoryCouple[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Search & Filtering
@@ -60,19 +63,15 @@ export default function AdminGroupsPage() {
   // Modals state
   const [showAddEditModal, setShowAddEditModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState<HouseholdGroup | null>(null);
+  const [viewingGroup, setViewingGroup] = useState<HouseholdGroup | null>(null);
 
-  // Group Form State
+  // Group Form State (Simplified as requested)
   const [formName, setFormName] = useState('');
   const [formMinistry, setFormMinistry] = useState<MinistryType>('CFC');
-  const [formBarangay, setFormBarangay] = useState('Rizal (Pob.)');
-  const [formMeetingVenue, setFormMeetingVenue] = useState('');
   const [formMeetingSchedule, setFormMeetingSchedule] = useState('Every 2nd & 4th Saturday • 7:30 PM');
   const [formMeetingDay, setFormMeetingDay] = useState('Saturday');
   const [formLeaderName, setFormLeaderName] = useState('');
   const [formLeaderContact, setFormLeaderContact] = useState('');
-  const [formCoLeaderName, setFormCoLeaderName] = useState('');
-  const [formCoLeaderContact, setFormCoLeaderContact] = useState('');
-  const [formUnitLeaderName, setFormUnitLeaderName] = useState('');
   const [formStatus, setFormStatus] = useState<'Active' | 'On-Break' | 'Inactive'>('Active');
   const [formNotes, setFormNotes] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
@@ -108,12 +107,14 @@ export default function AdminGroupsPage() {
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [hGroups, clpGrps] = await Promise.all([
+      const [hGroups, clpGrps, dirCouples] = await Promise.all([
         fetchHouseholdGroups(),
         fetchCLPGroupings(),
+        fetchDirectoryCouples(),
       ]);
       setGroups(hGroups);
       setClpGroupings(clpGrps);
+      setDirectoryMembers(dirCouples);
     } catch (err) {
       console.error('Failed to load group management data:', err);
       showToast('Could not load group data. Using local cache.');
@@ -122,20 +123,33 @@ export default function AdminGroupsPage() {
     }
   };
 
+  // Formatted list of members from Chapter Directory for selection
+  const memberOptions = useMemo(() => {
+    return directoryMembers.map((c) => {
+      const husband = `${c.husbandFirstName} ${c.husbandLastName}`.trim();
+      const wife = c.wifeFirstName ? `${c.wifeFirstName} ${c.wifeLastName}`.trim() : '';
+      const name = husband && wife ? `Bro. ${husband} & Sis. ${wife}` : husband ? `Bro. ${husband}` : wife ? `Sis. ${wife}` : 'Member';
+      const contact = c.husbandContact || c.wifeContact || '';
+      return {
+        id: c.id,
+        name,
+        husbandName: husband ? `Bro. ${husband}` : '',
+        wifeName: wife ? `Sis. ${wife}` : '',
+        contact,
+        barangay: c.barangay,
+      };
+    });
+  }, [directoryMembers]);
+
   // Open Add Group Modal
   const handleOpenAddModal = () => {
     setEditingGroup(null);
     setFormName('');
     setFormMinistry('CFC');
-    setFormBarangay('Rizal (Pob.)');
-    setFormMeetingVenue('');
     setFormMeetingSchedule('Every 2nd & 4th Saturday • 7:30 PM');
     setFormMeetingDay('Saturday');
     setFormLeaderName('');
     setFormLeaderContact('');
-    setFormCoLeaderName('');
-    setFormCoLeaderContact('');
-    setFormUnitLeaderName('Bro. Mark Camilon');
     setFormStatus('Active');
     setFormNotes('');
     setFormError(null);
@@ -147,15 +161,10 @@ export default function AdminGroupsPage() {
     setEditingGroup(g);
     setFormName(g.name);
     setFormMinistry(g.ministry);
-    setFormBarangay(g.barangay || 'Rizal (Pob.)');
-    setFormMeetingVenue(g.meetingVenue || '');
     setFormMeetingSchedule(g.meetingSchedule || '');
     setFormMeetingDay(g.meetingDay || 'Saturday');
     setFormLeaderName(g.leaderName);
     setFormLeaderContact(g.leaderContact || '');
-    setFormCoLeaderName(g.coLeaderName || '');
-    setFormCoLeaderContact(g.coLeaderContact || '');
-    setFormUnitLeaderName(g.unitLeaderName || '');
     setFormStatus(g.status || 'Active');
     setFormNotes(g.notes || '');
     setFormError(null);
@@ -170,7 +179,7 @@ export default function AdminGroupsPage() {
       return;
     }
     if (!formLeaderName.trim()) {
-      setFormError('Please specify the Household Head / Leader.');
+      setFormError('Please select or enter the Household Head / Leader.');
       return;
     }
 
@@ -182,15 +191,11 @@ export default function AdminGroupsPage() {
         id: editingGroup?.id,
         name: formName.trim(),
         ministry: formMinistry,
-        barangay: formBarangay,
-        meetingVenue: formMeetingVenue.trim(),
+        barangay: editingGroup?.barangay || 'Tuy',
         meetingSchedule: formMeetingSchedule.trim(),
         meetingDay: formMeetingDay.trim(),
         leaderName: formLeaderName.trim(),
         leaderContact: formLeaderContact.trim(),
-        coLeaderName: formCoLeaderName.trim(),
-        coLeaderContact: formCoLeaderContact.trim(),
-        unitLeaderName: formUnitLeaderName.trim(),
         status: formStatus,
         notes: formNotes.trim(),
         members: editingGroup?.members || [],
@@ -692,56 +697,37 @@ export default function AdminGroupsPage() {
                       {getStatusBadge(g.status)}
                     </div>
 
-                    {/* Group Title & Barangay */}
+                    {/* Group Title */}
                     <div>
-                      <h3 className="text-base font-black text-slate-900 group-hover:text-[#243c81] transition-colors leading-snug">
+                      <h3
+                        onClick={() => setViewingGroup(g)}
+                        className="text-base font-black text-slate-900 hover:text-[#243c81] cursor-pointer transition-colors leading-snug"
+                      >
                         {g.name}
                       </h3>
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1 font-medium">
-                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                        <span>Brgy. {g.barangay}</span>
-                        {g.meetingVenue && (
-                          <>
-                            <span className="text-slate-300">•</span>
-                            <span className="truncate max-w-[140px] text-slate-600">{g.meetingVenue}</span>
-                          </>
-                        )}
+                        <Users className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <span>{g.members?.length ?? g.membersCount ?? 0} Brethren</span>
                       </div>
                     </div>
 
-                    {/* Leaders Section */}
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2 text-xs">
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
-                          Household Head / Leader
-                        </span>
-                        <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <span className="font-bold text-slate-900 truncate">{g.leaderName}</span>
-                          {g.leaderContact && (
-                            <a
-                              href={`tel:${g.leaderContact}`}
-                              className="text-[11px] font-mono text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0"
-                            >
-                              <Phone className="w-3 h-3" />
-                              {g.leaderContact}
-                            </a>
-                          )}
-                        </div>
+                    {/* Leader Section */}
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1 text-xs">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                        Household Head / Leader
+                      </span>
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <span className="font-bold text-slate-900 truncate">{g.leaderName}</span>
+                        {g.leaderContact && (
+                          <a
+                            href={`tel:${g.leaderContact}`}
+                            className="text-[11px] font-mono text-blue-600 hover:text-blue-800 flex items-center gap-1 shrink-0"
+                          >
+                            <Phone className="w-3 h-3" />
+                            {g.leaderContact}
+                          </a>
+                        )}
                       </div>
-
-                      {g.coLeaderName && (
-                        <div className="pt-2 border-t border-slate-200/60">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
-                            Assistant / Co-Leader
-                          </span>
-                          <div className="flex items-center justify-between gap-2 mt-0.5">
-                            <span className="font-semibold text-slate-800 truncate">{g.coLeaderName}</span>
-                            {g.coLeaderContact && (
-                              <span className="text-[11px] font-mono text-slate-500">{g.coLeaderContact}</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     {/* Schedule & Notes */}
@@ -750,13 +736,6 @@ export default function AdminGroupsPage() {
                         <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                         <span className="truncate font-medium">{g.meetingSchedule || 'Regular Household Gathering'}</span>
                       </div>
-
-                      {g.unitLeaderName && (
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                          <ShieldCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                          <span>Unit Servant: <strong className="text-slate-700">{g.unitLeaderName}</strong></span>
-                        </div>
-                      )}
 
                       {g.notes && (
                         <p className="text-[11px] text-slate-500 italic line-clamp-2 pt-1 border-t border-slate-100">
@@ -780,6 +759,16 @@ export default function AdminGroupsPage() {
                     </button>
 
                     <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setViewingGroup(g)}
+                        className="p-2 rounded-xl text-slate-600 hover:text-[#243c81] hover:bg-white border border-transparent hover:border-slate-200 transition-all"
+                        title="View Group Details"
+                        aria-label={`View ${g.name}`}
+                      >
+                        <Eye className="w-4 h-4 text-blue-600" />
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleOpenEditModal(g)}
@@ -808,12 +797,11 @@ export default function AdminGroupsPage() {
             /* TABLE VIEW */
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs sm:text-sm min-w-[850px]">
+                <table className="w-full text-left text-xs sm:text-sm min-w-[750px]">
                   <thead>
                     <tr className="border-b border-slate-200 text-slate-700 text-xs uppercase font-extrabold bg-slate-50">
                       <th className="py-3.5 px-4">Group Name</th>
                       <th className="py-3.5 px-3">Ministry</th>
-                      <th className="py-3.5 px-3">Barangay</th>
                       <th className="py-3.5 px-4">Head / Leader</th>
                       <th className="py-3.5 px-3">Schedule</th>
                       <th className="py-3.5 px-3 text-center">Brethren</th>
@@ -825,17 +813,19 @@ export default function AdminGroupsPage() {
                     {filteredGroups.map((g) => (
                       <tr key={g.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3.5 px-4">
-                          <span className="font-bold text-slate-900 block leading-tight">{g.name}</span>
-                          {g.meetingVenue && (
-                            <span className="text-[11px] text-slate-500 block truncate max-w-xs">{g.meetingVenue}</span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => setViewingGroup(g)}
+                            className="font-bold text-slate-900 hover:text-[#243c81] text-left block leading-tight cursor-pointer"
+                          >
+                            {g.name}
+                          </button>
                         </td>
                         <td className="py-3.5 px-3">
                           <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black border ${getMinistryBadge(g.ministry)}`}>
                             {g.ministry}
                           </span>
                         </td>
-                        <td className="py-3.5 px-3 font-medium text-slate-700">{g.barangay}</td>
                         <td className="py-3.5 px-4">
                           <span className="font-bold text-slate-900 block">{g.leaderName}</span>
                           {g.leaderContact && (
@@ -856,6 +846,14 @@ export default function AdminGroupsPage() {
                         <td className="py-3.5 px-3">{getStatusBadge(g.status)}</td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setViewingGroup(g)}
+                              className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50"
+                              title="View Household Group"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(g)}
@@ -1009,7 +1007,7 @@ export default function AdminGroupsPage() {
       {/* ------------------------------------------------------------- */}
       {showAddEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200">
             {/* Modal Header */}
             <div className="sticky top-0 bg-white/95 backdrop-blur-xs px-6 py-4 border-b border-slate-100 flex items-center justify-between z-10">
               <div className="flex items-center gap-2.5">
@@ -1021,7 +1019,7 @@ export default function AdminGroupsPage() {
                     {editingGroup ? 'Edit Household Group' : 'Create New Household Group'}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Define leadership, schedule, and barangay location in Tuy.
+                    Define leadership, ministry, and schedule.
                   </p>
                 </div>
               </div>
@@ -1079,99 +1077,75 @@ export default function AdminGroupsPage() {
                 </div>
               </div>
 
-              {/* Barangay & Meeting Venue */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Barangay in Tuy <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={formBarangay}
-                    onChange={(e) => setFormBarangay(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
-                  >
-                    {TUY_BARANGAYS.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Meeting Venue / Location
-                  </label>
-                  <input
-                    type="text"
-                    value={formMeetingVenue}
-                    onChange={(e) => setFormMeetingVenue(e.target.value)}
-                    placeholder="e.g. Leader's Residence / Parish Hall"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
-                  />
-                </div>
-              </div>
-
-              {/* Household Head / Leader */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
+              {/* Household Head / Leader (Select from List of Members!) */}
+              <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-[#243c81] block">
                     Household Head / Leader <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    required
-                    value={formLeaderName}
-                    onChange={(e) => setFormLeaderName(e.target.value)}
-                    placeholder="e.g. Bro. Mark & Sis. Grace Camilon"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
-                  />
+                  <span className="text-[10px] text-blue-700 font-semibold">Selected from Directory Members</span>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Leader Contact Number
-                  </label>
-                  <input
-                    type="text"
-                    value={formLeaderContact}
-                    onChange={(e) => setFormLeaderContact(e.target.value)}
-                    placeholder="e.g. 0917-123-4567"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
-                  />
+                <div className="space-y-2">
+                  {memberOptions.length > 0 && (
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-600 block mb-1">
+                        Select Leader from List of Members:
+                      </span>
+                      <select
+                        value={formLeaderName}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormLeaderName(val);
+                          const match = memberOptions.find((m) => m.name === val);
+                          if (match && match.contact) {
+                            setFormLeaderContact(match.contact);
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#243c81]"
+                      >
+                        <option value="">-- Choose Member from Directory List --</option>
+                        {memberOptions.map((m) => (
+                          <option key={m.id} value={m.name}>
+                            {m.name} {m.contact ? `(${m.contact})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                        Leader Full Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formLeaderName}
+                        onChange={(e) => setFormLeaderName(e.target.value)}
+                        placeholder="e.g. Bro. Mark & Sis. Grace Camilon"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#243c81]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                        Leader Contact Number
+                      </label>
+                      <input
+                        type="text"
+                        value={formLeaderContact}
+                        onChange={(e) => setFormLeaderContact(e.target.value)}
+                        placeholder="e.g. 0917-123-4567"
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#243c81]"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Assistant / Co-Leader */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Assistant / Co-Leader
-                  </label>
-                  <input
-                    type="text"
-                    value={formCoLeaderName}
-                    onChange={(e) => setFormCoLeaderName(e.target.value)}
-                    placeholder="e.g. Bro. Ronald & Sis. Karen Bautista"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Co-Leader Contact Number
-                  </label>
-                  <input
-                    type="text"
-                    value={formCoLeaderContact}
-                    onChange={(e) => setFormCoLeaderContact(e.target.value)}
-                    placeholder="e.g. 0918-234-5678"
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
-                  />
-                </div>
-              </div>
-
-              {/* Schedule, Day & Status */}
+              {/* Schedule & Status */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className="text-xs font-bold text-slate-700 block mb-1">
@@ -1202,33 +1176,18 @@ export default function AdminGroupsPage() {
                 </div>
               </div>
 
-              {/* Unit Leader & Notes */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Unit Servant / Overseer
-                  </label>
-                  <input
-                    type="text"
-                    value={formUnitLeaderName}
-                    onChange={(e) => setFormUnitLeaderName(e.target.value)}
-                    placeholder="e.g. Bro. Michael Hernandez"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Pastoral Notes / Intentions
-                  </label>
-                  <input
-                    type="text"
-                    value={formNotes}
-                    onChange={(e) => setFormNotes(e.target.value)}
-                    placeholder="e.g. Group focusing on scripture and outreach"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
-                  />
-                </div>
+              {/* Pastoral Notes */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Pastoral Notes / Intentions
+                </label>
+                <input
+                  type="text"
+                  value={formNotes}
+                  onChange={(e) => setFormNotes(e.target.value)}
+                  placeholder="e.g. Group focusing on scripture and outreach"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#243c81]/30 focus:border-[#243c81]"
+                />
               </div>
 
               {/* Form Action Buttons */}
@@ -1273,7 +1232,7 @@ export default function AdminGroupsPage() {
                   {activeRosterGroup.name}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Brgy. {activeRosterGroup.barangay} • Leader: {activeRosterGroup.leaderName}
+                  Leader: {activeRosterGroup.leaderName}
                 </p>
               </div>
 
@@ -1316,6 +1275,34 @@ export default function AdminGroupsPage() {
 
                   {rosterError && (
                     <div className="text-xs text-rose-600 font-semibold">{rosterError}</div>
+                  )}
+
+                  {/* Select Member from Directory Dropdown */}
+                  {memberOptions.length > 0 && (
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-0.5">
+                        Select Member from Chapter Directory <span className="text-rose-500">*</span>
+                      </label>
+                      <select
+                        onChange={(e) => {
+                          const selectedName = e.target.value;
+                          const match = memberOptions.find((m) => m.name === selectedName);
+                          if (match) {
+                            setNewMemberName(match.husbandName || match.name);
+                            setNewMemberSpouse(match.wifeName || '');
+                            setNewMemberContact(match.contact);
+                          }
+                        }}
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#243c81]"
+                      >
+                        <option value="">-- Choose Member from Directory List --</option>
+                        {memberOptions.map((m) => (
+                          <option key={m.id} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1467,6 +1454,166 @@ export default function AdminGroupsPage() {
       )}
 
       {/* ------------------------------------------------------------- */}
+      {/* MODAL: VIEW HOUSEHOLD GROUP DETAILS                           */}
+      {/* ------------------------------------------------------------- */}
+      {viewingGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            {/* View Header */}
+            <div className="p-6 border-b border-slate-100 bg-slate-50/80 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-blue-50 text-[#243c81] border border-blue-200">
+                  <Layers className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-black border ${getMinistryBadge(viewingGroup.ministry)}`}>
+                      {viewingGroup.ministry} Ministry
+                    </span>
+                    {getStatusBadge(viewingGroup.status)}
+                  </div>
+                  <h3 className="font-black text-slate-900 text-xl mt-1">
+                    {viewingGroup.name}
+                  </h3>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingGroup(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* View Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {/* Leader & Schedule Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-100 space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#243c81] block">
+                    Household Head / Leader
+                  </span>
+                  <div className="font-bold text-slate-900 text-sm">{viewingGroup.leaderName}</div>
+                  {viewingGroup.leaderContact ? (
+                    <a
+                      href={`tel:${viewingGroup.leaderContact}`}
+                      className="inline-flex items-center gap-1.5 text-xs font-mono text-blue-700 hover:text-blue-900 mt-1"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>{viewingGroup.leaderContact}</span>
+                    </a>
+                  ) : (
+                    <span className="text-xs text-slate-400 italic">No contact provided</span>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-100 space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">
+                    Meeting Schedule
+                  </span>
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                    <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>{viewingGroup.meetingSchedule || 'Regular Household Gathering'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pastoral Notes if present */}
+              {viewingGroup.notes && (
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                    Pastoral Notes / Intentions
+                  </span>
+                  <p className="text-xs text-slate-600 italic">&quot;{viewingGroup.notes}&quot;</p>
+                </div>
+              )}
+
+              {/* Household Roster Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-[#243c81]" />
+                    <span>Household Roster ({viewingGroup.members?.length || viewingGroup.membersCount || 0})</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveRosterGroup(viewingGroup);
+                      setViewingGroup(null);
+                    }}
+                    className="text-xs text-[#243c81] hover:underline font-bold"
+                  >
+                    Manage Roster &rarr;
+                  </button>
+                </div>
+
+                {viewingGroup.members && viewingGroup.members.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {viewingGroup.members.map((m) => (
+                      <div
+                        key={m.id}
+                        className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs">
+                            {m.name} {m.spouseName ? `& ${m.spouseName}` : ''}
+                          </div>
+                          {m.contact && (
+                            <div className="text-[11px] font-mono text-slate-500 mt-0.5">{m.contact}</div>
+                          )}
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                            m.role === 'Leader'
+                              ? 'bg-amber-100 text-amber-900'
+                              : m.role === 'Assistant'
+                              ? 'bg-blue-100 text-blue-900'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {m.role || 'Member'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 rounded-2xl bg-slate-50 border border-slate-100 text-center text-slate-500 text-xs">
+                    No members listed in roster yet. Click &quot;Manage Roster&quot; to add brethren.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* View Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  handleOpenEditModal(viewingGroup);
+                  setViewingGroup(null);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs shadow-2xs transition-colors"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>Edit Household Group</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewingGroup(null)}
+                className="px-5 py-2 rounded-xl bg-[#243c81] text-white font-bold text-xs hover:bg-[#1a2c60] transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
       {/* MODAL: DELETE GROUP CONFIRMATION                              */}
       {/* ------------------------------------------------------------- */}
       {groupToDelete && (
@@ -1507,3 +1654,4 @@ export default function AdminGroupsPage() {
     </div>
   );
 }
+

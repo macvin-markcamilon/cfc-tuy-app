@@ -1324,41 +1324,95 @@ export default function CLPAdminPage() {
         const hpText = hp ? '✓ PRESENT' : '[   ]';
         const wpText = wp ? '✓ PRESENT' : '[   ]';
 
-        const phones: string[] = [];
-        if (c.husbandContact) {
-          phones.push(`<div><strong style="color:#1e3a8a;">H:</strong> ${c.husbandContact}</div>`);
+        const hAge = computeAge(c.husbandBirthday);
+        const wAge = computeAge(c.wifeBirthday);
+
+        // 5. Husband Birthday | Age
+        let hBdayStr = '—';
+        if (c.husbandBirthday || hAge !== '—') {
+          hBdayStr = c.husbandBirthday
+            ? `${c.husbandBirthday} ${hAge !== '—' ? `(${hAge} yrs)` : ''}`
+            : `Age ${hAge}`;
         }
-        if (c.wifeContact) {
-          phones.push(`<div><strong style="color:#be123c;">W:</strong> ${c.wifeContact}</div>`);
+
+        // 6. Husband Phone and Email Number
+        const hContactDetails: string[] = [];
+        if (c.husbandContact) hContactDetails.push(c.husbandContact);
+        if (c.husbandEmail)
+          hContactDetails.push(`<span style="color:#475569;font-size:9.5px;">${c.husbandEmail}</span>`);
+        const hContactStr =
+          hContactDetails.length > 0
+            ? hContactDetails.join('<br/>')
+            : '<span style="color:#94a3b8;">—</span>';
+
+        // 9. Wife Birthday | Age
+        let wBdayStr = '—';
+        if (c.wifeBirthday || wAge !== '—') {
+          wBdayStr = c.wifeBirthday
+            ? `${c.wifeBirthday} ${wAge !== '—' ? `(${wAge} yrs)` : ''}`
+            : `Age ${wAge}`;
         }
-        const phoneHtml =
-          phones.length > 0
-            ? phones.join('')
-            : '<span style="color:#94a3b8;font-size:11px;">—</span>';
+
+        // 10. Wife Phone and Email Number
+        const wContactDetails: string[] = [];
+        if (c.wifeContact) wContactDetails.push(c.wifeContact);
+        if (c.wifeEmail)
+          wContactDetails.push(`<span style="color:#475569;font-size:9.5px;">${c.wifeEmail}</span>`);
+        const wContactStr =
+          wContactDetails.length > 0
+            ? wContactDetails.join('<br/>')
+            : '<span style="color:#94a3b8;">—</span>';
+
+        // 11. Address
+        const fullAddress = c.address
+          ? `${c.address}, Brgy. ${c.barangay}`
+          : `Brgy. ${c.barangay}`;
 
         let badgeHtml = '';
         if (attendeeTag === 'Returnee') {
-          badgeHtml = `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font-size:9.5px;font-weight:700;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;">Returnee</span>`;
+          badgeHtml = `<span style="display:inline-block;margin-top:2px;padding:1px 5px;border-radius:4px;font-size:8.5px;font-weight:700;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;">Returnee</span>`;
         } else if (attendeeTag === 'New Couple') {
-          badgeHtml = `<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font-size:9.5px;font-weight:700;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;">New Couple</span>`;
+          badgeHtml = `<span style="display:inline-block;margin-top:2px;padding:1px 5px;border-radius:4px;font-size:8.5px;font-weight:700;background:#dcfce7;color:#166534;border:1px solid #bbf7d0;">New Couple</span>`;
         }
+
+        const wifeLastName = c.wifeLastName || c.husbandLastName || '—';
 
         return `
           <tr data-status="${statusGroup}">
+            <!-- 1. # -->
             <td class="row-idx" style="text-align:center;font-weight:bold;color:#64748b;">${idx + 1}</td>
+            <!-- 2. Invited Couple -->
             <td>
-              <div style="font-weight:700;color:#0f172a;font-size:12px;">
+              <div style="font-weight:700;color:#0f172a;font-size:11px;">
                 ${c.husbandLastName}, ${c.husbandFirstName} & ${c.wifeFirstName}
-                ${badgeHtml}
               </div>
+              ${badgeHtml}
             </td>
-            <td style="font-size:11px;color:#334155;line-height:1.45;">
-              ${phoneHtml}
+            <!-- 3. Husband Last Name -->
+            <td style="font-size:10.5px;font-weight:700;color:#1e3a8a;">${c.husbandLastName || '—'}</td>
+            <!-- 4. Husband First Name -->
+            <td style="font-size:10.5px;font-weight:600;color:#1e3a8a;">${c.husbandFirstName || '—'}</td>
+            <!-- 5. Birthday | Age -->
+            <td style="font-size:10px;color:#334155;">${hBdayStr}</td>
+            <!-- 6. Phone and Email Number -->
+            <td style="font-size:10px;color:#334155;line-height:1.3;">${hContactStr}</td>
+            <!-- 7. Wife Last Name -->
+            <td style="font-size:10.5px;font-weight:700;color:#be123c;">${wifeLastName}</td>
+            <!-- 8. Wife First Name -->
+            <td style="font-size:10.5px;font-weight:600;color:#be123c;">${c.wifeFirstName || '—'}</td>
+            <!-- 9. Birthday | Age -->
+            <td style="font-size:10px;color:#334155;">${wBdayStr}</td>
+            <!-- 10. Phone and Email Number -->
+            <td style="font-size:10px;color:#334155;line-height:1.3;">${wContactStr}</td>
+            <!-- 11. Address -->
+            <td style="font-size:10px;color:#334155;">${fullAddress}</td>
+            <!-- 12. Present/Absent -->
+            <td style="font-size:9.5px;line-height:1.35;text-align:center;">
+              <div style="font-weight:bold;${hp ? 'color:#1e3a8a;' : 'color:#94a3b8;'}">H: ${hpText}</div>
+              <div style="border-top:1px dashed #cbd5e1;margin-top:2px;padding-top:2px;font-weight:bold;${wp ? 'color:#be123c;' : 'color:#94a3b8;'}">W: ${wpText}</div>
             </td>
-            <td style="font-size:11.5px;color:#334155;">Brgy. ${c.barangay}</td>
-            <td style="text-align:center;font-weight:bold;${hp ? 'color:#1e3a8a;' : 'color:#94a3b8;'}">${hpText}</td>
-            <td style="text-align:center;font-weight:bold;${wp ? 'color:#be123c;' : 'color:#94a3b8;'}">${wpText}</td>
-            <td style="color:#64748b;font-size:11px;">${att?.remarks || ''}</td>
+            <!-- 13. Remarks -->
+            <td style="color:#64748b;font-size:10px;">${att?.remarks || ''}</td>
           </tr>
         `;
       })
@@ -1377,10 +1431,10 @@ export default function CLPAdminPage() {
   <meta charset="utf-8" />
   <title>Attendance Sheet – Talk ${talk.talkNumber}: ${talk.title}</title>
   <style>
-    @page { size: A4 portrait; margin: 10mm 12mm; }
+    @page { size: A4 landscape; margin: 8mm 10mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #0f172a; padding: 20px; }
-    .no-print { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; background: #1e3a8a; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #0f172a; padding: 15px; }
+    .no-print { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; background: #1e3a8a; color: #fff; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
     .no-print-left { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; }
     .talk-badge { background: #3b82f6; color: #fff; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; }
     .filter-tabs { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.15); padding: 4px; border-radius: 6px; }
@@ -1389,15 +1443,15 @@ export default function CLPAdminPage() {
     .filter-btn.active { background: #ffffff; color: #1e3a8a; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
     .btn-print { background: #22c55e; color: #ffffff; border: none; padding: 7px 16px; font-size: 12px; font-weight: 800; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
     .btn-print:hover { background: #16a34a; }
-    .header { display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 16px; }
-    .header img { width: 50px; height: 50px; }
-    .header h1 { font-size: 16px; font-weight: 900; color: #1e3a8a; }
-    .header h2 { font-size: 13px; font-weight: 700; color: #334155; }
-    .header p { font-size: 11px; color: #64748b; }
-    .meta { margin-left: auto; text-align: right; font-size: 11px; color: #64748b; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th { background: #f1f5f9; padding: 8px 10px; border-bottom: 2px solid #94a3b8; text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: #475569; }
-    td { padding: 7px 10px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+    .header { display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 14px; }
+    .header img { width: 46px; height: 46px; }
+    .header h1 { font-size: 15px; font-weight: 900; color: #1e3a8a; }
+    .header h2 { font-size: 12.5px; font-weight: 700; color: #334155; }
+    .header p { font-size: 10.5px; color: #64748b; }
+    .meta { margin-left: auto; text-align: right; font-size: 10.5px; color: #64748b; }
+    table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+    th { padding: 5px 6px; border: 1px solid #94a3b8; text-transform: uppercase; font-size: 9px; font-weight: 800; letter-spacing: 0.02em; }
+    td { padding: 5px 6px; border: 1px solid #cbd5e1; vertical-align: middle; }
     tr:nth-child(even) { background: #f8fafc; }
     @media print {
       body { padding: 0; }
@@ -1445,13 +1499,23 @@ export default function CLPAdminPage() {
   <table>
     <thead>
       <tr>
-        <th style="width:4%;text-align:center;">#</th>
-        <th style="width:26%;">Invited Couple</th>
-        <th style="width:18%;">Phone Number</th>
-        <th style="width:14%;">Barangay</th>
-        <th style="width:12%;text-align:center;">Husband</th>
-        <th style="width:12%;text-align:center;">Wife</th>
-        <th style="width:14%;">Remarks / Signature</th>
+        <th rowspan="2" style="width:3%;text-align:center;">#</th>
+        <th rowspan="2" style="width:11%;">Invited Couple</th>
+        <th colspan="4" style="text-align:center;background:#e0e7ff;color:#1e3a8a;border-bottom:1px solid #94a3b8;">HUSBAND DETAILS</th>
+        <th colspan="4" style="text-align:center;background:#ffe4e6;color:#be123c;border-bottom:1px solid #94a3b8;">WIFE DETAILS</th>
+        <th rowspan="2" style="width:10%;">Address</th>
+        <th rowspan="2" style="width:7%;text-align:center;">Present / Absent</th>
+        <th rowspan="2" style="width:7%;">Remarks</th>
+      </tr>
+      <tr>
+        <th style="width:6.5%;background:#eef2ff;color:#1e3a8a;">Last Name</th>
+        <th style="width:6.5%;background:#eef2ff;color:#1e3a8a;">First Name</th>
+        <th style="width:7.5%;background:#eef2ff;color:#1e3a8a;">Birthday | Age</th>
+        <th style="width:10%;background:#eef2ff;color:#1e3a8a;">Phone &amp; Email</th>
+        <th style="width:6.5%;background:#fff1f2;color:#be123c;">Last Name</th>
+        <th style="width:6.5%;background:#fff1f2;color:#be123c;">First Name</th>
+        <th style="width:7.5%;background:#fff1f2;color:#be123c;">Birthday | Age</th>
+        <th style="width:10%;background:#fff1f2;color:#be123c;">Phone &amp; Email</th>
       </tr>
     </thead>
     <tbody>
@@ -4874,22 +4938,57 @@ Generated via Couples for Christ Tuy Chapter Portal`;
                                         </span>
                                       )}
                                     </div>
-                                    <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
+                                    <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1 flex-wrap">
+                                      {(c.husbandBirthday || computeAge(c.husbandBirthday) !== '—') && (
+                                        <span className="inline-flex items-center gap-1 bg-blue-50/70 text-blue-900 px-2 py-0.5 rounded-md border border-blue-100 font-medium">
+                                          <Cake className="w-3 h-3 text-blue-600 shrink-0" />
+                                          <span>
+                                            H: {c.husbandBirthday || 'N/A'}{' '}
+                                            {computeAge(c.husbandBirthday) !== '—' && `(${computeAge(c.husbandBirthday)} yrs)`}
+                                          </span>
+                                        </span>
+                                      )}
+                                      {(c.wifeBirthday || computeAge(c.wifeBirthday) !== '—') && (
+                                        <span className="inline-flex items-center gap-1 bg-rose-50/70 text-rose-900 px-2 py-0.5 rounded-md border border-rose-100 font-medium">
+                                          <Cake className="w-3 h-3 text-rose-600 shrink-0" />
+                                          <span>
+                                            W: {c.wifeBirthday || 'N/A'}{' '}
+                                            {computeAge(c.wifeBirthday) !== '—' && `(${computeAge(c.wifeBirthday)} yrs)`}
+                                          </span>
+                                        </span>
+                                      )}
                                       {c.husbandContact && (
                                         <span className="inline-flex items-center gap-1">
-                                          <Phone className="w-3 h-3 text-blue-500" />
+                                          <Phone className="w-3 h-3 text-blue-500 shrink-0" />
                                           <span>H: {c.husbandContact}</span>
+                                        </span>
+                                      )}
+                                      {c.husbandEmail && (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Mail className="w-3 h-3 text-blue-500 shrink-0" />
+                                          <span>H: {c.husbandEmail}</span>
                                         </span>
                                       )}
                                       {c.wifeContact && (
                                         <span className="inline-flex items-center gap-1">
-                                          <Phone className="w-3 h-3 text-rose-500" />
+                                          <Phone className="w-3 h-3 text-rose-500 shrink-0" />
                                           <span>W: {c.wifeContact}</span>
                                         </span>
                                       )}
-                                      {!c.husbandContact && !c.wifeContact && (
-                                        <span>No contact numbers recorded</span>
+                                      {c.wifeEmail && (
+                                        <span className="inline-flex items-center gap-1">
+                                          <Mail className="w-3 h-3 text-rose-500 shrink-0" />
+                                          <span>W: {c.wifeEmail}</span>
+                                        </span>
                                       )}
+                                      {!c.husbandContact &&
+                                        !c.wifeContact &&
+                                        !c.husbandEmail &&
+                                        !c.wifeEmail &&
+                                        !c.husbandBirthday &&
+                                        !c.wifeBirthday && (
+                                          <span className="text-slate-400">No additional details recorded</span>
+                                        )}
                                     </div>
                                   </td>
                                   <td className="py-3 px-4 text-xs font-medium text-slate-600">

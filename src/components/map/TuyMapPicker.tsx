@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { TUY_BARANGAYS, TUY_CENTER_COORDINATES } from '@/lib/data/mock-data';
-import { BARANGAY_BOUNDARIES } from '@/lib/data/tuyBarangayBoundaries';
 import { MapPin, Check, Compass, Crosshair, Sparkles } from 'lucide-react';
 import {
   loadGoogleMaps,
@@ -113,7 +112,6 @@ export default function TuyMapPicker({
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const markerInstance = useRef<google.maps.Marker | null>(null);
-  const polygonsRef = useRef<Record<string, google.maps.Polygon>>({});
 
   const [authError, setAuthError] = useState(false);
 
@@ -252,39 +250,6 @@ export default function TuyMapPicker({
           setDetectedBarangay(detected);
         });
 
-        // Draw Barangays Boundaries on Google Maps
-        Object.entries(BARANGAY_BOUNDARIES).forEach(([bName, pts]) => {
-          const path = pts.map(([lng, lat]) => ({ lat, lng }));
-          const isSelected = bName === barangay || bName === detectedBarangay;
-
-          const poly = new maps.Polygon({
-            paths: path,
-            strokeColor: isSelected ? '#D97706' : '#2563EB',
-            strokeOpacity: isSelected ? 1.0 : 0.35,
-            strokeWeight: isSelected ? 4 : 1.2,
-            fillColor: isSelected ? '#F59E0B' : '#3B82F6',
-            fillOpacity: isSelected ? 0.25 : 0.02,
-            zIndex: isSelected ? 100 : 1,
-            map,
-          });
-
-          poly.addListener('click', (e: google.maps.MapMouseEvent) => {
-            setBarangay(bName);
-            if (e.latLng) {
-              const lng = Number(e.latLng.lng().toFixed(6));
-              const lat = Number(e.latLng.lat().toFixed(6));
-              setCoords([lng, lat]);
-              setHasPin(true);
-              setDetectedBarangay(bName);
-              if (mapInstance.current && window.google) {
-                createOrUpdateMarker(mapInstance.current, e.latLng, window.google);
-              }
-            }
-          });
-
-          polygonsRef.current[bName] = poly;
-        });
-
         // ResizeObserver to ensure map properly repaints if layout changes or window resizes
         if (typeof ResizeObserver !== 'undefined' && mapContainer.current) {
           const ro = new ResizeObserver(() => {
@@ -307,22 +272,6 @@ export default function TuyMapPicker({
       isMounted = false;
     };
   }, [isGoogleMapsActive]);
-
-  // Dynamically update polygon styling when selected barangay changes
-  useEffect(() => {
-    const activeBrgy = barangay || detectedBarangay;
-    Object.entries(polygonsRef.current).forEach(([bName, poly]) => {
-      const isSelected = bName === activeBrgy;
-      poly.setOptions({
-        strokeColor: isSelected ? '#D97706' : '#2563EB',
-        strokeOpacity: isSelected ? 1.0 : 0.35,
-        strokeWeight: isSelected ? 4 : 1.2,
-        fillColor: isSelected ? '#F59E0B' : '#3B82F6',
-        fillOpacity: isSelected ? 0.25 : 0.02,
-        zIndex: isSelected ? 100 : 1,
-      });
-    });
-  }, [barangay, detectedBarangay]);
 
   // When barangay dropdown is manually chosen by the user
   const handleBarangayDropdownChange = (brgyName: string) => {
@@ -519,35 +468,6 @@ export default function TuyMapPicker({
             className="w-full h-full relative p-4 flex flex-col justify-between bg-gradient-to-br from-slate-900 via-[#101c42] to-slate-950 text-white select-none overflow-hidden"
           >
             <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:24px_24px]"></div>
-
-            {/* SVG Barangay Boundaries Layer for Fallback Canvas */}
-            <svg
-              className="absolute inset-0 w-full h-full pointer-events-none"
-              viewBox="0 0 1000 1000"
-              preserveAspectRatio="none"
-            >
-              {Object.entries(BARANGAY_BOUNDARIES).map(([bName, pts]) => {
-                const isSelected = bName === barangay || bName === detectedBarangay;
-                const svgPts = pts
-                  .map(([lng, lat]) => {
-                    const x = ((lng - 120.700) / (120.765 - 120.700)) * 1000;
-                    const y = ((14.055 - lat) / (14.055 - 13.995)) * 1000;
-                    return `${x.toFixed(1)},${y.toFixed(1)}`;
-                  })
-                  .join(' ');
-
-                return (
-                  <polygon
-                    key={bName}
-                    points={svgPts}
-                    fill={isSelected ? 'rgba(245, 158, 11, 0.28)' : 'rgba(59, 130, 246, 0.03)'}
-                    stroke={isSelected ? '#F59E0B' : '#3B82F6'}
-                    strokeWidth={isSelected ? '4' : '1.2'}
-                    strokeOpacity={isSelected ? '1' : '0.35'}
-                  />
-                );
-              })}
-            </svg>
 
             {/* Top Bar with detected location */}
             <div className="relative z-10 flex items-center justify-between text-xs text-blue-200 bg-black/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-white/10 pointer-events-none mt-8">

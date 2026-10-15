@@ -579,16 +579,18 @@ export default function CLPInviteeFullReportModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200 print:static print:p-0 print:bg-white print:backdrop-blur-none print:overflow-visible">
       <div
-        className={`bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 w-full transition-all duration-300 ${
+        className={`bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 w-full transition-all duration-300 print:rounded-none print:shadow-none print:border-none print:h-auto print:max-w-full print:overflow-visible ${
           isFullScreen ? 'h-[98vh] max-w-[99vw]' : 'h-[92vh] max-w-7xl'
         }`}
       >
-        {/* ========================================================================= */}
-        {/* TOP MODAL HEADER                                                          */}
-        {/* ========================================================================= */}
-        <div className="bg-[#243c81] text-white px-6 py-4.5 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-md">
+        {/* Interactive Screen UI - Hidden on Print */}
+        <div className="print:hidden flex flex-col h-full overflow-hidden">
+          {/* ========================================================================= */}
+          {/* TOP MODAL HEADER                                                          */}
+          {/* ========================================================================= */}
+          <div className="bg-[#243c81] text-white px-6 py-4.5 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 shadow-md">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-xs flex items-center justify-center border border-white/20 shrink-0 text-amber-300 shadow-inner">
               <BarChart3 className="w-6 h-6" />
@@ -1353,6 +1355,225 @@ export default function CLPInviteeFullReportModal({
               </div>
             </div>
           )}
+        </div>
+        </div>
+
+        {/* ===================================================================== */}
+        {/* CLEAN SIMPLE TABLES PRINT-ONLY REPORT                                */}
+        {/* ===================================================================== */}
+        <div id="clp-modal-clean-print-tables" className="hidden print:block w-full text-slate-900 bg-white p-4">
+          {/* Formal Church Header */}
+          <div className="border-b-2 border-slate-900 pb-3 mb-4 text-center page-break-avoid">
+            <div className="text-[11px] font-black uppercase tracking-widest text-slate-700">
+              COUPLES FOR CHRIST • TUY CHAPTER • BATANGAS
+            </div>
+            <h1 className="text-xl font-black text-slate-900 uppercase my-1 tracking-tight">
+              CLP Total Invitee Demographic &amp; Pastoral Report
+            </h1>
+            <h2 className="text-sm font-extrabold text-[#243c81]">
+              {currentClp?.name || 'Christian Life Program'}
+            </h2>
+            <div className="flex flex-wrap justify-between items-center text-[10px] text-slate-600 mt-2.5 pt-1.5 border-t border-slate-300">
+              <span><strong>Venue:</strong> {currentClp?.venue || 'Tuy, Batangas'}</span>
+              <span><strong>Schedule:</strong> {currentClp?.startDate || 'TBD'} — {currentClp?.endDate || 'TBD'}</span>
+              <span><strong>Status:</strong> {currentClp?.status || 'Active'}</span>
+              <span><strong>Date Printed:</strong> {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+            </div>
+          </div>
+
+          {/* TABLE 1: Executive Demographic Summary */}
+          <div className="mb-5 page-break-avoid">
+            <div className="text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
+              Table 1: Executive Cohort &amp; Demographic Summary
+            </div>
+            <table className="print-clean-table w-full border-collapse border border-slate-400 text-xs text-left">
+              <thead>
+                <tr className="bg-slate-100 text-slate-800">
+                  <th className="border border-slate-400 px-2.5 py-1.5 font-bold">Indicator</th>
+                  <th className="border border-slate-400 px-2.5 py-1.5 font-bold text-center">Value</th>
+                  <th className="border border-slate-400 px-2.5 py-1.5 font-bold">Cohort Distribution</th>
+                  <th className="border border-slate-400 px-2.5 py-1.5 font-bold">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="even:bg-slate-50">
+                  <td className="border border-slate-300 px-2.5 py-1.5 font-bold text-slate-900">Total Enrolled Couples</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-center font-extrabold text-slate-900">{demographics.totalCouples} couples</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-slate-800">{demographics.totalIndividuals} individual participants ({demographics.totalCouples} Husbands, {demographics.totalCouples} Wives)</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-slate-600">Complete invited roster for {currentClp?.name}</td>
+                </tr>
+                <tr className="even:bg-slate-50">
+                  <td className="border border-slate-300 px-2.5 py-1.5 font-bold text-slate-900">Active Participation Status</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-center font-extrabold text-slate-900">{demographics.totalCouples > 0 ? Math.round((demographics.activeCouplesCount / demographics.totalCouples) * 100) : 0}%</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-slate-800">{demographics.activeCouplesCount} active couples</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-slate-600">Active without withdrawal or transfer</td>
+                </tr>
+                <tr className="even:bg-slate-50">
+                  <td className="border border-slate-300 px-2.5 py-1.5 font-bold text-slate-900">Cohort Average Age</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-center font-extrabold text-slate-900">{demographics.avgOverallAge ? `${demographics.avgOverallAge} yrs` : '—'}</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-slate-800">Husbands: {demographics.avgHusbandAge || '—'} yrs old • Wives: {demographics.avgWifeAge || '—'} yrs old</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-slate-600">Calculated from verified birth dates</td>
+                </tr>
+                <tr className="even:bg-slate-50">
+                  <td className="border border-slate-300 px-2.5 py-1.5 font-bold text-slate-900">Geographic Catchment</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-center font-extrabold text-slate-900">{demographics.sortedBarangays.filter((b) => b.count > 0).length} Barangays</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-slate-800">Representing communities across Tuy, Batangas</td>
+                  <td className="border border-slate-300 px-2.5 py-1.5 text-slate-600">Barangay parish pastoral outreach</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* TABLE 2: Age Demographics Distribution */}
+          <div className="mb-5 page-break-avoid">
+            <div className="text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
+              Table 2: Invitee Demographic &amp; Age Group Distribution
+            </div>
+            <table className="print-clean-table w-full border-collapse border border-slate-400 text-xs text-left">
+              <thead>
+                <tr className="bg-slate-100 text-slate-800">
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold">Age Bracket</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold">Pastoral Classification</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold text-center">Husbands</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold text-center">Wives</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold text-center">Total Individuals</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold text-center">% of Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {REPORT_AGE_BRACKETS.map((bracket) => {
+                  const data = demographics.bracketCounts[bracket.key] || { husbands: 0, wives: 0, total: 0, percentage: 0 };
+                  return (
+                    <tr key={bracket.key} className="even:bg-slate-50">
+                      <td className="border border-slate-300 px-2 py-1.5 font-bold text-slate-900">{bracket.label}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-slate-700">{bracket.sublabel}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-center font-bold text-slate-800">{data.husbands}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-center font-bold text-slate-800">{data.wives}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-center font-extrabold text-slate-900">{data.total}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-center font-bold text-slate-800">{data.percentage}%</td>
+                    </tr>
+                  );
+                })}
+                <tr className="bg-slate-100 font-bold border-t-2 border-slate-400">
+                  <td className="border border-slate-300 px-2 py-1.5 font-black text-slate-900" colSpan={2}>
+                    Total Demographic Roster
+                  </td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900">{demographics.totalCouples}</td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900">{demographics.totalCouples}</td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900">{demographics.totalIndividuals}</td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900">100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* TABLE 3: Geographic Distribution by Barangay */}
+          <div className="mb-5 page-break-avoid">
+            <div className="text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
+              Table 3: Geographic Distribution (Barangays of Tuy, Batangas)
+            </div>
+            <table className="print-clean-table w-full border-collapse border border-slate-400 text-xs text-left">
+              <thead>
+                <tr className="bg-slate-100 text-slate-800">
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold text-center w-8">#</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold">Barangay Name</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold text-center">Invited Couples</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold text-center">Total Individuals</th>
+                  <th className="border border-slate-400 px-2 py-1.5 font-bold text-center">% of Total Cohort</th>
+                </tr>
+              </thead>
+              <tbody>
+                {demographics.sortedBarangays
+                  .filter((b) => b.count > 0)
+                  .map((b, idx) => (
+                    <tr key={b.name} className="even:bg-slate-50">
+                      <td className="border border-slate-300 px-2 py-1.5 text-center font-bold text-slate-500">{idx + 1}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 font-bold text-slate-800">{b.name}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900">{b.count}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-center font-bold text-slate-800">{b.count * 2}</td>
+                      <td className="border border-slate-300 px-2 py-1.5 text-center font-bold text-slate-800">{b.percentage}%</td>
+                    </tr>
+                  ))}
+                <tr className="bg-slate-100 font-bold border-t-2 border-slate-400">
+                  <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900" colSpan={2}>
+                    Total Across Tuy Barangays
+                  </td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900">{demographics.totalCouples}</td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900">{demographics.totalIndividuals}</td>
+                  <td className="border border-slate-300 px-2 py-1.5 text-center font-black text-slate-900">100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* TABLE 4: Master Invitee Directory Table */}
+          <div className="mb-5">
+            <div className="text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
+              Table 4: Master Invitee Directory &amp; Pastoral Roster ({couples.length} Couples)
+            </div>
+            <table className="print-clean-table w-full border-collapse border border-slate-400 text-[9.5pt] text-left">
+              <thead>
+                <tr className="bg-slate-100 text-slate-800">
+                  <th className="border border-slate-400 px-1.5 py-1 font-bold text-center w-7">#</th>
+                  <th className="border border-slate-400 px-2 py-1 font-bold">Couple Name</th>
+                  <th className="border border-slate-400 px-2 py-1 font-bold">Barangay</th>
+                  <th className="border border-slate-400 px-1.5 py-1 font-bold text-center">Ages (H/W)</th>
+                  <th className="border border-slate-400 px-2 py-1 font-bold text-center">Years Married</th>
+                  <th className="border border-slate-400 px-2 py-1 font-bold">Contact #</th>
+                  <th className="border border-slate-400 px-1.5 py-1 font-bold text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {couples.map((c, idx) => (
+                  <tr key={c.id} className="even:bg-slate-50">
+                    <td className="border border-slate-300 px-1.5 py-1 text-center font-bold text-slate-500 text-[8.5pt]">
+                      {idx + 1}
+                    </td>
+                    <td className="border border-slate-300 px-2 py-1 font-bold text-slate-900">
+                      Bro. {c.husbandFirstName} &amp; Sis. {c.wifeFirstName} {c.husbandLastName}
+                    </td>
+                    <td className="border border-slate-300 px-2 py-1 text-slate-700">{c.barangay || '—'}</td>
+                    <td className="border border-slate-300 px-1.5 py-1 text-center text-slate-800 font-medium text-[8.5pt]">
+                      {computeAgeString(c.husbandBirthday)} / {computeAgeString(c.wifeBirthday)}
+                    </td>
+                    <td className="border border-slate-300 px-2 py-1 text-center text-slate-700 font-medium text-[8.5pt]">
+                      {computeYearsMarried(c.weddingAnniversary)}
+                    </td>
+                    <td className="border border-slate-300 px-2 py-1 font-mono text-[8pt] text-slate-600">
+                      {c.husbandContact || c.wifeContact || '—'}
+                    </td>
+                    <td className="border border-slate-300 px-1.5 py-1 text-center font-bold text-[8pt]">
+                      {c.status || 'Active'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Formal Church Sign-off Footer */}
+          <div className="mt-8 pt-4 border-t-2 border-slate-800 page-break-avoid text-xs">
+            <div className="grid grid-cols-3 gap-8 text-center pt-2">
+              <div>
+                <div className="border-b border-slate-400 pb-10 mb-1.5"></div>
+                <div className="font-extrabold text-slate-900 text-[11px]">Prepared by:</div>
+                <div className="text-[10px] text-slate-600">CLP Secretariat / Team Leader</div>
+              </div>
+              <div>
+                <div className="border-b border-slate-400 pb-10 mb-1.5"></div>
+                <div className="font-extrabold text-slate-900 text-[11px]">Verified by:</div>
+                <div className="text-[10px] text-slate-600">CFC Tuy Chapter Pastoral Head</div>
+              </div>
+              <div>
+                <div className="border-b border-slate-400 pb-10 mb-1.5"></div>
+                <div className="font-extrabold text-slate-900 text-[11px]">Noted by:</div>
+                <div className="text-[10px] text-slate-600">Spiritual Director / Parish Priest</div>
+              </div>
+            </div>
+            <div className="text-center text-[9px] text-slate-500 mt-6 pt-2 border-t border-dashed border-slate-300">
+              Couples for Christ • Tuy Chapter • Saint Vincent Ferrer Parish • Tuy, Batangas, Philippines
+            </div>
+          </div>
         </div>
       </div>
     </div>

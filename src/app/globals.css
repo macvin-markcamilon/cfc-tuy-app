@@ -79,3 +79,66 @@ body {
 .pulse-ring {
   animation: pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
 }
+
+/* ========================================================================= */
+/* CLEAN PROFESSIONAL PRINT MEDIA STYLES FOR REPORTS & DIRECTORIES           */
+/* ========================================================================= */
+@media print {
+  @page {
+    margin: 10mm 10mm;
+    size: auto;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 10pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Force clean table borders and typography on paper/PDF */
+  .print-clean-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8.5pt !important;
+    margin-bottom: 14px !important;
+  }
+
+  .print-clean-table th,
+  .print-clean-table td {
+    border: 1px solid #94a3b8 !important;
+    padding: 4px 6px !important;
+    color: #0f172a !important;
+  }
+
+  .print-clean-table th {
+    background-color: #f1f5f9 !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    font-size: 7.5pt !important;
+    letter-spacing: 0.03em !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .print-clean-table tr:nth-child(even) {
+    background-color: #f8fafc !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .page-break-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}

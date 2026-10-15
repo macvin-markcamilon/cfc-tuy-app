@@ -23,6 +23,8 @@ export interface GeneratePdfOptions {
   filterAgeBracket: string;
   filterBarangay: string;
   filterStatus: string;
+  filterTalkLabel?: string;
+  filterAttendanceLabel?: string;
   onToast?: (message: string) => void;
 }
 
@@ -33,6 +35,8 @@ export async function generateComprehensivePdfReport({
   filterAgeBracket,
   filterBarangay,
   filterStatus,
+  filterTalkLabel,
+  filterAttendanceLabel,
   onToast,
 }: GeneratePdfOptions): Promise<void> {
   if (!couples.length || !currentClp) {
@@ -103,8 +107,11 @@ export async function generateComprehensivePdfReport({
 
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100, 116, 139);
+    const talkSub = filterTalkLabel ? ` • [Talk: ${filterTalkLabel}]` : '';
+    const attSub = filterAttendanceLabel ? ` • [Attendance: ${filterAttendanceLabel}]` : '';
+
     doc.text(
-      `Filters: [Age Group: ${activeBracketLabel}] • [Barangay: ${filterBarangay}] • [Status: ${filterStatus}] | Scope: ${filteredCouples.length} of ${couples.length} Couples (${filteredCouples.length * 2} Individuals)`,
+      `Filters: [Age: ${activeBracketLabel}] • [Barangay: ${filterBarangay}] • [Status: ${filterStatus}]${talkSub}${attSub} | Scope: ${filteredCouples.length} of ${couples.length} Couples (${filteredCouples.length * 2} Individuals)`,
       14,
       37
     );

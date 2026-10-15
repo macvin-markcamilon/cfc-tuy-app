@@ -8433,6 +8433,8 @@ Generated via Couples for Christ Tuy Chapter Portal`;
         onClose={() => setShowInviteeFullReportModal(false)}
         currentClp={currentClp}
         couples={currentCouples}
+        talks={talks}
+        attendance={attendance}
         onTriggerToast={triggerToast}
       />
 

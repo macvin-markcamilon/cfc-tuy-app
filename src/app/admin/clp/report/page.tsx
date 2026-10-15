@@ -3,8 +3,13 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { CLPCouple, CLPProgram } from '@/types';
-import { fetchCLPPrograms, fetchCLPCouples } from '@/lib/data/clp-service';
+import { CLPCouple, CLPProgram, CLPTalk, CLPAttendance } from '@/types';
+import {
+  fetchCLPPrograms,
+  fetchCLPCouples,
+  fetchCLPTalks,
+  fetchCLPAttendance,
+} from '@/lib/data/clp-service';
 import { TUY_BARANGAYS } from '@/lib/data/mock-data';
 import {
   calculateDemographics,
@@ -41,6 +46,9 @@ import {
   ChevronRight,
   Briefcase,
   Navigation,
+  BookOpen,
+  UserCheck,
+  CheckCheck,
 } from 'lucide-react';
 
 function CLPReportContent() {
@@ -51,6 +59,8 @@ function CLPReportContent() {
   // Data State
   const [programs, setPrograms] = useState<CLPProgram[]>([]);
   const [couples, setCouples] = useState<CLPCouple[]>([]);
+  const [talks, setTalks] = useState<CLPTalk[]>([]);
+  const [attendance, setAttendance] = useState<CLPAttendance[]>([]);
   const [selectedClpId, setSelectedClpId] = useState<string>(requestedClpId);
   const [loading, setLoading] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -68,6 +78,8 @@ function CLPReportContent() {
   const [filterAgeBracket, setFilterAgeBracket] = useState<string>('ALL');
   const [filterBarangay, setFilterBarangay] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [filterTalkId, setFilterTalkId] = useState<string>('ALL');
+  const [filterAttendance, setFilterAttendance] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'hAge-asc' | 'hAge-desc' | 'brgy-asc'>('name-asc');
 
   // Trigger Toast Notification
@@ -83,13 +95,17 @@ function CLPReportContent() {
     async function loadData() {
       try {
         setLoading(true);
-        const [progs, allCouples] = await Promise.all([
+        const [progs, allCouples, allTalks, allAttendance] = await Promise.all([
           fetchCLPPrograms(),
           fetchCLPCouples(),
+          fetchCLPTalks(),
+          fetchCLPAttendance(),
         ]);
 
         setPrograms(progs);
         setCouples(allCouples);
+        setTalks(allTalks);
+        setAttendance(allAttendance);
 
         if (requestedClpId) {
           setSelectedClpId(requestedClpId);
@@ -116,6 +132,72 @@ function CLPReportContent() {
     if (!currentClp) return [];
     return couples.filter((c) => c.clpId === currentClp.id);
   }, [couples, currentClp]);
+
+  // Program's Talks (sorted by talkNumber)
+  const currentTalks = useMemo(() => {
+    if (!currentClp) return [];
+    return talks
+      .filter((t) => t.clpId === currentClp.id)
+      .sort((a, b) => a.talkNumber - b.talkNumber);
+  }, [talks, currentClp]);
+
+  // Lookup map: `${talkId}_${coupleId}` -> CLPAttendance
+  const attendanceMap = useMemo(() => {
+    const map = new Map<string, CLPAttendance>();
+    for (const a of attendance) {
+      map.set(`${a.talkId}_${a.coupleId}`, a);
+    }
+    return map;
+  }, [attendance]);
+
+  // Per-couple attendance statistics
+  const coupleAttendanceStats = useMemo(() => {
+    const stats = new Map<
+      string,
+      {
+        totalTalksCount: number;
+        attendedAnyCount: number;
+        bothAttendedCount: number;
+        husbandAttendedCount: number;
+        wifeAttendedCount: number;
+        attendedTalkIds: Set<string>;
+      }
+    >();
+
+    const talkIds = currentTalks.map((t) => t.id);
+
+    for (const c of currentCouples) {
+      let attendedAnyCount = 0;
+      let bothAttendedCount = 0;
+      let husbandAttendedCount = 0;
+      let wifeAttendedCount = 0;
+      const attendedTalkIds = new Set<string>();
+
+      for (const talkId of talkIds) {
+        const att = attendanceMap.get(`${talkId}_${c.id}`);
+        const hp = Boolean(att?.husbandPresent);
+        const wp = Boolean(att?.wifePresent);
+        if (hp) husbandAttendedCount++;
+        if (wp) wifeAttendedCount++;
+        if (hp && wp) bothAttendedCount++;
+        if (hp || wp) {
+          attendedAnyCount++;
+          attendedTalkIds.add(talkId);
+        }
+      }
+
+      stats.set(c.id, {
+        totalTalksCount: talkIds.length,
+        attendedAnyCount,
+        bothAttendedCount,
+        husbandAttendedCount,
+        wifeAttendedCount,
+        attendedTalkIds,
+      });
+    }
+
+    return stats;
+  }, [currentCouples, currentTalks, attendanceMap]);
 
   // Demographics calculation
   const demographics = useMemo(() => {
@@ -148,7 +230,56 @@ function CLPReportContent() {
         matchesAge = hB === filterAgeBracket || wB === filterAgeBracket;
       }
 
-      return matchesSearch && matchesBarangay && matchesStatus && matchesAge;
+      // Talk Attendance Filtering
+      let matchesAttendance = true;
+      if (filterTalkId === 'ALL') {
+        const stat = coupleAttendanceStats.get(c.id);
+        const attendedCount = stat?.attendedAnyCount || 0;
+        const bothCount = stat?.bothAttendedCount || 0;
+        const totalTalks = stat?.totalTalksCount || 0;
+
+        if (filterAttendance === 'attended-any') {
+          // Attended at least 1 talk session
+          matchesAttendance = attendedCount > 0;
+        } else if (filterAttendance === 'attended-both-any') {
+          // Both spouses attended at least 1 talk
+          matchesAttendance = bothCount > 0;
+        } else if (filterAttendance === 'attended-consistent') {
+          // Consistent attenders: >= 50% of completed talks
+          const threshold = totalTalks > 0 ? Math.ceil(totalTalks / 2) : 1;
+          matchesAttendance = attendedCount >= threshold;
+        } else if (filterAttendance === 'attended-perfect') {
+          // Perfect attendance
+          matchesAttendance = totalTalks > 0 && attendedCount === totalTalks;
+        } else if (filterAttendance === 'never-attended') {
+          // Did not attend any talks
+          matchesAttendance = attendedCount === 0;
+        }
+      } else {
+        // Specific Talk Filter
+        const att = attendanceMap.get(`${filterTalkId}_${c.id}`);
+        const hp = Boolean(att?.husbandPresent);
+        const wp = Boolean(att?.wifePresent);
+
+        if (filterAttendance === 'attended' || filterAttendance === 'ALL') {
+          // At least one spouse attended
+          matchesAttendance = hp || wp;
+        } else if (filterAttendance === 'both') {
+          // Both husband and wife attended
+          matchesAttendance = hp && wp;
+        } else if (filterAttendance === 'husband') {
+          // Husband attended
+          matchesAttendance = hp;
+        } else if (filterAttendance === 'wife') {
+          // Wife attended
+          matchesAttendance = wp;
+        } else if (filterAttendance === 'absent') {
+          // Neither spouse attended
+          matchesAttendance = !hp && !wp;
+        }
+      }
+
+      return matchesSearch && matchesBarangay && matchesStatus && matchesAge && matchesAttendance;
     });
 
     return list.sort((a, b) => {
@@ -175,7 +306,18 @@ function CLPReportContent() {
       }
       return 0;
     });
-  }, [currentCouples, searchQuery, filterAgeBracket, filterBarangay, filterStatus, sortBy]);
+  }, [
+    currentCouples,
+    searchQuery,
+    filterAgeBracket,
+    filterBarangay,
+    filterStatus,
+    filterTalkId,
+    filterAttendance,
+    coupleAttendanceStats,
+    attendanceMap,
+    sortBy,
+  ]);
 
   // Selected couple
   const selectedCouple = useMemo(() => {
@@ -202,6 +344,29 @@ function CLPReportContent() {
     }
     setIsGeneratingPdf(true);
     try {
+      const activeTalk = currentTalks.find((t) => t.id === filterTalkId);
+      const talkLabel = activeTalk
+        ? `Talk ${activeTalk.talkNumber}: ${activeTalk.title}`
+        : filterTalkId === 'ALL'
+        ? 'All Talks'
+        : filterTalkId;
+
+      let attLabel = filterAttendance;
+      if (filterTalkId === 'ALL') {
+        if (filterAttendance === 'attended-any') attLabel = 'Attended 1+ Talks';
+        else if (filterAttendance === 'attended-both-any') attLabel = 'Both Spouses Attended';
+        else if (filterAttendance === 'attended-consistent') attLabel = 'Consistent (>=50%)';
+        else if (filterAttendance === 'attended-perfect') attLabel = 'Perfect (100%)';
+        else if (filterAttendance === 'never-attended') attLabel = 'Never Attended';
+        else attLabel = 'All Attendance';
+      } else {
+        if (filterAttendance === 'attended') attLabel = 'Attended (Either/Both)';
+        else if (filterAttendance === 'both') attLabel = 'Both Attended';
+        else if (filterAttendance === 'husband') attLabel = 'Husband Only';
+        else if (filterAttendance === 'wife') attLabel = 'Wife Only';
+        else if (filterAttendance === 'absent') attLabel = 'Absent';
+      }
+
       await generateComprehensivePdfReport({
         currentClp,
         couples: currentCouples,
@@ -209,6 +374,8 @@ function CLPReportContent() {
         filterAgeBracket,
         filterBarangay,
         filterStatus,
+        filterTalkLabel: talkLabel,
+        filterAttendanceLabel: attLabel,
         onToast: triggerToast,
       });
     } finally {
@@ -221,6 +388,8 @@ function CLPReportContent() {
     setFilterAgeBracket('ALL');
     setFilterBarangay('ALL');
     setFilterStatus('ALL');
+    setFilterTalkId('ALL');
+    setFilterAttendance('ALL');
     setSortBy('name-asc');
   };
 
@@ -229,6 +398,8 @@ function CLPReportContent() {
     filterAgeBracket !== 'ALL' ||
     filterBarangay !== 'ALL' ||
     filterStatus !== 'ALL' ||
+    filterTalkId !== 'ALL' ||
+    filterAttendance !== 'ALL' ||
     sortBy !== 'name-asc';
 
   // Group couples by age bracket for the "Separate Tables" view
@@ -255,6 +426,63 @@ function CLPReportContent() {
 
     return groups;
   }, [filteredCouples]);
+
+  const renderAttendanceBadge = (coupleId: string) => {
+    if (filterTalkId !== 'ALL') {
+      const att = attendanceMap.get(`${filterTalkId}_${coupleId}`);
+      const hp = Boolean(att?.husbandPresent);
+      const wp = Boolean(att?.wifePresent);
+      if (hp && wp) {
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+            <CheckCheck className="w-3 h-3 text-emerald-600" />
+            <span>Both Attended</span>
+          </span>
+        );
+      }
+      if (hp) {
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
+            <UserCheck className="w-3 h-3 text-blue-600" />
+            <span>Husband Only</span>
+          </span>
+        );
+      }
+      if (wp) {
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
+            <UserCheck className="w-3 h-3 text-rose-600" />
+            <span>Wife Only</span>
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
+          <span>Absent</span>
+        </span>
+      );
+    }
+
+    const stat = coupleAttendanceStats.get(coupleId);
+    const attended = stat?.attendedAnyCount || 0;
+    const total = stat?.totalTalksCount || 0;
+    const pct = total > 0 ? Math.round((attended / total) * 100) : 0;
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+          attended > 0
+            ? 'bg-blue-50 text-blue-800 border border-blue-200'
+            : 'bg-slate-100 text-slate-500 border border-slate-200'
+        }`}
+        title={`Attended ${attended} of ${total} talks (${pct}%)`}
+      >
+        <span>
+          {attended}/{total} talks ({pct}%)
+        </span>
+      </span>
+    );
+  };
 
   if (loading) {
     return (
@@ -650,6 +878,72 @@ function CLPReportContent() {
               <option value="At-Risk">At-Risk</option>
             </select>
 
+            {/* Talk Session Filter */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 shadow-2xs">
+              <BookOpen className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <select
+                aria-label="Filter by Talk Session"
+                value={filterTalkId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFilterTalkId(val);
+                  if (val !== 'ALL') {
+                    if (filterAttendance === 'ALL' || filterAttendance === 'never-attended') {
+                      setFilterAttendance('attended');
+                    }
+                  } else {
+                    if (
+                      filterAttendance === 'attended' ||
+                      filterAttendance === 'both' ||
+                      filterAttendance === 'husband' ||
+                      filterAttendance === 'wife' ||
+                      filterAttendance === 'absent'
+                    ) {
+                      setFilterAttendance('ALL');
+                    }
+                  }
+                }}
+                className="bg-transparent text-xs text-slate-800 font-bold focus:outline-none cursor-pointer max-w-[130px] sm:max-w-[170px] truncate"
+              >
+                <option value="ALL">All Talks ({currentTalks.length})</option>
+                {currentTalks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    Talk {t.talkNumber}: {t.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Attendance in Talks Filter */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 shadow-2xs">
+              <UserCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <select
+                aria-label="Filter where couples attended in talks"
+                value={filterAttendance}
+                onChange={(e) => setFilterAttendance(e.target.value)}
+                className="bg-transparent text-xs text-slate-800 font-bold focus:outline-none cursor-pointer max-w-[140px] sm:max-w-[200px] truncate"
+              >
+                {filterTalkId === 'ALL' ? (
+                  <>
+                    <option value="ALL">All Attendance Statuses</option>
+                    <option value="attended-any">Attended in Talks (1+ Talks)</option>
+                    <option value="attended-both-any">Both Spouses Attended (1+ Talks)</option>
+                    <option value="attended-consistent">Consistent Attenders (≥50%)</option>
+                    <option value="attended-perfect">Perfect Attendance (100%)</option>
+                    <option value="never-attended">Never Attended Any Talk</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="attended">Attended Talk (Either or Both)</option>
+                    <option value="both">Both Husband &amp; Wife Attended</option>
+                    <option value="husband">Husband Only Attended</option>
+                    <option value="wife">Wife Only Attended</option>
+                    <option value="absent">Did Not Attend (Absent)</option>
+                  </>
+                )}
+              </select>
+            </div>
+
             {/* Sort Selector */}
             <select
               value={sortBy}
@@ -822,6 +1116,7 @@ function CLPReportContent() {
                                   <th className="py-2.5 px-3">Husband Details</th>
                                   <th className="py-2.5 px-3">Wife Details</th>
                                   <th className="py-2.5 px-3">Barangay &amp; Address</th>
+                                  <th className="py-2.5 px-3 text-center">Attendance</th>
                                   <th className="py-2.5 px-3 text-center">Status</th>
                                 </tr>
                               </thead>
@@ -883,6 +1178,9 @@ function CLPReportContent() {
                                         </div>
                                       </td>
                                       <td className="py-2.5 px-3 text-center">
+                                        {renderAttendanceBadge(c.id)}
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center">
                                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                                           {c.status || 'Active'}
                                         </span>
@@ -909,6 +1207,7 @@ function CLPReportContent() {
                           <th className="py-2.5 px-3">Wife Details</th>
                           <th className="py-2.5 px-3">Anniversary</th>
                           <th className="py-2.5 px-3">Address &amp; Barangay</th>
+                          <th className="py-2.5 px-3 text-center">Attendance</th>
                           <th className="py-2.5 px-3 text-center">Status</th>
                         </tr>
                       </thead>
@@ -958,6 +1257,9 @@ function CLPReportContent() {
                                 <div className="text-[11px] text-slate-500 truncate max-w-[180px]">
                                   {c.address || 'Tuy, Batangas'}
                                 </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                {renderAttendanceBadge(c.id)}
                               </td>
                               <td className="py-2.5 px-3 text-center">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
@@ -1068,6 +1370,7 @@ function CLPReportContent() {
                               <th className="py-3 px-4">Wife (Age &amp; Tel)</th>
                               <th className="py-3 px-4">Wedding Anniversary</th>
                               <th className="py-3 px-4">Barangay &amp; Address</th>
+                              <th className="py-3 px-4 text-center">Attendance</th>
                               <th className="py-3 px-4 text-center">Status</th>
                             </tr>
                           </thead>
@@ -1126,6 +1429,9 @@ function CLPReportContent() {
                                   <div className="text-xs text-slate-500">
                                     {c.address || 'Tuy, Batangas'}
                                   </div>
+                                </td>
+                                <td className="py-3 px-4 text-center">
+                                  {renderAttendanceBadge(c.id)}
                                 </td>
                                 <td className="py-3 px-4 text-center">
                                   <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
@@ -1410,8 +1716,15 @@ function CLPReportContent() {
 
         {/* TABLE 4: Master Invitee Directory Table */}
         <div className="mb-5">
-          <div className="text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5">
-            Table 4: Master Invitee Directory &amp; Pastoral Roster ({currentCouples.length} Couples)
+          <div className="text-xs font-black uppercase tracking-wider text-slate-800 mb-1.5 flex items-center justify-between">
+            <span>
+              Table 4: Master Invitee Directory &amp; Pastoral Roster ({filteredCouples.length} of {currentCouples.length} Couples)
+            </span>
+            {filterTalkId !== 'ALL' && (
+              <span className="text-[9pt] font-bold text-blue-800">
+                Talk Filter: Talk {currentTalks.find((t) => t.id === filterTalkId)?.talkNumber} ({filterAttendance})
+              </span>
+            )}
           </div>
           <table className="print-clean-table w-full border-collapse border border-slate-400 text-[9.5pt] text-left">
             <thead>
@@ -1422,11 +1735,12 @@ function CLPReportContent() {
                 <th className="border border-slate-400 px-1.5 py-1 font-bold text-center">Ages (H/W)</th>
                 <th className="border border-slate-400 px-2 py-1 font-bold text-center">Years Married</th>
                 <th className="border border-slate-400 px-2 py-1 font-bold">Contact #</th>
+                <th className="border border-slate-400 px-1.5 py-1 font-bold text-center">Talk Attendance</th>
                 <th className="border border-slate-400 px-1.5 py-1 font-bold text-center">Status</th>
               </tr>
             </thead>
             <tbody>
-              {currentCouples.map((c, idx) => (
+              {filteredCouples.map((c, idx) => (
                 <tr key={c.id} className="even:bg-slate-50">
                   <td className="border border-slate-300 px-1.5 py-1 text-center font-bold text-slate-500 text-[8.5pt]">
                     {idx + 1}
@@ -1443,6 +1757,21 @@ function CLPReportContent() {
                   </td>
                   <td className="border border-slate-300 px-2 py-1 font-mono text-[8pt] text-slate-600">
                     {c.husbandContact || c.wifeContact || '—'}
+                  </td>
+                  <td className="border border-slate-300 px-1.5 py-1 text-center font-bold text-[8pt]">
+                    {(() => {
+                      if (filterTalkId !== 'ALL') {
+                        const att = attendanceMap.get(`${filterTalkId}_${c.id}`);
+                        const hp = Boolean(att?.husbandPresent);
+                        const wp = Boolean(att?.wifePresent);
+                        if (hp && wp) return 'Both Present';
+                        if (hp) return 'Husband Only';
+                        if (wp) return 'Wife Only';
+                        return 'Absent';
+                      }
+                      const stat = coupleAttendanceStats.get(c.id);
+                      return `${stat?.attendedAnyCount || 0}/${stat?.totalTalksCount || 0} talks`;
+                    })()}
                   </td>
                   <td className="border border-slate-300 px-1.5 py-1 text-center font-bold text-[8pt]">
                     {c.status || 'Active'}

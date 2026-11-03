@@ -150,31 +150,66 @@ export default function SongPrintModal({
       .map((line) => {
         const cleanLine = (line || '').replace(/&nbsp;/gi, '').trim();
 
-        if (isSectionHeader(cleanLine)) {
-          return `<div class="section-header">${escapeHtml(getSectionTitle(cleanLine))}</div>`;
+        if (!cleanLine) {
+          return `<div class="spacing-line"></div>`;
         }
 
-        if (!cleanLine) {
-          return `<div class="line" style="min-height: 1.2em;"></div>`;
+        if (isSectionHeader(cleanLine)) {
+          return `
+            <div class="section-header">
+              <span>${escapeHtml(getSectionTitle(cleanLine))}</span>
+              <span class="section-tag">${printMode === 'lyrics-only' ? 'Lyrics' : 'Chords & Lyrics'}</span>
+            </div>
+          `;
         }
 
         if (printMode === 'lyrics-only') {
-          return `<div class="line">${escapeHtml(cleanLine)}</div>`;
+          const parsed = parseChordProLine(cleanLine);
+          const displayText = parsed.type === 'chords_and_lyrics' ? parsed.cleanText : cleanLine;
+          return `<div class="lyric-line">${escapeHtml(displayText)}</div>`;
         }
 
-        // Chords and lyrics
-        const parts = cleanLine.split(/(\[[A-G][#b]?[^\]]*\])/g);
-        const lineContent = parts
-          .map((part) => {
-            if (part.startsWith('[') && part.endsWith(']')) {
-              const chord = part.slice(1, -1);
-              return `<span class="chord">[${escapeHtml(chord)}]</span>`;
-            }
-            return escapeHtml(part);
-          })
-          .join('');
+        const parsed = parseChordProLine(cleanLine);
 
-        return `<div class="line">${lineContent}</div>`;
+        if (parsed.type === 'chord_progression') {
+          const chips = parsed.items
+            .map((it) =>
+              it.isChord
+                ? `<span class="chord-chip">${escapeHtml(it.value)}</span>`
+                : `<span class="chord-note">${escapeHtml(it.value)}</span>`
+            )
+            .join(' ');
+          return `<div class="chord-progression">${chips}</div>`;
+        }
+
+        if (parsed.type === 'chords_and_lyrics') {
+          const wordsHtml = parsed.words
+            .map((word) => {
+              if (word.isSpace) {
+                return `<span class="word-space">&nbsp;</span>`;
+              }
+              const segsHtml = word.segments
+                .map(
+                  (seg) => `
+                <span class="segment">
+                  ${
+                    seg.chord
+                      ? `<span class="chord-badge">${escapeHtml(seg.chord)}</span>`
+                      : `<span class="chord-spacer">&nbsp;</span>`
+                  }
+                  <span class="lyric-text">${escapeHtml(seg.text || '')}</span>
+                </span>
+              `
+                )
+                .join('');
+              return `<span class="word-group">${segsHtml}</span>`;
+            })
+            .join('');
+
+          return `<div class="chord-lyric-line">${wordsHtml}</div>`;
+        }
+
+        return `<div class="lyric-line">${escapeHtml(cleanLine)}</div>`;
       })
       .join('');
 
@@ -185,31 +220,247 @@ export default function SongPrintModal({
           <meta charset="utf-8" />
           <title>${escapeHtml(song.title)} - CFC Song Sheet</title>
           <style>
-            @page { size: A4 portrait; margin: 15mm; }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 24px; background: #fff; line-height: 1.5; }
-            .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 14px; margin-bottom: 20px; }
-            .header-left { display: flex; align-items: center; gap: 16px; }
-            .logo { height: 55px; width: auto; object-fit: contain; }
-            .title { font-size: 24px; font-weight: 900; color: #0f172a; margin: 0; line-height: 1.1; }
-            .artist { font-size: 13px; font-weight: 700; color: #334155; margin-top: 4px; }
-            .meta { text-align: right; }
-            .meta-org { font-size: 10px; font-weight: 900; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; }
-            .meta-key { font-size: 14px; font-weight: 900; font-family: monospace; color: #0f172a; margin-top: 2px; }
-            .meta-sub { font-size: 11px; color: #475569; }
-            .content { font-size: ${fontSize}px !important; }
-            .columns-2 { column-count: 2; column-gap: 32px; }
-            .section-header { font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em; color: #243c81; border-bottom: 1px solid #e2e8f0; margin-top: 16px; margin-bottom: 6px; padding-bottom: 2px; page-break-inside: avoid; }
-            .line { margin-bottom: 4px; page-break-inside: avoid; }
-            .chord { font-family: monospace; font-weight: 900; color: #243c81; background: #eff6ff; border: 1px solid #dbeafe; padding: 1px 5px; border-radius: 4px; margin: 0 2px; font-size: 0.9em; }
-            .footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid #cbd5e1; font-size: 11px; color: #64748b; display: flex; justify-content: space-between; align-items: center; }
-            .no-print { display: flex; justify-content: space-between; align-items: center; background: #0f172a; color: #fff; padding: 12px 20px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-            .btn-print { background: #22c55e; color: #fff; border: none; padding: 8px 18px; font-size: 13px; font-weight: 800; border-radius: 8px; cursor: pointer; }
-            .btn-print:hover { background: #16a34a; }
+            @page {
+              size: A4 portrait;
+              margin: 12mm 15mm;
+            }
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              color: #0f172a;
+              background: #ffffff;
+              margin: 0;
+              padding: 24px;
+              line-height: 1.4;
+            }
+            .no-print {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              background: #0f172a;
+              color: #fff;
+              padding: 12px 20px;
+              border-radius: 12px;
+              margin-bottom: 24px;
+              box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            }
+            .btn-print {
+              background: #10b981;
+              color: #fff;
+              border: none;
+              padding: 8px 18px;
+              font-size: 13px;
+              font-weight: 800;
+              border-radius: 8px;
+              cursor: pointer;
+            }
+            .btn-print:hover {
+              background: #059669;
+            }
             @media print {
               .no-print { display: none !important; }
-              body { padding: 0; }
-              .chord { border: none; background: transparent; padding: 0; }
-              .content { font-size: ${fontSize}px !important; }
+              body { padding: 0 !important; }
+            }
+
+            .header {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              border-bottom: 2px solid #0f172a;
+              padding-bottom: 14px;
+              margin-bottom: 20px;
+              gap: 16px;
+            }
+            .header-left {
+              display: flex;
+              align-items: center;
+              gap: 16px;
+            }
+            .logo {
+              height: 56px;
+              width: auto;
+              object-fit: contain;
+            }
+            .title {
+              font-size: 24px;
+              font-weight: 900;
+              color: #0f172a;
+              margin: 0;
+              line-height: 1.1;
+              letter-spacing: -0.02em;
+            }
+            .artist {
+              font-size: 13px;
+              font-weight: 700;
+              color: #334155;
+              margin-top: 4px;
+            }
+            .meta {
+              text-align: right;
+              flex-shrink: 0;
+            }
+            .meta-org {
+              font-size: 10px;
+              font-weight: 900;
+              text-transform: uppercase;
+              color: #64748b;
+              letter-spacing: 0.05em;
+            }
+            .meta-key {
+              font-size: 14px;
+              font-weight: 900;
+              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              color: #0f172a;
+              margin-top: 2px;
+            }
+            .meta-sub {
+              font-size: 11px;
+              color: #475569;
+              font-weight: 500;
+            }
+            .badge-category {
+              display: inline-block;
+              font-size: 10px;
+              font-weight: 900;
+              text-transform: uppercase;
+              background: #f1f5f9;
+              border: 1px solid #cbd5e1;
+              color: #1e293b;
+              padding: 1px 8px;
+              border-radius: 4px;
+              margin-top: 4px;
+            }
+
+            .content {
+              font-size: ${fontSize}px !important;
+            }
+            .columns-2 {
+              column-count: 2;
+              column-gap: 32px;
+            }
+
+            .section-header {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              border-bottom: 1px solid #e2e8f0;
+              padding-top: 14px;
+              padding-bottom: 4px;
+              margin-bottom: 6px;
+              font-size: 11px;
+              font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+              color: #243c81;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            .section-tag {
+              font-size: 9px;
+              color: #94a3b8;
+              font-weight: normal;
+            }
+            .spacing-line {
+              height: 14px;
+            }
+
+            .chord-progression {
+              display: flex;
+              flex-wrap: wrap;
+              align-items: center;
+              gap: 8px;
+              padding: 4px 0;
+              margin-bottom: 4px;
+              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              font-size: 0.9em;
+              font-weight: 800;
+              color: #243c81;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            .chord-chip {
+              background: #eff6ff;
+              border: 1px solid #bfdbfe;
+              padding: 1px 6px;
+              border-radius: 4px;
+              color: #1d4ed8;
+            }
+            .chord-note {
+              color: #64748b;
+              font-size: 0.85em;
+              padding: 0 4px;
+            }
+
+            .chord-lyric-line {
+              display: flex;
+              flex-wrap: wrap;
+              align-items: flex-end;
+              padding: 2px 0;
+              line-height: 1;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+            .word-group {
+              display: inline-flex;
+              flex-wrap: nowrap;
+              align-items: flex-end;
+              white-space: nowrap;
+            }
+            .word-space {
+              display: inline-block;
+              width: 0.35em;
+              white-space: pre;
+            }
+            .segment {
+              display: inline-flex;
+              flex-direction: column;
+              align-items: flex-start;
+            }
+            .chord-badge {
+              font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+              font-weight: 800;
+              color: #243c81;
+              font-size: 0.82em;
+              line-height: 1;
+              margin-bottom: 2px;
+              letter-spacing: 0.02em;
+            }
+            .chord-spacer {
+              height: 1.1em;
+              margin-bottom: 2px;
+              line-height: 1;
+              visibility: hidden;
+            }
+            .lyric-text {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              color: #0f172a;
+              white-space: pre;
+              line-height: 1.25;
+            }
+            .lyric-line {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              color: #0f172a;
+              line-height: 1.4;
+              padding: 2px 0;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+
+            .footer {
+              margin-top: 36px;
+              padding-top: 12px;
+              border-top: 1px solid #cbd5e1;
+              font-size: 11px;
+              color: #64748b;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              break-inside: avoid;
+              page-break-inside: avoid;
             }
           </style>
           <script>
@@ -237,7 +488,8 @@ export default function SongPrintModal({
             <div class="meta">
               <div class="meta-org">Couples for Christ</div>
               <div class="meta-key">Key of ${currentKey}</div>
-              <div class="meta-sub">${song.category ? `${escapeHtml(song.category)}` : ''} ${song.timeSignature ? `• ${escapeHtml(song.timeSignature)}` : ''}</div>
+              <div class="meta-sub">${song.timeSignature ? `${escapeHtml(song.timeSignature)}` : ''} ${song.tempo ? `• ${escapeHtml(song.tempo)}` : ''}</div>
+              ${song.category ? `<div class="badge-category">${escapeHtml(song.category)}</div>` : ''}
             </div>
           </div>
 
@@ -247,7 +499,7 @@ export default function SongPrintModal({
 
           <div class="footer">
             <div style="display:flex;align-items:center;gap:6px;">
-              <img src="${logoUrl}" alt="CFC" style="height:14px;" />
+              <img src="${logoUrl}" alt="CFC" style="height:14px;width:auto;" />
               <span>Couples for Christ • Music &amp; Praise Ministry</span>
             </div>
             <div>CFC Tuy Chapter Songbook • Printed ${new Date().toLocaleDateString()}</div>
@@ -261,13 +513,46 @@ export default function SongPrintModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-xs overflow-y-auto animate-in fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-xs overflow-y-auto animate-in fade-in print:p-0 print:m-0 print:bg-white print:static print:overflow-visible">
+      {/* Print-specific style for direct window.print() */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 12mm 15mm;
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            background: #ffffff !important;
+            color: #0f172a !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .print-modal-chrome {
+            display: none !important;
+          }
+          #printable-song-sheet {
+            max-width: 100% !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            min-height: auto !important;
+          }
+        }
+      `}</style>
+
       {/* Container Box */}
-      <div className="bg-slate-900 text-white rounded-3xl shadow-2xl border border-slate-800 w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden my-auto">
+      <div className="bg-slate-900 text-white rounded-3xl shadow-2xl border border-slate-800 w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden my-auto print:bg-white print:text-slate-900 print:shadow-none print:border-none print:max-h-none print:overflow-visible print:w-full print:max-w-none print:m-0 print:p-0">
         {/* =================================================================== */}
         {/* MODAL HEADER                                                        */}
         {/* =================================================================== */}
-        <div className="p-4 sm:p-5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-4 shrink-0">
+        <div className="print-modal-chrome p-4 sm:p-5 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-[#243c81] text-amber-300 flex items-center justify-center border border-blue-400/30 shrink-0">
               <Printer className="w-5 h-5" />
@@ -295,7 +580,7 @@ export default function SongPrintModal({
         {/* =================================================================== */}
         {/* CONTROL BAR FOR SELECTION & PRINT CONFIG                            */}
         {/* =================================================================== */}
-        <div className="p-4 bg-slate-900/90 border-b border-slate-800 space-y-4 shrink-0">
+        <div className="print-modal-chrome p-4 bg-slate-900/90 border-b border-slate-800 space-y-4 shrink-0">
           {/* Print Mode Selector: Chords & Lyrics vs Lyrics Only */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-1">
@@ -441,7 +726,7 @@ export default function SongPrintModal({
         {/* =================================================================== */}
         {/* PRINT PREVIEW CONTAINER (SCROLLABLE IN MODAL)                      */}
         {/* =================================================================== */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-950/50 flex flex-col items-center">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-950/50 flex flex-col items-center print:p-0 print:bg-white print:overflow-visible print:block">
           {/* THE ACTUAL PRINT SHEET CARD THAT GETS PRINTED ON PAPER */}
           <div
             id="printable-song-sheet"

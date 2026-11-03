@@ -46,10 +46,22 @@ export default function InteractiveChordSheet({
   const [fontSize, setFontSize] = useState<number>(initialFontSize);
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left');
 
-  // Auto-scroll
+  // Container & Scroll references
+  const sheetContainerRef = useRef<HTMLDivElement>(null);
   const [isAutoScrolling, setIsAutoScrolling] = useState<boolean>(false);
-  const [scrollSpeed, setScrollSpeed] = useState<number>(1); // 1 = normal, 2 = fast, 0.5 = slow
-  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [scrollSpeed, setScrollSpeed] = useState<number>(1); // 0.5x to 2x
+  const rafRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number>(0);
+  const isAutoScrollingRef = useRef(isAutoScrolling);
+  const scrollSpeedRef = useRef(scrollSpeed);
+
+  useEffect(() => {
+    isAutoScrollingRef.current = isAutoScrolling;
+  }, [isAutoScrolling]);
+
+  useEffect(() => {
+    scrollSpeedRef.current = scrollSpeed;
+  }, [scrollSpeed]);
 
   // Active Chord Popover
   const [inspectedChord, setInspectedChord] = useState<string | null>(null);
@@ -65,6 +77,24 @@ export default function InteractiveChordSheet({
     return transposeChord(originalKey, transposeOffset);
   }, [originalKey, transposeOffset]);
 
+  // Helper: Find active scrolling ancestor (modal container or window)
+  const getScrollTarget = (el: HTMLElement | null): HTMLElement | Window => {
+    if (!el || typeof window === 'undefined') return window;
+    let parent = el.parentElement;
+    while (parent && parent !== document.body && parent !== document.documentElement) {
+      const style = window.getComputedStyle(parent);
+      const overflowY = style.overflowY;
+      if (
+        (overflowY === 'auto' || overflowY === 'scroll') &&
+        parent.scrollHeight > parent.clientHeight
+      ) {
+        return parent;
+      }
+      parent = parent.parentElement;
+    }
+    return window;
+  };
+
   // Extract all unique chords present in the transposed song
   const uniqueChords = useMemo(() => {
     const chordsFound = new Set<string>();
@@ -73,7 +103,13 @@ export default function InteractiveChordSheet({
     const bracketMatches = transposedContent.matchAll(/\[([A-G][#b]?[^\]]*)\]/g);
     for (const match of bracketMatches) {
       const c = match[1].trim();
-      if (c && !c.toLowerCase().includes('verse') && !c.toLowerCase().includes('chorus') && !c.toLowerCase().includes('bridge') && !c.toLowerCase().includes('intro')) {
+      if (
+        c &&
+        !c.toLowerCase().includes('verse') &&
+        !c.toLowerCase().includes('chorus') &&
+        !c.toLowerCase().includes('bridge') &&
+        !c.toLowerCase().includes('intro')
+      ) {
         chordsFound.add(c);
       }
     }
@@ -94,26 +130,68 @@ export default function InteractiveChordSheet({
     return Array.from(chordsFound);
   }, [transposedContent]);
 
-  // Auto-scroll logic
+  // Auto-scroll logic powered by requestAnimationFrame for jitter-free 60/120fps scrolling on mobile & tablet
   useEffect(() => {
-    if (isAutoScrolling) {
-      scrollIntervalRef.current = setInterval(() => {
-        window.scrollBy({
-          top: scrollSpeed * 1.5,
-          behavior: 'smooth',
-        });
-      }, 50);
-    } else if (scrollIntervalRef.current) {
-      clearInterval(scrollIntervalRef.current);
-      scrollIntervalRef.current = null;
+    if (!isAutoScrolling) {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      return;
     }
 
+    lastTimeRef.current = performance.now();
+
+    const scrollStep = (now: number) => {
+      if (!isAutoScrollingRef.current) return;
+
+      const deltaMs = now - lastTimeRef.current;
+      lastTimeRef.current = now;
+
+      // Base speed: 32px per second at 1.0x multiplier
+      if (deltaMs > 0 && deltaMs < 150) {
+        const movePx = (32 * scrollSpeedRef.current * deltaMs) / 1000;
+        const target = getScrollTarget(sheetContainerRef.current);
+
+        if (target === window) {
+          const currentY =
+            window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
+          const maxScroll =
+            Math.max(
+              document.body.scrollHeight,
+              document.documentElement.scrollHeight,
+              document.body.offsetHeight,
+              document.documentElement.offsetHeight
+            ) - window.innerHeight;
+
+          if (currentY >= maxScroll - 3) {
+            setIsAutoScrolling(false);
+            return;
+          }
+          window.scrollBy(0, movePx);
+        } else {
+          const el = target as HTMLElement;
+          const maxScroll = el.scrollHeight - el.clientHeight;
+          if (el.scrollTop >= maxScroll - 3) {
+            setIsAutoScrolling(false);
+            return;
+          }
+          el.scrollTop += movePx;
+        }
+      }
+
+      rafRef.current = requestAnimationFrame(scrollStep);
+    };
+
+    rafRef.current = requestAnimationFrame(scrollStep);
+
     return () => {
-      if (scrollIntervalRef.current) {
-        clearInterval(scrollIntervalRef.current);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
     };
-  }, [isAutoScrolling, scrollSpeed]);
+  }, [isAutoScrolling]);
 
   // Helper: Detect if a line is a pure Chord line (e.g. "G   C   D   Em")
   function isChordLine(line: string): boolean {
@@ -301,11 +379,14 @@ export default function InteractiveChordSheet({
   };
 
   return (
-    <div className={`flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden ${className}`}>
+    <div
+      ref={sheetContainerRef}
+      className={`flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden ${className}`}
+    >
       {/* =================================================================== */}
       {/* MUSICAL CONTROLS BAR (Ultimate Guitar Toolbar)                      */}
       {/* =================================================================== */}
-      <div className="p-3.5 bg-slate-900 text-white border-b border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="p-3 sm:p-3.5 bg-slate-900 text-white border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 text-xs sticky top-0 z-20 shadow-xs">
         {/* Left: Transposer */}
         <div className="flex items-center gap-2">
           <div className="flex items-center bg-white/10 rounded-xl p-1 border border-white/10">
@@ -455,10 +536,12 @@ export default function InteractiveChordSheet({
               <select
                 value={scrollSpeed}
                 onChange={(e) => setScrollSpeed(Number(e.target.value))}
-                className="bg-black/10 rounded-md font-bold text-[10px] ml-1 px-1 py-0.5 focus:outline-hidden"
+                className="bg-black/10 rounded-md font-bold text-[10px] ml-1 px-1 py-0.5 focus:outline-hidden cursor-pointer"
               >
                 <option value={0.5}>0.5x</option>
+                <option value={0.75}>0.75x</option>
                 <option value={1}>1.0x</option>
+                <option value={1.25}>1.25x</option>
                 <option value={1.5}>1.5x</option>
                 <option value={2}>2.0x</option>
               </select>
@@ -527,6 +610,56 @@ export default function InteractiveChordSheet({
               ✕
             </button>
           </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* FLOATING HANDS-FREE AUTO-SCROLL PILL (Optimized for Mobile/Tablet) */}
+      {/* =================================================================== */}
+      {isAutoScrolling && (
+        <div className="fixed bottom-6 right-4 sm:right-6 z-50 flex items-center gap-1.5 p-1.5 sm:p-2 rounded-2xl bg-slate-950/95 text-white shadow-2xl border border-amber-400/50 backdrop-blur-md animate-in fade-in slide-in-from-bottom-3 select-none">
+          <button
+            type="button"
+            onClick={() => setIsAutoScrolling(false)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs active:scale-95 transition-all shadow-sm cursor-pointer"
+            title="Pause Hands-Free Scroll"
+          >
+            <Pause className="w-4 h-4 fill-current" />
+            <span>Pause</span>
+          </button>
+
+          <div className="flex items-center bg-white/10 rounded-xl px-2 py-1 text-xs">
+            <span className="text-[10px] text-amber-300 font-bold mr-1 hidden sm:inline">Speed:</span>
+            <select
+              value={scrollSpeed}
+              onChange={(e) => setScrollSpeed(Number(e.target.value))}
+              className="bg-transparent text-white font-bold text-xs focus:outline-hidden cursor-pointer"
+              aria-label="Scroll speed"
+            >
+              <option value={0.5} className="text-slate-900 bg-white">0.5x Slow</option>
+              <option value={0.75} className="text-slate-900 bg-white">0.75x</option>
+              <option value={1} className="text-slate-900 bg-white">1.0x Normal</option>
+              <option value={1.25} className="text-slate-900 bg-white">1.25x</option>
+              <option value={1.5} className="text-slate-900 bg-white">1.5x Fast</option>
+              <option value={2} className="text-slate-900 bg-white">2.0x Fast</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const target = getScrollTarget(sheetContainerRef.current);
+              if (target === window) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              } else {
+                (target as HTMLElement).scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }}
+            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all active:scale-95 cursor-pointer"
+            title="Scroll back to top"
+          >
+            <ChevronUp className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>

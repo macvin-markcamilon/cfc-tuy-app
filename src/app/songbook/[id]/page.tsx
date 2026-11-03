@@ -34,6 +34,7 @@ import {
   Tv,
   Plus,
   ListMusic,
+  ExternalLink,
 } from 'lucide-react';
 
 interface SongDetailPageProps {
@@ -222,6 +223,18 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
                 </>
               )}
             </button>
+
+            {/* Chords Only View Button */}
+            <Link
+              href={`/songbook/${song.id}/chords`}
+              target="_blank"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs transition-all active:scale-95 shadow-2xs"
+              title="Open full distraction-free chords sheet in a new page"
+            >
+              <Guitar className="w-4 h-4 text-amber-700" />
+              <span className="hidden sm:inline">Chords Only</span>
+              <ExternalLink className="w-3.5 h-3.5 text-amber-700 opacity-70" />
+            </Link>
 
             {/* Print chord sheet */}
             <button

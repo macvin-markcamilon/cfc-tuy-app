@@ -26,6 +26,7 @@ import {
   Filter,
   Sparkles,
   Guitar,
+  ExternalLink,
   BookOpen,
   Volume2,
   ArrowRight,
@@ -776,11 +777,20 @@ export default function SongbookPage() {
                       </div>
                     )}
 
-                    {/* Action link */}
-                    <span className="text-xs font-bold text-[#243c81] group-hover:underline flex items-center gap-1 shrink-0">
+                    {/* View Chords Button (compliments audio button) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(`/songbook/${song.id}/chords`, '_blank');
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs hover:shadow-xs shrink-0 group/chord"
+                      title="Open chords sheet in new page"
+                    >
+                      <Guitar className="w-3.5 h-3.5 text-amber-700 group-hover/chord:rotate-12 transition-transform" />
                       <span>View Chords</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                    </span>
+                      <ExternalLink className="w-3 h-3 text-amber-700 opacity-70 group-hover/chord:opacity-100" />
+                    </button>
                   </div>
                 </div>
               );
@@ -900,12 +910,14 @@ export default function SongbookPage() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              router.push(`/songbook/${song.id}`);
+                              window.open(`/songbook/${song.id}/chords`, '_blank');
                             }}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-blue-50 text-[#243c81] hover:bg-[#243c81] hover:text-white font-bold text-xs transition-all"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs transition-all active:scale-95 shadow-2xs group/chord"
+                            title="Open chords sheet in new page"
                           >
-                            <span>Open Chords</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
+                            <Guitar className="w-3.5 h-3.5 text-amber-700 group-hover/chord:rotate-12 transition-transform" />
+                            <span>View Chords</span>
+                            <ExternalLink className="w-3 h-3 text-amber-700 opacity-70 group-hover/chord:opacity-100" />
                           </button>
                         </td>
                       </tr>

@@ -286,6 +286,108 @@ function setLocalSongs(songs: WorshipSong[]): void {
 }
 
 
+/**
+ * Maps a Supabase DB row to the application's WorshipSong interface
+ */
+export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
+  let youtubeUrl = d.youtube_url || local?.youtubeUrl || '';
+  let audioUrl = d.audio_url || local?.audioUrl || '';
+  let notes = d.notes || local?.notes || '';
+
+  // 1. If audio_url is actually a YouTube link, route it to youtubeUrl
+  if (!youtubeUrl && audioUrl && isYouTubeUrl(audioUrl)) {
+    youtubeUrl = audioUrl;
+    audioUrl = '';
+  }
+
+  // 2. If YouTube URL was encoded inside notes with [YOUTUBE: ...], extract it
+  if (notes && notes.includes('[YOUTUBE:')) {
+    const match = notes.match(/\[YOUTUBE:\s*([^\]]+)\]/);
+    if (match) {
+      if (!youtubeUrl) youtubeUrl = match[1].trim();
+      notes = notes.replace(/\[YOUTUBE:\s*[^\]]+\]/, '').trim();
+    }
+  }
+
+  return {
+    id: d.id,
+    title: d.title || local?.title || 'Untitled Worship Song',
+    artist: d.artist || local?.artist || 'CFC Music Ministry',
+    key: d.key_signature || d.key || local?.key || 'G',
+    tempo: d.tempo || local?.tempo,
+    timeSignature: d.time_signature || local?.timeSignature,
+    category: d.category || local?.category || 'Praise',
+    ministry: d.ministry || local?.ministry || 'CFC',
+    lyricsAndChords: d.lyrics_and_chords || d.lyricsAndChords || local?.lyricsAndChords || '',
+    ccliNumber: d.ccli_number || local?.ccliNumber,
+    audioUrl: audioUrl,
+    audioFileName: d.audio_file_name || local?.audioFileName,
+    youtubeUrl: youtubeUrl,
+    tags: d.tags || local?.tags || [],
+    notes: notes,
+    createdAt: d.created_at || local?.createdAt || new Date().toISOString(),
+    updatedAt: d.updated_at || local?.updatedAt,
+  };
+}
+
+/**
+ * Maps WorshipSong to Supabase worship_songs database row schema
+ * (strictly conforms to public.worship_songs table columns)
+ */
+export function mapSongToRow(song: WorshipSong) {
+  let finalAudioUrl = song.audioUrl || '';
+  let notes = song.notes || '';
+
+  // If youtubeUrl is specified and audioUrl is empty, use audio_url column
+  if (song.youtubeUrl && !finalAudioUrl) {
+    finalAudioUrl = song.youtubeUrl;
+  } else if (song.youtubeUrl && finalAudioUrl) {
+    // If both exist, preserve YouTube link in notes metadata tag
+    if (!notes.includes('[YOUTUBE:')) {
+      notes = notes ? `${notes}\n[YOUTUBE: ${song.youtubeUrl}]` : `[YOUTUBE: ${song.youtubeUrl}]`;
+    }
+  }
+
+  return {
+    id: song.id,
+    title: song.title,
+    artist: song.artist,
+    key_signature: song.key,
+    tempo: song.tempo || null,
+    time_signature: song.timeSignature || '4/4',
+    category: song.category,
+    ministry: song.ministry || 'CFC',
+    lyrics_and_chords: song.lyricsAndChords,
+    ccli_number: song.ccliNumber || null,
+    audio_url: finalAudioUrl || null,
+    audio_file_name: song.audioFileName || null,
+    tags: song.tags && song.tags.length > 0 ? song.tags : null,
+    notes: notes || null,
+    updated_at: song.updatedAt || new Date().toISOString(),
+  };
+}
+
+/**
+ * Push a single song to Supabase database
+ */
+export async function pushSongToSupabase(song: WorshipSong): Promise<boolean> {
+  try {
+    const supabase = createClient();
+    if (!supabase) return false;
+
+    const row = mapSongToRow(song);
+    const { error } = await supabase.from('worship_songs').upsert(row);
+    if (error) {
+      console.warn('Supabase worship_songs upsert failed for:', song.title, error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Error pushing song to Supabase:', song.title, err);
+    return false;
+  }
+}
+
 export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
   const localSongs = getLocalSongs();
   const localMap = new Map<string, WorshipSong>(localSongs.map((s) => [s.id, s]));
@@ -298,7 +400,7 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
         .select('*')
         .order('title', { ascending: true });
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         const merged: WorshipSong[] = data.map((d: any) => {
           const local = localMap.get(d.id);
           const supabaseUpdatedAt = d.updated_at ? new Date(d.updated_at).getTime() : 0;
@@ -309,49 +411,77 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
             return local;
           }
 
-          return {
-            id: d.id,
-            title: d.title || local?.title || 'Untitled Worship Song',
-            artist: d.artist || local?.artist || 'CFC Music Ministry',
-            key: d.key_signature || d.key || local?.key || 'G',
-            tempo: d.tempo || local?.tempo,
-            timeSignature: d.time_signature || local?.timeSignature,
-            category: d.category || local?.category || 'Praise',
-            ministry: d.ministry || local?.ministry || 'CFC',
-            lyricsAndChords: d.lyrics_and_chords || d.lyricsAndChords || local?.lyricsAndChords || '',
-            ccliNumber: d.ccli_number || local?.ccliNumber,
-            audioUrl: d.audio_url || d.audioUrl || local?.audioUrl || '',
-            audioFileName: d.audio_file_name || local?.audioFileName,
-            youtubeUrl: d.youtube_url || d.youtubeUrl || local?.youtubeUrl || '',
-            tags: d.tags || local?.tags || [],
-            notes: d.notes || local?.notes,
-            createdAt: d.created_at || local?.createdAt || new Date().toISOString(),
-            updatedAt: d.updated_at || local?.updatedAt,
-          };
+          return mapRowToWorshipSong(d, local);
         });
 
-        // Append any local-only songs that are not present in Supabase database
-        const supabaseIds = new Set(merged.map((s) => s.id));
+        // Detect any local songs that are not yet in Supabase (e.g. created locally before DB sync)
+        const supabaseIds = new Set(data.map((d: any) => d.id));
+        const pendingUploads: WorshipSong[] = [];
+
         for (const [id, localSong] of localMap.entries()) {
           if (!supabaseIds.has(id)) {
             merged.push(localSong);
+            pendingUploads.push(localSong);
           }
+        }
+
+        // Auto-sync all local-only songs up to Supabase in background
+        if (pendingUploads.length > 0) {
+          Promise.all(pendingUploads.map((s) => pushSongToSupabase(s))).catch(() => {});
         }
 
         setLocalSongs(merged);
         return merged;
       }
     }
-  } catch {
-    // Fall back to local storage
+  } catch (err) {
+    console.warn('Error fetching songs from Supabase, falling back to local storage:', err);
   }
 
   return localSongs;
 }
 
 export async function fetchWorshipSongById(id: string): Promise<WorshipSong | null> {
+  const decodedId = decodeURIComponent(id);
+
+  // 1. Direct query to Supabase for instant real-time sync across devices
+  try {
+    const supabase = createClient();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('worship_songs')
+        .select('*')
+        .or(`id.eq.${decodedId},id.eq.${id}`)
+        .maybeSingle();
+
+      if (!error && data) {
+        const localSongs = getLocalSongs();
+        const local = localSongs.find((s) => s.id === decodedId || s.id === id);
+        const song = mapRowToWorshipSong(data, local);
+
+        // Update local cache
+        const idx = localSongs.findIndex((s) => s.id === song.id);
+        if (idx >= 0) {
+          localSongs[idx] = song;
+        } else {
+          localSongs.unshift(song);
+        }
+        setLocalSongs(localSongs);
+        return song;
+      }
+    }
+  } catch (err) {
+    console.warn('Supabase fetch song by id error:', err);
+  }
+
+  // 2. Fallback to all songs
   const songs = await fetchWorshipSongs();
-  return songs.find((s) => s.id === id || encodeURIComponent(s.id) === id) || null;
+  const found = songs.find((s) => s.id === decodedId || s.id === id) || null;
+  if (found) {
+    // If found in local cache, ensure it is synced to Supabase
+    pushSongToSupabase(found).catch(() => {});
+  }
+  return found;
 }
 
 export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<WorshipSong> {
@@ -404,37 +534,8 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
 
   setLocalSongs(updatedList);
 
-  // Attempt Supabase sync
-  try {
-    const supabase = createClient();
-    if (supabase) {
-      const { error: upsertErr } = await supabase.from('worship_songs').upsert({
-        id: completeSong.id,
-        title: completeSong.title,
-        artist: completeSong.artist,
-        key_signature: completeSong.key,
-        tempo: completeSong.tempo,
-        time_signature: completeSong.timeSignature,
-        category: completeSong.category,
-        ministry: completeSong.ministry,
-        lyrics_and_chords: completeSong.lyricsAndChords,
-        ccli_number: completeSong.ccliNumber,
-        audio_url: completeSong.audioUrl,
-        audio_file_name: completeSong.audioFileName,
-        youtube_url: completeSong.youtubeUrl,
-        tags: completeSong.tags,
-        notes: completeSong.notes,
-        updated_at: completeSong.updatedAt,
-      });
-
-      if (upsertErr) {
-        console.warn('Supabase worship_songs upsert failed:', upsertErr.message);
-      }
-    }
-  } catch (err) {
-    console.warn('Supabase worship_songs sync error:', err);
-  }
-
+  // Synchronize to Supabase database
+  await pushSongToSupabase(completeSong);
 
   return completeSong;
 }

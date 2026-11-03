@@ -54,6 +54,7 @@ export default function InteractiveChordSheet({
   const lastTimeRef = useRef<number>(0);
   const isAutoScrollingRef = useRef(isAutoScrolling);
   const scrollSpeedRef = useRef(scrollSpeed);
+  const accumulatedScrollRef = useRef<number>(0);
 
   useEffect(() => {
     isAutoScrollingRef.current = isAutoScrolling;
@@ -137,10 +138,22 @@ export default function InteractiveChordSheet({
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
+      accumulatedScrollRef.current = 0;
       return;
     }
 
+    // CRITICAL: Temporarily override CSS 'scroll-behavior: smooth' on html/body.
+    // If scroll-behavior: smooth is active in CSS, high-frequency frame scrolling
+    // gets interrupted and cancelled by the browser animation engine, causing auto-scroll to stall!
+    const htmlEl = typeof document !== 'undefined' ? document.documentElement : null;
+    const bodyEl = typeof document !== 'undefined' ? document.body : null;
+    const prevHtmlBehavior = htmlEl ? htmlEl.style.scrollBehavior : '';
+    const prevBodyBehavior = bodyEl ? bodyEl.style.scrollBehavior : '';
+    if (htmlEl) htmlEl.style.scrollBehavior = 'auto';
+    if (bodyEl) bodyEl.style.scrollBehavior = 'auto';
+
     lastTimeRef.current = performance.now();
+    accumulatedScrollRef.current = 0;
 
     const scrollStep = (now: number) => {
       if (!isAutoScrollingRef.current) return;
@@ -148,35 +161,52 @@ export default function InteractiveChordSheet({
       const deltaMs = now - lastTimeRef.current;
       lastTimeRef.current = now;
 
-      // Base speed: 32px per second at 1.0x multiplier
-      if (deltaMs > 0 && deltaMs < 150) {
-        const movePx = (32 * scrollSpeedRef.current * deltaMs) / 1000;
-        const target = getScrollTarget(sheetContainerRef.current);
+      // Base speed: 40px per second at 1.0x multiplier
+      if (deltaMs > 0 && deltaMs < 200) {
+        const movePx = (40 * scrollSpeedRef.current * deltaMs) / 1000;
+        accumulatedScrollRef.current += movePx;
 
-        if (target === window) {
-          const currentY =
-            window.scrollY || window.pageYOffset || document.documentElement.scrollTop;
-          const maxScroll =
-            Math.max(
-              document.body.scrollHeight,
-              document.documentElement.scrollHeight,
-              document.body.offsetHeight,
-              document.documentElement.offsetHeight
-            ) - window.innerHeight;
+        // Perform integer scroll whenever accumulated subpixels reach >= 1px
+        if (accumulatedScrollRef.current >= 1) {
+          const step = Math.floor(accumulatedScrollRef.current);
+          accumulatedScrollRef.current -= step;
 
-          if (currentY >= maxScroll - 3) {
-            setIsAutoScrolling(false);
-            return;
+          const target = getScrollTarget(sheetContainerRef.current);
+
+          if (target === window) {
+            const scrollingEl = document.scrollingElement || document.documentElement || document.body;
+            const currentY = window.scrollY || window.pageYOffset || scrollingEl?.scrollTop || 0;
+            const totalHeight = Math.max(
+              document.body?.scrollHeight || 0,
+              document.documentElement?.scrollHeight || 0,
+              scrollingEl?.scrollHeight || 0
+            );
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 800;
+            const maxScroll = totalHeight - viewportHeight;
+
+            // Stop auto-scroll when reaching the very bottom of the document
+            if (maxScroll > 20 && currentY >= maxScroll - 4) {
+              setIsAutoScrolling(false);
+              return;
+            }
+
+            // Scroll window with instant behavior
+            window.scrollBy({ top: step, left: 0, behavior: 'instant' as ScrollBehavior });
+
+            // Direct fallback: if window scroll position did not advance, increment scrollingElement
+            const updatedY = window.scrollY || window.pageYOffset || scrollingEl?.scrollTop || 0;
+            if (updatedY === currentY && scrollingEl) {
+              scrollingEl.scrollTop = currentY + step;
+            }
+          } else {
+            const el = target as HTMLElement;
+            const maxScroll = el.scrollHeight - el.clientHeight;
+            if (maxScroll > 20 && el.scrollTop >= maxScroll - 4) {
+              setIsAutoScrolling(false);
+              return;
+            }
+            el.scrollTop += step;
           }
-          window.scrollBy(0, movePx);
-        } else {
-          const el = target as HTMLElement;
-          const maxScroll = el.scrollHeight - el.clientHeight;
-          if (el.scrollTop >= maxScroll - 3) {
-            setIsAutoScrolling(false);
-            return;
-          }
-          el.scrollTop += movePx;
         }
       }
 
@@ -190,6 +220,9 @@ export default function InteractiveChordSheet({
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
+      accumulatedScrollRef.current = 0;
+      if (htmlEl) htmlEl.style.scrollBehavior = prevHtmlBehavior;
+      if (bodyEl) bodyEl.style.scrollBehavior = prevBodyBehavior;
     };
   }, [isAutoScrolling]);
 

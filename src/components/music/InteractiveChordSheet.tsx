@@ -6,6 +6,7 @@ import {
   transposeSongContent,
   getChordShape,
 } from '@/lib/music/guitarChords';
+import { parseChordProLine } from '@/lib/music/chordPro';
 import GuitarChordDiagram from './GuitarChordDiagram';
 import {
   Play,
@@ -156,62 +157,142 @@ export default function InteractiveChordSheet({
 
   /**
    * Render a line of ChordPro formatted text:
-   * e.g. "[G]The light of [C]Christ has [D]come into the [G]world"
+   * e.g. "{comment: Verse 1}", "[C#m] [A] [E] [B] (x2)", or "My [E]hope is built in [G#m]You Lord"
+   * Displays guitar chords ON TOP of their corresponding lyrics, not beside.
    */
   const renderChordProLine = (line: string, lineIndex: number) => {
-    const trimmed = line.trim();
+    const parsed = parseChordProLine(line);
 
-    // Section Headers: [Verse 1], [Chorus], [Bridge], [Intro]
-    if (
-      trimmed.startsWith('[') &&
-      trimmed.endsWith(']') &&
-      (trimmed.toLowerCase().includes('verse') ||
-        trimmed.toLowerCase().includes('chorus') ||
-        trimmed.toLowerCase().includes('bridge') ||
-        trimmed.toLowerCase().includes('intro') ||
-        trimmed.toLowerCase().includes('outro') ||
-        trimmed.toLowerCase().includes('refrain') ||
-        trimmed.toLowerCase().includes('interlude'))
-    ) {
+    if (parsed.type === 'empty') {
+      return <div key={lineIndex} className="h-4" />;
+    }
+
+    if (parsed.type === 'end_directive') {
+      return null;
+    }
+
+    // Section Headers: {comment: Intro}, [Verse 1], Chorus, etc.
+    if (parsed.type === 'section') {
       return (
-        <div key={lineIndex} className="pt-4 pb-1.5 font-black text-xs uppercase tracking-wider text-[#243c81] flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-          <span>{trimmed.replace(/^\[|\]$/g, '')}</span>
+        <div
+          key={lineIndex}
+          className="pt-5 pb-2 font-black text-xs uppercase tracking-wider text-[#243c81] flex items-center gap-2 select-none"
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-2xs"></span>
+          <span>{parsed.title}</span>
           <div className="flex-1 h-px bg-slate-200" />
         </div>
       );
     }
 
-    // Split line into chords and lyrics tokens
-    const parts = line.split(/(\[[A-G][#b]?[^\]]*\])/g);
-    if (parts.length === 1 && !line.includes('[')) {
-      // Just lyrics or comments
+    // Pure Chord Progressions: e.g. "[C#m] [A] [E] [B] (x2)"
+    if (parsed.type === 'chord_progression') {
       return (
-        <div key={lineIndex} className="leading-relaxed text-slate-800 font-sans py-0.5" style={{ fontSize }}>
-          {line || '\u00A0'}
+        <div
+          key={lineIndex}
+          className={`py-2 flex flex-wrap items-center gap-2.5 ${
+            textAlign === 'center'
+              ? 'justify-center'
+              : textAlign === 'right'
+              ? 'justify-end'
+              : 'justify-start'
+          }`}
+          style={{ fontSize }}
+        >
+          {parsed.items.map((item, i) => {
+            if (item.isChord) {
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={(e) => handleChordClick(item.value, e)}
+                  className="font-mono font-black text-blue-700 bg-blue-50/90 hover:bg-amber-100 hover:text-amber-900 border border-blue-200/80 hover:border-amber-400 px-2.5 py-1 rounded-lg cursor-pointer select-none transition-all shadow-2xs hover:scale-105 active:scale-95 inline-flex items-center text-[0.88em]"
+                  title={`Click to view ${item.value} guitar chord diagram`}
+                >
+                  {item.value}
+                </button>
+              );
+            }
+            return (
+              <span key={i} className="font-sans font-bold text-slate-500 text-xs px-1">
+                {item.value}
+              </span>
+            );
+          })}
         </div>
       );
     }
 
+    // Pure Lyrics or comments
+    if (parsed.type === 'lyrics_only') {
+      return (
+        <div
+          key={lineIndex}
+          className={`leading-relaxed text-slate-800 font-sans py-0.5 ${
+            textAlign === 'center'
+              ? 'text-center'
+              : textAlign === 'right'
+              ? 'text-right'
+              : 'text-left'
+          }`}
+          style={{ fontSize }}
+        >
+          {parsed.text}
+        </div>
+      );
+    }
+
+    // Chords and Lyrics: guitar chords placed directly ON TOP of the lyrics
     return (
-      <div key={lineIndex} className="flex flex-wrap items-end py-1 font-sans" style={{ fontSize }}>
-        {parts.map((part, pIdx) => {
-          if (part.startsWith('[') && part.endsWith(']')) {
-            const chord = part.slice(1, -1);
+      <div
+        key={lineIndex}
+        className={`flex flex-wrap items-end py-1 font-sans ${
+          textAlign === 'center'
+            ? 'justify-center text-center'
+            : textAlign === 'right'
+            ? 'justify-end text-right'
+            : 'justify-start text-left'
+        }`}
+        style={{ fontSize }}
+      >
+        {parsed.words.map((word, wIdx) => {
+          if (word.isSpace) {
             return (
               <span
-                key={pIdx}
-                onClick={(e) => handleChordClick(chord, e)}
-                className="font-mono font-black text-blue-700 bg-blue-50/80 hover:bg-amber-100 hover:text-amber-900 border border-blue-200/80 hover:border-amber-400 px-1.5 py-0.2 rounded-md mx-0.5 cursor-pointer select-none transition-all shadow-2xs hover:scale-105 active:scale-95 inline-flex items-center text-[0.88em]"
-                title={`Click to view ${chord} guitar chord diagram`}
+                key={wIdx}
+                className="inline-block whitespace-pre select-text"
+                style={{ width: '0.35em' }}
               >
-                {chord}
+                {' '}
               </span>
             );
           }
+
           return (
-            <span key={pIdx} className="text-slate-800 whitespace-pre">
-              {part}
+            <span key={wIdx} className="inline-flex flex-nowrap items-end select-text">
+              {word.segments.map((seg, sIdx) => (
+                <span key={sIdx} className="inline-flex flex-col items-start">
+                  {seg.chord ? (
+                    <span
+                      onClick={(e) => handleChordClick(seg.chord!, e)}
+                      className="font-mono font-black text-blue-700 bg-blue-50/90 hover:bg-amber-100 hover:text-amber-900 border border-blue-200/80 hover:border-amber-400 px-1.5 py-0.5 rounded text-[0.82em] leading-none mb-1 cursor-pointer select-none transition-all shadow-2xs hover:scale-105 active:scale-95 inline-flex items-center"
+                      title={`Click to view ${seg.chord} guitar chord diagram`}
+                    >
+                      {seg.chord}
+                    </span>
+                  ) : (
+                    <span
+                      className="h-[1.4em] mb-1 block select-none pointer-events-none"
+                      aria-hidden="true"
+                    >
+                      {'\u00A0'}
+                    </span>
+                  )}
+                  <span className="text-slate-800 font-sans whitespace-pre leading-normal">
+                    {seg.text || '\u00A0'}
+                  </span>
+                </span>
+              ))}
             </span>
           );
         })}

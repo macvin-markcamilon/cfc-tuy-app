@@ -7,6 +7,7 @@ import {
   transposeSongContent,
   getChordShape,
 } from '@/lib/music/guitarChords';
+import { parseChordProLine } from '@/lib/music/chordPro';
 import {
   Printer,
   X,
@@ -59,9 +60,13 @@ export default function SongPrintModal({
     return transposeSongContent(song.lyricsAndChords, transposeOffset);
   }, [song?.lyricsAndChords, transposeOffset]);
 
-  // Helper: Check if a line is a section tag e.g. [Verse 1], [Chorus]
+  // Helper: Check if a line is a section tag e.g. {comment: Verse 1}, [Verse 1], [Chorus]
   const isSectionHeader = (line: string): boolean => {
     const trimmed = line.trim();
+    if (!trimmed) return false;
+    const parsed = parseChordProLine(trimmed);
+    if (parsed.type === 'section') return true;
+
     if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) return false;
     const tag = trimmed.slice(1, -1).toLowerCase();
     return [
@@ -72,11 +77,19 @@ export default function SongPrintModal({
       'outro',
       'refrain',
       'interlude',
+      'instrumental',
       'ending',
       'pre-chorus',
       'coda',
       'tag',
     ].some((keyword) => tag.includes(keyword));
+  };
+
+  const getSectionTitle = (line: string): string => {
+    const trimmed = line.trim();
+    const parsed = parseChordProLine(trimmed);
+    if (parsed.type === 'section') return parsed.title;
+    return trimmed.replace(/^\[|\]$/g, '');
   };
 
   // Helper: Check if a line consists purely of chord tokens
@@ -138,7 +151,7 @@ export default function SongPrintModal({
         const cleanLine = (line || '').replace(/&nbsp;/gi, '').trim();
 
         if (isSectionHeader(cleanLine)) {
-          return `<div class="section-header">${escapeHtml(cleanLine.replace(/^\[|\]$/g, ''))}</div>`;
+          return `<div class="section-header">${escapeHtml(getSectionTitle(cleanLine))}</div>`;
         }
 
         if (!cleanLine) {
@@ -506,7 +519,7 @@ export default function SongPrintModal({
                       key={idx}
                       className="pt-4 pb-1.5 font-black text-xs uppercase tracking-wider text-[#243c81] border-b border-slate-200 mb-1 flex items-center justify-between break-inside-avoid"
                     >
-                      <span>{trimmed.replace(/^\[|\]$/g, '')}</span>
+                      <span>{getSectionTitle(trimmed)}</span>
                       <span className="text-[9px] text-slate-400 font-normal">
                         {printMode === 'lyrics-only' ? 'Lyrics' : 'Chords & Lyrics'}
                       </span>
@@ -516,25 +529,71 @@ export default function SongPrintModal({
 
                 // If mode is 'lyrics-only': Render simple clean text
                 if (printMode === 'lyrics-only') {
+                  const parsed = parseChordProLine(cleanLine);
+                  const displayText = parsed.type === 'chords_and_lyrics' ? parsed.cleanText : cleanLine;
                   return (
                     <div
                       key={idx}
                       className="leading-relaxed text-slate-900 font-sans py-0.5 break-inside-avoid"
                     >
-                      {cleanLine}
+                      {displayText}
                     </div>
                   );
                 }
 
-                // Default 'chords-and-lyrics': Render ChordPro brackets inline with bold formatting
-                const parts = cleanLine.split(/(\[[A-G][#b]?[^\]]*\])/g);
-                if (parts.length === 1 && !cleanLine.includes('[')) {
+                // Default 'chords-and-lyrics': Render ChordPro chords on top of lyrics
+                const parsed = parseChordProLine(cleanLine);
+
+                if (parsed.type === 'chord_progression') {
                   return (
                     <div
                       key={idx}
-                      className="leading-relaxed text-slate-900 font-sans py-0.5 break-inside-avoid"
+                      className="flex flex-wrap items-center gap-2 py-1 font-mono font-bold text-sm text-[#243c81] break-inside-avoid"
                     >
-                      {cleanLine}
+                      {parsed.items.map((it, i) => (
+                        <span key={i} className={it.isChord ? 'px-1.5 py-0.5 bg-blue-50 border border-blue-200 rounded' : 'text-slate-500'}>
+                          {it.value}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                }
+
+                if (parsed.type === 'chords_and_lyrics') {
+                  return (
+                    <div
+                      key={idx}
+                      className="flex flex-wrap items-end py-1 font-sans break-inside-avoid leading-none"
+                    >
+                      {parsed.words.map((word, wIdx) => {
+                        if (word.isSpace) {
+                          return (
+                            <span key={wIdx} className="inline-block whitespace-pre" style={{ width: '0.35em' }}>
+                              {' '}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span key={wIdx} className="inline-flex flex-nowrap items-end">
+                            {word.segments.map((seg, sIdx) => (
+                              <span key={sIdx} className="inline-flex flex-col items-start">
+                                {seg.chord ? (
+                                  <span className="font-mono font-bold text-[#243c81] text-[0.82em] leading-none mb-1">
+                                    {seg.chord}
+                                  </span>
+                                ) : (
+                                  <span className="h-[1.1em] mb-1 block" aria-hidden="true">
+                                    {'\u00A0'}
+                                  </span>
+                                )}
+                                <span className="text-slate-900 font-sans whitespace-pre leading-tight">
+                                  {seg.text || '\u00A0'}
+                                </span>
+                              </span>
+                            ))}
+                          </span>
+                        );
+                      })}
                     </div>
                   );
                 }
@@ -542,26 +601,9 @@ export default function SongPrintModal({
                 return (
                   <div
                     key={idx}
-                    className="flex flex-wrap items-baseline py-0.5 font-sans leading-relaxed break-inside-avoid"
+                    className="leading-relaxed text-slate-900 font-sans py-0.5 break-inside-avoid"
                   >
-                    {parts.map((part, pIdx) => {
-                      if (part.startsWith('[') && part.endsWith(']')) {
-                        const chord = part.slice(1, -1);
-                        return (
-                          <span
-                            key={pIdx}
-                            className="font-mono font-black text-[#243c81] bg-blue-50 border border-blue-200/80 px-1 py-0 rounded text-[0.88em] mx-0.5 select-none print:border-none print:bg-transparent"
-                          >
-                            [{chord}]
-                          </span>
-                        );
-                      }
-                      return (
-                        <span key={pIdx} className="text-slate-900 whitespace-pre">
-                          {part}
-                        </span>
-                      );
-                    })}
+                    {cleanLine}
                   </div>
                 );
               })}

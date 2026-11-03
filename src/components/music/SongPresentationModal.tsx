@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { WorshipSong } from '@/lib/data/songs-service';
 import { transposeChord, transposeSongContent, getChordShape } from '@/lib/music/guitarChords';
+import { parseChordProLine, ChordProWord } from '@/lib/music/chordPro';
 import {
   ChevronLeft,
   ChevronRight,
@@ -55,6 +56,7 @@ export interface PresentationLine {
   isChordOnly?: boolean;
   rawChordLine?: string;
   cleanLyricText: string;
+  words?: ChordProWord[];
   segments: {
     chord?: string;
     text: string;
@@ -124,14 +126,22 @@ export default function SongPresentationModal({
     return validCount / tokens.length >= 0.65;
   }, []);
 
-  // Helper: Parse explicit section titles from lines like [Verse 1], [Chorus], • CHORUS, VERSE 2:
+  // Helper: Parse explicit section titles from lines like {comment: Verse 1}, [Verse 1], [Chorus], • CHORUS, VERSE 2:
   const parseExplicitHeader = useCallback((line: string): { title: string; type: PresentationSlide['type'] } | null => {
     const trimmed = line.trim();
     if (!trimmed) return null;
 
+    const parsed = parseChordProLine(trimmed);
+    if (parsed.type === 'section') {
+      return {
+        title: parsed.title,
+        type: parsed.sectionType as PresentationSlide['type'],
+      };
+    }
+
     const clean = trimmed.replace(/^[\s•\*#\-:=]+|[\s:=]+$/g, '').trim();
 
-    const match = clean.match(/^\[?\s*(verse\s*\d*|chorus\s*\d*|bridge\s*\d*|intro\s*\d*|outro\s*\d*|pre-?chorus\s*\d*|refrain\s*\d*|interlude\s*\d*|ending\s*\d*|tag\s*\d*|coda\s*\d*)\s*\]?$/i);
+    const match = clean.match(/^\[?\s*(verse\s*\d*|chorus\s*\d*|bridge\s*\d*|intro\s*\d*|outro\s*\d*|pre-?chorus\s*\d*|refrain\s*\d*|interlude\s*\d*|instrumental\s*\d*|ending\s*\d*|tag\s*\d*|coda\s*\d*)\s*\]?$/i);
 
     if (match) {
       const rawName = match[1].trim();
@@ -143,8 +153,8 @@ export default function SongPresentationModal({
       if (lower.includes('verse')) type = 'verse';
       else if (lower.includes('chorus')) type = 'chorus';
       else if (lower.includes('bridge')) type = 'bridge';
-      else if (lower.includes('intro')) type = 'intro';
-      else if (lower.includes('outro')) type = 'outro';
+      else if (lower.includes('intro') || lower.includes('instrumental') || lower.includes('interlude')) type = 'intro';
+      else if (lower.includes('outro') || lower.includes('ending') || lower.includes('coda')) type = 'outro';
       else if (lower.includes('pre')) type = 'pre-chorus';
 
       return { title, type };
@@ -280,84 +290,82 @@ export default function SongPresentationModal({
             continue;
           }
 
-          // INLINE BRACKET CHORDS (e.g. "[G]You died [C]on the cross [G]")
-          if (currentLine.includes('[')) {
-            const parts = currentLine.split(/(\[[A-G][#b]?[^\]]*\])/g);
+          // Check ChordPro line syntax
+          const parsed = parseChordProLine(currentLine);
+
+          if (parsed.type === 'empty') {
+            lineIdx++;
+            continue;
+          }
+
+          if (parsed.type === 'end_directive') {
+            lineIdx++;
+            continue;
+          }
+
+          if (parsed.type === 'section') {
+            if (!slideTitle) {
+              slideTitle = parsed.title;
+              slideType = parsed.sectionType as PresentationSlide['type'];
+            }
+            lineIdx++;
+            continue;
+          }
+
+          if (parsed.type === 'chord_progression') {
+            parsedLines.push({
+              isChordOnly: true,
+              rawChordLine: parsed.items.map((it) => it.value).join('   '),
+              cleanLyricText: '',
+              segments: parsed.items.filter((it) => it.isChord).map((it) => ({ chord: it.value, text: '' })),
+            });
+            lineIdx++;
+            continue;
+          }
+
+          if (parsed.type === 'chords_and_lyrics') {
             const segments: { chord?: string; text: string }[] = [];
-            let pendingChord: string | undefined = undefined;
-
-            parts.forEach((part) => {
-              if (!part) return;
-              if (part.startsWith('[') && part.endsWith(']')) {
-                const inner = part.slice(1, -1).trim();
-                const tagHeader = parseExplicitHeader(inner);
-                if (tagHeader) {
-                  if (!slideTitle) {
-                    slideTitle = tagHeader.title;
-                    slideType = tagHeader.type;
-                  }
-                } else {
-                  pendingChord = inner;
-                }
+            parsed.words.forEach((w) => {
+              if (w.isSpace) {
+                segments.push({ chord: undefined, text: ' ' });
               } else {
-                // Break text into words to align chords on individual words
-                const words = part.split(/(\s+)/);
-                let firstWordFound = false;
-
-                words.forEach((w) => {
-                  if (!w) return;
-                  if (!firstWordFound && w.trim().length > 0) {
-                    segments.push({
-                      chord: pendingChord,
-                      text: w,
-                    });
-                    pendingChord = undefined;
-                    firstWordFound = true;
-                  } else {
-                    segments.push({
-                      chord: undefined,
-                      text: w,
-                    });
-                  }
+                w.segments.forEach((seg) => {
+                  segments.push(seg);
                 });
               }
             });
 
-            if (pendingChord) {
-              segments.push({ chord: pendingChord, text: '' });
-            }
-
-            if (segments.length > 0) {
-              const isAllChords = segments.every((seg) => !seg.text.trim());
-              const cleanLyricText = segments.map((s) => s.text).join('').trim();
-              parsedLines.push({
-                isChordOnly: isAllChords,
-                rawChordLine: isAllChords ? currentLine : undefined,
-                cleanLyricText,
-                segments,
-              });
-            }
-            lineIdx++;
-          } else {
-            // PLAIN LYRIC LINE OR UNPAIRED CHORD LINE
-            const isChordsOnly = isChordLine(currentLine);
-            const cleanText = isChordsOnly ? '' : currentLine.trim();
-            const words = currentLine.trim().split(/\s+/);
-            const segments: { chord?: string; text: string }[] = isChordsOnly
-              ? [{ chord: currentLine.trim(), text: '' }]
-              : words.map((w, idx) => ({
-                  chord: undefined,
-                  text: w + (idx < words.length - 1 ? ' ' : ''),
-                }));
-
             parsedLines.push({
-              isChordOnly: isChordsOnly,
-              rawChordLine: isChordsOnly ? currentLine : undefined,
-              cleanLyricText: cleanText,
+              isChordOnly: false,
+              cleanLyricText: parsed.cleanText,
+              words: parsed.words,
               segments,
             });
             lineIdx++;
+            continue;
           }
+
+          // Plain lyric line or unpaired chord line
+          const isChordsOnly = isChordLine(currentLine);
+          const cleanText = isChordsOnly ? '' : currentLine.trim();
+          const words = currentLine.trim().split(/\s+/);
+          const segments: { chord?: string; text: string }[] = isChordsOnly
+            ? [{ chord: currentLine.trim(), text: '' }]
+            : words.map((w, idx) => ({
+                chord: undefined,
+                text: w + (idx < words.length - 1 ? ' ' : ''),
+              }));
+
+          parsedLines.push({
+            isChordOnly: isChordsOnly,
+            rawChordLine: isChordsOnly ? currentLine : undefined,
+            cleanLyricText: cleanText,
+            words: isChordsOnly
+              ? undefined
+              : [{ segments: [{ text: cleanText }] }],
+            segments,
+          });
+          lineIdx++;
         }
 
         if (!slideTitle) {
@@ -844,7 +852,7 @@ export default function SongPresentationModal({
             </div>
 
             {/* STANZA LINES DISPLAY */}
-            {!showChords ? (
+            {!showChords && !activeLyricLines.every((l) => l.isChordOnly) ? (
               /* CLEAN LYRICS WHEN CHORDS ARE OFF */
               <div className={`space-y-1 sm:space-y-1.5 md:space-y-2 w-full max-w-6xl mx-auto flex flex-col ${
                 textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
@@ -865,7 +873,7 @@ export default function SongPresentationModal({
                 ))}
               </div>
             ) : (
-              /* LYRICS WITH CHORDS ABOVE WHEN CHORDS ARE ON */
+              /* LYRICS WITH CHORDS ABOVE WHEN CHORDS ARE ON (OR PURE CHORD INTRO/INTERLUDE) */
               <div className={`space-y-2.5 sm:space-y-4 w-full max-w-6xl mx-auto flex flex-col ${
                 textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
               }`}>
@@ -874,7 +882,7 @@ export default function SongPresentationModal({
                     key={lIdx}
                     className={`flex flex-wrap items-end ${
                       textAlign === 'left' ? 'justify-start text-left' : textAlign === 'right' ? 'justify-end text-right' : 'justify-center text-center'
-                    } gap-x-2 sm:gap-x-3 gap-y-1 leading-tight w-full`}
+                    } leading-tight w-full`}
                   >
                     {line.isChordOnly ? (
                       <div
@@ -886,6 +894,56 @@ export default function SongPresentationModal({
                       >
                         {line.rawChordLine || line.segments.map((s) => s.chord).filter(Boolean).join('   ')}
                       </div>
+                    ) : line.words && line.words.length > 0 ? (
+                      line.words.map((word, wIdx) => {
+                        if (word.isSpace) {
+                          return (
+                            <span
+                              key={wIdx}
+                              className="inline-block whitespace-pre"
+                              style={{ width: `${dynamicLyricFontSize * 0.28}rem` }}
+                            >
+                              {' '}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span key={wIdx} className="inline-flex flex-nowrap items-end select-text">
+                            {word.segments.map((seg, sIdx) => (
+                              <span key={sIdx} className="inline-flex flex-col items-center">
+                                {seg.chord ? (
+                                  <span
+                                    className={`font-mono font-black ${themeClasses.chordText} tracking-wider transition-all select-none mb-0.5 opacity-95 text-center px-0.5`}
+                                    style={{
+                                      fontSize: `${Math.max(0.75, dynamicLyricFontSize * 0.52)}rem`,
+                                      lineHeight: 1.0,
+                                    }}
+                                  >
+                                    {seg.chord}
+                                  </span>
+                                ) : (
+                                  <span
+                                    className="inline-block"
+                                    style={{
+                                      height: `${Math.max(0.75, dynamicLyricFontSize * 0.52)}rem`,
+                                    }}
+                                  />
+                                )}
+                                <span
+                                  className={`${themeClasses.lyricText} transition-all tracking-tight leading-tight whitespace-pre`}
+                                  style={{
+                                    fontSize: `${dynamicLyricFontSize}rem`,
+                                    lineHeight: 1.15,
+                                  }}
+                                >
+                                  {seg.text || '\u00A0'}
+                                </span>
+                              </span>
+                            ))}
+                          </span>
+                        );
+                      })
                     ) : (
                       line.segments.map((seg, sIdx) => (
                         <div

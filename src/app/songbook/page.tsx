@@ -64,6 +64,7 @@ export default function SongbookPage() {
   const [playlistIds, setPlaylistIds] = useState<string[]>([]);
   const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylist[]>([]);
   const [isPresentingPlaylist, setIsPresentingPlaylist] = useState(false);
+  const [presentingSingleSong, setPresentingSingleSong] = useState<WorshipSong | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [showSavedDrawer, setShowSavedDrawer] = useState(false);
@@ -331,14 +332,43 @@ export default function SongbookPage() {
                 <span><strong>{worshipCount}</strong> Worship</span>
               </div>
               
+              {/* Quick Projector Presentation Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (playlistSongs.length > 0) {
+                    setIsPresentingPlaylist(true);
+                  } else if (filteredSongs.length > 0) {
+                    const ids = filteredSongs.map((s) => s.id);
+                    setPlaylistIds(ids);
+                    setActivePlaylistIds(ids);
+                    setIsPresentingPlaylist(true);
+                  } else if (songs.length > 0) {
+                    const ids = songs.map((s) => s.id);
+                    setPlaylistIds(ids);
+                    setActivePlaylistIds(ids);
+                    setIsPresentingPlaylist(true);
+                  }
+                }}
+                className="px-4 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center gap-2 shadow-md transition-all active:scale-95"
+                title="Present lyrics on projector"
+              >
+                <Tv className="w-4 h-4 text-slate-950" />
+                <span>
+                  {playlistSongs.length > 0
+                    ? `Present Playlist (${playlistSongs.length})`
+                    : `Present All Songs (${filteredSongs.length || songs.length})`}
+                </span>
+              </button>
+
               {savedPlaylists.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setShowSavedDrawer((prev) => !prev)}
-                  className="px-4 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs flex items-center gap-2 shadow-md transition-all active:scale-95"
+                  className="px-4 py-2 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-2 border border-white/20 shadow-md transition-all active:scale-95"
                 >
-                  <FolderHeart className="w-4 h-4" />
-                  <span>Saved Playlists ({savedPlaylists.length})</span>
+                  <FolderHeart className="w-4 h-4 text-amber-300" />
+                  <span>Saved Sets ({savedPlaylists.length})</span>
                 </button>
               )}
             </div>
@@ -398,9 +428,9 @@ export default function SongbookPage() {
       )}
 
       {/* ===================================================================== */}
-      {/* ACTIVE PLAYLIST / QUEUE BANNER                                        */}
+      {/* ACTIVE PLAYLIST & PRESENTATION BAR                                    */}
       {/* ===================================================================== */}
-      {playlistSongs.length > 0 && (
+      {playlistSongs.length > 0 ? (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 animate-in fade-in duration-200">
           <div className="bg-[#243c81] text-white rounded-3xl p-4 sm:p-5 shadow-xl border-2 border-amber-400 flex flex-col md:flex-row md:items-center justify-between gap-4">
             
@@ -414,7 +444,7 @@ export default function SongbookPage() {
                     Playlist Queue
                   </span>
                   <span className="text-xs font-mono font-bold text-amber-300">
-                    {playlistSongs.length} Song{playlistSongs.length > 1 ? 's' : ''} Selected
+                    {playlistSongs.length} Song{playlistSongs.length > 1 ? 's' : ''} Ready to Present
                   </span>
                 </div>
                 {/* Song Pills List */}
@@ -452,6 +482,23 @@ export default function SongbookPage() {
                 <span>Present Playlist ({playlistSongs.length})</span>
               </button>
 
+              {/* Add All Visible Songs */}
+              {filteredSongs.some((s) => !playlistIds.includes(s.id)) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const merged = Array.from(new Set([...playlistIds, ...filteredSongs.map((s) => s.id)]));
+                    setPlaylistIds(merged);
+                    setActivePlaylistIds(merged);
+                  }}
+                  className="px-3.5 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs flex items-center gap-1.5 border border-white/20 transition-all active:scale-95"
+                  title="Queue remaining visible songs"
+                >
+                  <Plus className="w-4 h-4 text-amber-300" />
+                  <span className="hidden sm:inline">Add All</span>
+                </button>
+              )}
+
               {/* Save Playlist Button */}
               <button
                 type="button"
@@ -473,6 +520,60 @@ export default function SongbookPage() {
               </button>
             </div>
 
+          </div>
+        </div>
+      ) : (
+        /* Empty Queue Presentation Quick-Start Bar */
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 animate-in fade-in duration-200">
+          <div className="bg-[#1e3470] text-white rounded-3xl p-4 sm:p-5 shadow-lg border border-blue-400/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 font-black shadow-md">
+                <Tv className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950">
+                    Projector Presentation
+                  </span>
+                  <span className="text-xs text-blue-200 font-medium hidden sm:inline">
+                    Queue songs for continuous lyrics projection, or present all songs directly
+                  </span>
+                </div>
+                <p className="text-sm font-bold text-white mt-0.5">
+                  Click <span className="text-amber-300 font-mono">+ Add to Playlist</span> on songs to queue, or present all songs below on projector.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = (filteredSongs.length > 0 ? filteredSongs : songs).map((s) => s.id);
+                  setPlaylistIds(ids);
+                  setActivePlaylistIds(ids);
+                  setIsPresentingPlaylist(true);
+                }}
+                className="px-4 py-2.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all active:scale-95"
+              >
+                <Tv className="w-4 h-4 text-slate-950" />
+                <span>Present All ({filteredSongs.length || songs.length}) Songs</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = (filteredSongs.length > 0 ? filteredSongs : songs).map((s) => s.id);
+                  setPlaylistIds(ids);
+                  setActivePlaylistIds(ids);
+                }}
+                className="px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5 border border-white/20 transition-all active:scale-95"
+                title="Queue all visible songs into playlist"
+              >
+                <Plus className="w-4 h-4 text-amber-300" />
+                <span>Queue All ({filteredSongs.length || songs.length})</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -736,13 +837,13 @@ export default function SongbookPage() {
                       >
                         {inPlaylist ? (
                           <>
-                            <Check className="w-3 h-3 text-amber-300" />
+                            <Check className="w-3.5 h-3.5 text-amber-300" />
                             <span>In Playlist</span>
                           </>
                         ) : (
                           <>
-                            <Plus className="w-3 h-3" />
-                            <span>+ Playlist</span>
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add to Playlist</span>
                           </>
                         )}
                       </button>
@@ -801,20 +902,35 @@ export default function SongbookPage() {
                       </div>
                     )}
 
-                    {/* View Chords Button (compliments audio button) */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(`/songbook/${song.id}/chords`, '_blank');
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs hover:shadow-xs shrink-0 group/chord"
-                      title="Open chords sheet in new page"
-                    >
-                      <Guitar className="w-3.5 h-3.5 text-amber-700 group-hover/chord:rotate-12 transition-transform" />
-                      <span>View Chords</span>
-                      <ExternalLink className="w-3 h-3 text-amber-700 opacity-70 group-hover/chord:opacity-100" />
-                    </button>
+                    {/* Action Buttons: Present + View Chords */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPresentingSingleSong(song);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 bg-blue-50 hover:bg-blue-100 text-[#243c81] border border-blue-200 shadow-2xs hover:shadow-xs group/pres"
+                        title="Present this song directly on projector"
+                      >
+                        <Tv className="w-3.5 h-3.5 text-[#243c81]" />
+                        <span>Present</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`/songbook/${song.id}/chords`, '_blank');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs hover:shadow-xs shrink-0 group/chord"
+                        title="Open chords sheet in new page"
+                      >
+                        <Guitar className="w-3.5 h-3.5 text-amber-700 group-hover/chord:rotate-12 transition-transform" />
+                        <span>View Chords</span>
+                        <ExternalLink className="w-3 h-3 text-amber-700 opacity-70 group-hover/chord:opacity-100" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -900,7 +1016,7 @@ export default function SongbookPage() {
                             ) : (
                               <>
                                 <Plus className="w-3 h-3" />
-                                <span>+ Add</span>
+                                <span>Add</span>
                               </>
                             )}
                           </button>
@@ -930,19 +1046,34 @@ export default function SongbookPage() {
                         </td>
 
                         <td className="py-3.5 px-4 sm:px-6 text-right whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(`/songbook/${song.id}/chords`, '_blank');
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs transition-all active:scale-95 shadow-2xs group/chord"
-                            title="Open chords sheet in new page"
-                          >
-                            <Guitar className="w-3.5 h-3.5 text-amber-700 group-hover/chord:rotate-12 transition-transform" />
-                            <span>View Chords</span>
-                            <ExternalLink className="w-3 h-3 text-amber-700 opacity-70 group-hover/chord:opacity-100" />
-                          </button>
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPresentingSingleSong(song);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-blue-50 hover:bg-blue-100 text-[#243c81] border border-blue-200 font-bold text-xs transition-all active:scale-95 shadow-2xs"
+                              title="Present this song directly on projector"
+                            >
+                              <Tv className="w-3.5 h-3.5 text-[#243c81]" />
+                              <span>Present</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`/songbook/${song.id}/chords`, '_blank');
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold text-xs transition-all active:scale-95 shadow-2xs group/chord"
+                              title="Open chords sheet in new page"
+                            >
+                              <Guitar className="w-3.5 h-3.5 text-amber-700 group-hover/chord:rotate-12 transition-transform" />
+                              <span>View Chords</span>
+                              <ExternalLink className="w-3 h-3 text-amber-700 opacity-70 group-hover/chord:opacity-100" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1015,9 +1146,16 @@ export default function SongbookPage() {
       {/* Continuous Playlist Presentation Modal */}
       <SongPresentationModal
         isOpen={isPresentingPlaylist}
-        song={playlistSongs[0] || null}
-        playlist={playlistSongs}
+        song={playlistSongs[0] || filteredSongs[0] || songs[0] || null}
+        playlist={playlistSongs.length > 0 ? playlistSongs : filteredSongs.length > 0 ? filteredSongs : songs}
         onClose={() => setIsPresentingPlaylist(false)}
+      />
+
+      {/* Single Song Direct Presentation Modal */}
+      <SongPresentationModal
+        isOpen={!!presentingSingleSong}
+        song={presentingSingleSong}
+        onClose={() => setPresentingSingleSong(null)}
       />
 
       {/* Invisible YouTube Audio Player */}

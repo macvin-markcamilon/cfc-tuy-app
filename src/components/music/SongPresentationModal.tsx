@@ -7,6 +7,9 @@ import { parseChordProLine, ChordProWord } from '@/lib/music/chordPro';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  SkipBack,
+  SkipForward,
   X,
   Maximize2,
   Minimize2,
@@ -482,6 +485,54 @@ export default function SongPresentationModal({
     setCurrentSlideIndex((prev) => (prev > 0 ? prev - 1 : prev));
   }, []);
 
+  // Jump to next song in the presentation playlist
+  const goToNextSong = useCallback(() => {
+    if (!activeSlide || activeSongInfo.totalSongs <= 1) return;
+    const currentSongIdx = activeSlide.songIndex;
+    const nextSongSlideIdx = slides.findIndex((s) => s.songIndex > currentSongIdx);
+    if (nextSongSlideIdx !== -1) {
+      setCurrentSlideIndex(nextSongSlideIdx);
+    }
+  }, [activeSlide, activeSongInfo.totalSongs, slides]);
+
+  // Jump to previous song (or first slide of current song)
+  const goToPrevSong = useCallback(() => {
+    if (!activeSlide || activeSongInfo.totalSongs <= 1) return;
+    const currentSongIdx = activeSlide.songIndex;
+    const firstSlideOfCurrentSong = slides.findIndex((s) => s.songIndex === currentSongIdx);
+
+    if (currentSlideIndex > firstSlideOfCurrentSong) {
+      setCurrentSlideIndex(firstSlideOfCurrentSong);
+    } else if (currentSongIdx > 0) {
+      const prevSongSlideIdx = slides.findIndex((s) => s.songIndex === currentSongIdx - 1);
+      if (prevSongSlideIdx !== -1) {
+        setCurrentSlideIndex(prevSongSlideIdx);
+      }
+    }
+  }, [activeSlide, activeSongInfo.totalSongs, currentSlideIndex, slides]);
+
+  // Detect if current slide is the last slide of the current song
+  const isLastSlideOfCurrentSong = useMemo(() => {
+    if (!activeSlide || activeSongInfo.totalSongs <= 1) return false;
+    const nextSlide = slides[currentSlideIndex + 1];
+    return !nextSlide || nextSlide.songIndex > activeSlide.songIndex;
+  }, [activeSlide, activeSongInfo.totalSongs, currentSlideIndex, slides]);
+
+  // Next upcoming song title if available
+  const nextSongTitle = useMemo(() => {
+    if (!activeSlide || activeSongInfo.totalSongs <= 1) return null;
+    const nextSongIdx = activeSlide.songIndex + 1;
+    const nextSong = activePlaylist[nextSongIdx];
+    return nextSong ? nextSong.title : null;
+  }, [activeSlide, activeSongInfo.totalSongs, activePlaylist]);
+
+  // Detect if current slide is the first slide of the current song
+  const isFirstSlideOfCurrentSong = useMemo(() => {
+    if (!activeSlide || activeSongInfo.totalSongs <= 1) return false;
+    const prevSlide = slides[currentSlideIndex - 1];
+    return !prevSlide || prevSlide.songIndex < activeSlide.songIndex;
+  }, [activeSlide, activeSongInfo.totalSongs, currentSlideIndex, slides]);
+
   // Keyboard Navigation Shortcuts
   useEffect(() => {
     if (!isOpen) return;
@@ -492,18 +543,36 @@ export default function SongPresentationModal({
       }
 
       switch (e.key) {
+        case 'n':
+        case 'N':
+          e.preventDefault();
+          goToNextSong();
+          break;
+        case 'p':
+        case 'P':
+          e.preventDefault();
+          goToPrevSong();
+          break;
         case 'ArrowRight':
         case 'ArrowDown':
         case 'PageDown':
         case ' ':
           e.preventDefault();
-          goToNextSlide();
+          if (e.shiftKey) {
+            goToNextSong();
+          } else {
+            goToNextSlide();
+          }
           break;
         case 'ArrowLeft':
         case 'ArrowUp':
         case 'PageUp':
           e.preventDefault();
-          goToPrevSlide();
+          if (e.shiftKey) {
+            goToPrevSong();
+          } else {
+            goToPrevSlide();
+          }
           break;
         case 'Escape':
           onClose();
@@ -523,7 +592,7 @@ export default function SongPresentationModal({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, goToNextSlide, goToPrevSlide, onClose]);
+  }, [isOpen, goToNextSlide, goToPrevSlide, goToNextSong, goToPrevSong, onClose]);
 
   // Auto-play slideshow timer
   useEffect(() => {
@@ -697,9 +766,27 @@ export default function SongPresentationModal({
                 Key of {currentKey}
               </span>
               {activeSongInfo.totalSongs > 1 && (
-                <span className={`text-xs font-bold text-amber-500 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 px-2 py-0.5 rounded-full`}>
-                  Song {activeSongInfo.songIndex + 1} of {activeSongInfo.totalSongs}
-                </span>
+                <div className="relative inline-flex items-center">
+                  <select
+                    value={activeSongInfo.songIndex}
+                    onChange={(e) => {
+                      const targetSongIdx = parseInt(e.target.value, 10);
+                      const targetSlideIdx = slides.findIndex((s) => s.songIndex === targetSongIdx);
+                      if (targetSlideIdx !== -1) {
+                        setCurrentSlideIndex(targetSlideIdx);
+                      }
+                    }}
+                    className="text-xs font-bold text-amber-500 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 px-2.5 py-0.5 pr-6 rounded-full appearance-none cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors max-w-[200px] truncate"
+                    title="Jump to another song in presentation playlist"
+                  >
+                    {activePlaylist.map((s, idx) => (
+                      <option key={s.id || idx} value={idx}>
+                        Song {idx + 1} of {activeSongInfo.totalSongs}: {s.title}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-3 h-3 text-amber-600 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
               )}
             </div>
             <h1 className={`text-base sm:text-xl font-black ${themeClasses.headerText} truncate tracking-tight`}>
@@ -984,22 +1071,53 @@ export default function SongPresentationModal({
                 ))}
               </div>
             )}
+            {/* "Up Next: [Song Title]" Banner on Last Slide of Song */}
+            {isLastSlideOfCurrentSong && nextSongTitle && (
+              <div className="pt-3 flex items-center justify-center animate-pulse">
+                <button
+                  type="button"
+                  onClick={goToNextSong}
+                  className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-500 text-xs sm:text-sm font-bold shadow-2xs hover:bg-amber-500/25 transition-all"
+                  title="Click or hit Next/Space to advance to next song"
+                >
+                  <span>Up Next:</span>
+                  <strong className="underline underline-offset-2">{nextSongTitle}</strong>
+                  <span>→</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className={`${themeClasses.subText} text-lg`}>No slides available for this song or playlist.</div>
         )}
 
         {/* =================================================================== */}
-        {/* LOWER RIGHT NAVIGATION CONTROLS (CLEAN LOWER RIGHT CORNER)         */}
+        {/* LOWER RIGHT NAVIGATION CONTROLS (PROJECTOR OPERATOR DOCK)          */}
         {/* =================================================================== */}
         {slides.length > 1 && (
-          <div className="fixed bottom-16 sm:bottom-20 right-4 sm:right-8 z-30 flex items-center gap-2 p-1.5 sm:p-2 rounded-2xl bg-white/95 border border-slate-200/90 shadow-2xl backdrop-blur-md transition-all">
+          <div className={`fixed bottom-16 sm:bottom-20 right-4 sm:right-8 z-30 flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-2xl ${themeClasses.headerBg} border shadow-2xl backdrop-blur-md transition-all`}>
+            {/* Previous Song (if multi-song playlist) */}
+            {activeSongInfo.totalSongs > 1 && (
+              <button
+                type="button"
+                onClick={goToPrevSong}
+                disabled={activeSongInfo.songIndex === 0 && isFirstSlideOfCurrentSong}
+                className={`px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-xl border transition-all flex items-center gap-1 text-xs font-bold ${
+                  activeSongInfo.songIndex === 0 && isFirstSlideOfCurrentSong ? themeClasses.navBtnDisabled : themeClasses.btnBg
+                }`}
+                title="Jump to Previous Song (P or Shift+Left)"
+              >
+                <SkipBack className="w-4 h-4" />
+                <span className="hidden md:inline text-[11px]">Prev Song</span>
+              </button>
+            )}
+
             {/* Previous Slide Button */}
             <button
               type="button"
               onClick={goToPrevSlide}
               disabled={currentSlideIndex === 0}
-              className={`px-3 py-2.5 sm:px-4 sm:py-3 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-bold ${
+              className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-bold ${
                 currentSlideIndex === 0 ? themeClasses.navBtnDisabled : themeClasses.btnBg
               }`}
               title="Previous Slide (Left Arrow / Up / PageUp)"
@@ -1008,21 +1126,46 @@ export default function SongPresentationModal({
               <span className="hidden sm:inline">Prev</span>
             </button>
 
+            {/* Slide Index Badge */}
+            <div className={`px-2.5 py-1 rounded-xl ${themeClasses.btnBg} text-[11px] font-mono font-bold flex items-center gap-1 opacity-80`}>
+              <span>{currentSlideIndex + 1}</span>
+              <span className="opacity-40">/</span>
+              <span>{slides.length}</span>
+            </div>
+
             {/* Next Slide Button */}
             <button
               type="button"
               onClick={goToNextSlide}
               disabled={currentSlideIndex === slides.length - 1}
-              className={`px-4 py-2.5 sm:px-6 sm:py-3 rounded-xl border transition-all flex items-center gap-2 text-xs sm:text-sm font-black ${
+              className={`px-4 py-2 sm:px-6 sm:py-2.5 rounded-xl border transition-all flex items-center gap-2 text-xs sm:text-sm font-black ${
                 currentSlideIndex === slides.length - 1
                   ? themeClasses.navBtnDisabled
                   : `${themeClasses.btnActive} shadow-lg active:scale-95 hover:scale-105`
               }`}
               title="Next Slide (Right Arrow / Space / Down / PageDown)"
             >
-              <span>Next</span>
+              <span>{isLastSlideOfCurrentSong && nextSongTitle ? `Next: ${nextSongTitle.substring(0, 10)}..` : 'Next Slide'}</span>
               <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
+
+            {/* Next Song Button (if multi-song playlist) */}
+            {activeSongInfo.totalSongs > 1 && (
+              <button
+                type="button"
+                onClick={goToNextSong}
+                disabled={activeSongInfo.songIndex >= activeSongInfo.totalSongs - 1}
+                className={`px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-xl border transition-all flex items-center gap-1 text-xs font-bold ${
+                  activeSongInfo.songIndex >= activeSongInfo.totalSongs - 1
+                    ? themeClasses.navBtnDisabled
+                    : 'bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-500 shadow-md active:scale-95'
+                }`}
+                title={`Jump to Next Song: ${nextSongTitle || 'End'} (N or Shift+Right)`}
+              >
+                <span className="hidden md:inline text-[11px] font-black">Next Song</span>
+                <SkipForward className="w-4 h-4" />
+              </button>
+            )}
           </div>
         )}
       </main>

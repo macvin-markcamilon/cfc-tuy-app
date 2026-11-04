@@ -12,6 +12,7 @@ import {
   fileToDataUrl,
   checkDatabaseSyncStatus,
   syncLocalCouplesToDatabase,
+  subscribeToDirectoryChanges,
 } from '@/lib/data/members-service';
 import { HouseholdGroup, DirectoryCouple, MinistryType } from '@/types';
 import TuyMapPicker from '@/components/map/TuyMapPicker';
@@ -173,6 +174,10 @@ ALTER TABLE public.household_groups ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow full access on household_groups" ON public.household_groups;
 CREATE POLICY "Allow full access on household_groups"
   ON public.household_groups FOR ALL USING (true) WITH CHECK (true);
+
+-- 3. Enable Realtime Publications
+ALTER PUBLICATION supabase_realtime ADD TABLE public.directory_couples;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.household_groups;
 `;
 
   const handleCopySql = async () => {
@@ -216,51 +221,7 @@ CREATE POLICY "Allow full access on household_groups"
     }
   };
 
-  const jsonFileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  const handleExportBackup = () => {
-    if (couples.length === 0) {
-      alert('No directory records to export.');
-      return;
-    }
-    const dataStr = JSON.stringify(couples, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `cfc_tuy_directory_members_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    triggerToast(`Exported ${couples.length} couples to JSON file!`);
-  };
-
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          alert('Invalid backup file. Expected an array of couples.');
-          return;
-        }
-
-        const res = await saveDirectoryCouplesBulk(parsed);
-        setCouples(res.couples);
-        triggerToast(`Successfully imported ${res.savedCount} couples into directory!`);
-      } catch (err) {
-        console.error('Failed to import backup:', err);
-        alert('Could not read file. Please ensure it is a valid JSON file.');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
 
   // ---------------------------------------------------------------------------
   // Add Couple Form States (with Nickname & 3 Photo Uploads!)
@@ -329,8 +290,10 @@ CREATE POLICY "Allow full access on household_groups"
     setTimeout(() => setToastMsg(null), 4000);
   };
 
-  // Load Directory Couples & Household Groups on Mount
+  // Load Directory Couples & Household Groups on Mount + Real-Time Sync Subscription
   useEffect(() => {
+    let isMounted = true;
+
     async function loadData() {
       try {
         setLoading(true);
@@ -339,16 +302,43 @@ CREATE POLICY "Allow full access on household_groups"
           fetchHouseholdGroups(),
           checkDatabaseSyncStatus(),
         ]);
-        setCouples(couplesData);
-        setHouseholdGroups(groupsData);
-        setDbSyncStatus(syncInfo);
+        if (isMounted) {
+          setCouples(couplesData);
+          setHouseholdGroups(groupsData);
+          setDbSyncStatus(syncInfo);
+        }
       } catch (err) {
         console.error('Failed to load directory members:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadData();
+
+    // Subscribe to cross-browser real-time events (Supabase Broadcast + Postgres changes + tab focus)
+    const unsubscribe = subscribeToDirectoryChanges(async () => {
+      try {
+        const [freshCouples, freshGroups, freshSync] = await Promise.all([
+          fetchDirectoryCouples(),
+          fetchHouseholdGroups(),
+          checkDatabaseSyncStatus(),
+        ]);
+        if (isMounted) {
+          setCouples(freshCouples);
+          setHouseholdGroups(freshGroups);
+          setDbSyncStatus(freshSync);
+        }
+      } catch (err) {
+        console.error('Real-time sync refresh error:', err);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Filtered & Sorted Directory Couples
@@ -653,31 +643,7 @@ CREATE POLICY "Allow full access on household_groups"
             <span>Bulk Upload CSV</span>
           </button>
 
-          {/* Instant Transfer between Browsers */}
-          <button
-            type="button"
-            onClick={handleExportBackup}
-            className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
-            title="Export all members to a JSON file to transfer directly to another browser"
-          >
-            <Download className="w-4 h-4 text-slate-600" />
-            <span>Export Backup</span>
-          </button>
 
-          <label
-            className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
-            title="Import JSON backup directly into this browser"
-          >
-            <Upload className="w-4 h-4 text-slate-600" />
-            <span>Import Backup</span>
-            <input
-              ref={jsonFileInputRef}
-              type="file"
-              accept=".json,application/json"
-              className="hidden"
-              onChange={handleImportBackup}
-            />
-          </label>
 
           <Link
             href="/admin/groups"

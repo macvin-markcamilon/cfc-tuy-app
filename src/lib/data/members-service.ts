@@ -18,6 +18,199 @@ function isBrowser(): boolean {
   return typeof window !== 'undefined';
 }
 
+/**
+ * Sanitizes dates for PostgreSQL `DATE` column.
+ * Converts "N/A", "none", "-", invalid date strings, or empty strings to `null`.
+ * Formats valid dates into `YYYY-MM-DD`.
+ */
+export function sanitizeDateForPostgres(val?: string | null): string | null {
+  if (!val) return null;
+  const s = String(val).trim();
+  if (
+    !s ||
+    s.toLowerCase() === 'n/a' ||
+    s.toLowerCase() === 'none' ||
+    s === '-' ||
+    s === 'null' ||
+    s === 'undefined'
+  ) {
+    return null;
+  }
+
+  // YYYY-MM-DD or YYYY/MM/DD
+  const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (isoMatch) {
+    const y = isoMatch[1];
+    const m = isoMatch[2].padStart(2, '0');
+    const d = isoMatch[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // MM/DD/YYYY or M/D/YYYY
+  const usMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (usMatch) {
+    const m = usMatch[1].padStart(2, '0');
+    const d = usMatch[2].padStart(2, '0');
+    const y = usMatch[3];
+    return `${y}-${m}-${d}`;
+  }
+
+  // Fallback to JS Date
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    if (y >= 1900 && y <= 2100) {
+      const m = String(parsed.getMonth() + 1).padStart(2, '0');
+      const d = String(parsed.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Ensures coordinates array is valid [number, number]
+ */
+export function sanitizeCoordinates(coords: any): [number, number] {
+  if (Array.isArray(coords) && coords.length >= 2) {
+    const lat = Number(coords[0]);
+    const lng = Number(coords[1]);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      return [lat, lng];
+    }
+  }
+  return [120.7289, 14.0228];
+}
+
+/**
+ * Builds a clean, sanitized payload for the Supabase `directory_couples` table.
+ */
+export function formatCoupleForSupabase(completeCouple: DirectoryCouple) {
+  return {
+    id: completeCouple.id,
+    husband_first_name: completeCouple.husbandFirstName.trim(),
+    husband_last_name: completeCouple.husbandLastName.trim(),
+    husband_nickname: completeCouple.husbandNickname?.trim() || null,
+    husband_photo_url: completeCouple.husbandPhotoUrl?.trim() || null,
+    husband_birthday: sanitizeDateForPostgres(completeCouple.husbandBirthday),
+    husband_occupation: completeCouple.husbandOccupation?.trim() || null,
+    husband_contact: completeCouple.husbandContact?.trim() || null,
+    husband_email: completeCouple.husbandEmail?.trim() || null,
+    wife_first_name: completeCouple.wifeFirstName.trim(),
+    wife_last_name: completeCouple.wifeLastName.trim(),
+    wife_nickname: completeCouple.wifeNickname?.trim() || null,
+    wife_photo_url: completeCouple.wifePhotoUrl?.trim() || null,
+    wife_birthday: sanitizeDateForPostgres(completeCouple.wifeBirthday),
+    wife_occupation: completeCouple.wifeOccupation?.trim() || null,
+    wife_contact: completeCouple.wifeContact?.trim() || null,
+    wife_email: completeCouple.wifeEmail?.trim() || null,
+    couple_photo_url: completeCouple.couplePhotoUrl?.trim() || null,
+    wedding_anniversary: sanitizeDateForPostgres(completeCouple.weddingAnniversary),
+    ministry: completeCouple.ministry || 'CFC',
+    household_group_id: completeCouple.householdGroupId || null,
+    household_group_name: completeCouple.householdGroupName || null,
+    barangay: completeCouple.barangay || 'Rizal (Pob.)',
+    address: completeCouple.address?.trim() || null,
+    coordinates: sanitizeCoordinates(completeCouple.coordinates),
+    status: completeCouple.status || 'Active',
+    notes: completeCouple.notes?.trim() || null,
+    updated_at: completeCouple.updatedAt || new Date().toISOString(),
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Realtime Broadcast Channel & Notifications
+// -----------------------------------------------------------------------------
+let sharedBroadcastChannel: any = null;
+
+export function getDirectoryRealtimeChannel() {
+  if (!isBrowser()) return null;
+  if (!sharedBroadcastChannel) {
+    const supabase = createClient();
+    if (supabase) {
+      sharedBroadcastChannel = supabase.channel('cfc_directory_live');
+      sharedBroadcastChannel.subscribe();
+    }
+  }
+  return sharedBroadcastChannel;
+}
+
+export function notifyDirectoryChange(payload?: any) {
+  if (!isBrowser()) return;
+  try {
+    const ch = getDirectoryRealtimeChannel();
+    if (ch) {
+      ch.send({
+        type: 'broadcast',
+        event: 'directory_changed',
+        payload: payload || { timestamp: Date.now() },
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to broadcast directory change:', err);
+  }
+}
+
+/**
+ * Subscribes to real-time changes across browsers via Supabase Broadcast & Postgres Changes,
+ * as well as storage events and tab focus.
+ */
+export function subscribeToDirectoryChanges(onChange: () => void): () => void {
+  if (!isBrowser()) {
+    return () => {};
+  }
+
+  const supabase = createClient();
+  let channel: any = null;
+
+  if (supabase) {
+    channel = supabase
+      .channel(`cfc_dir_sub_${Math.random().toString(36).substring(2, 7)}`)
+      .on('broadcast', { event: 'directory_changed' }, () => {
+        onChange();
+      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'directory_couples' },
+        () => {
+          onChange();
+        }
+      )
+      .subscribe();
+  }
+
+  // Listen for storage events (same browser tabs)
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY || e.key === DELETED_KEY) {
+      onChange();
+    }
+  };
+  window.addEventListener('storage', handleStorage);
+
+  // Auto-refresh when tab gains focus
+  const handleFocus = () => {
+    onChange();
+  };
+  window.addEventListener('focus', handleFocus);
+
+  const handleVisibility = () => {
+    if (document.visibilityState === 'visible') {
+      onChange();
+    }
+  };
+  document.addEventListener('visibilitychange', handleVisibility);
+
+  return () => {
+    if (channel && supabase) {
+      supabase.removeChannel(channel);
+    }
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener('focus', handleFocus);
+    document.removeEventListener('visibilitychange', handleVisibility);
+  };
+}
+
 export function getDeletedDirectoryCoupleIds(): Set<string> {
   if (!isBrowser()) return new Set();
   try {
@@ -151,9 +344,11 @@ export async function fetchDirectoryCouples(): Promise<DirectoryCouple[]> {
 
         // Automatic background sync to Supabase for any locally cached couples
         if (pendingUploads.length > 0) {
-          saveDirectoryCouplesBulk(pendingUploads).catch((err) => {
-            console.warn('Background sync error pushing couples to Supabase:', err);
-          });
+          try {
+            await saveDirectoryCouplesBulk(pendingUploads);
+          } catch (err) {
+            console.warn('Sync error pushing pending couples to Supabase:', err);
+          }
         }
 
         setLocalDirectoryCouples(merged);
@@ -256,7 +451,7 @@ export async function saveDirectoryCouple(couple: Partial<DirectoryCouple>): Pro
     householdGroupName: couple.householdGroupName || '',
     barangay: couple.barangay || 'Rizal (Pob.)',
     address: couple.address?.trim() || '',
-    coordinates: couple.coordinates || [120.7289, 14.0228],
+    coordinates: sanitizeCoordinates(couple.coordinates),
     status: couple.status || 'Active',
     notes: couple.notes?.trim() || '',
     createdAt: couple.createdAt || now,
@@ -278,42 +473,13 @@ export async function saveDirectoryCouple(couple: Partial<DirectoryCouple>): Pro
   try {
     const supabase = createClient();
     if (supabase) {
-      const payload = {
-        id: completeCouple.id,
-        husband_first_name: completeCouple.husbandFirstName,
-        husband_last_name: completeCouple.husbandLastName,
-        husband_nickname: completeCouple.husbandNickname || null,
-        husband_photo_url: completeCouple.husbandPhotoUrl || null,
-        husband_birthday: completeCouple.husbandBirthday ? completeCouple.husbandBirthday : null,
-        husband_occupation: completeCouple.husbandOccupation || null,
-        husband_contact: completeCouple.husbandContact || null,
-        husband_email: completeCouple.husbandEmail || null,
-        wife_first_name: completeCouple.wifeFirstName,
-        wife_last_name: completeCouple.wifeLastName,
-        wife_nickname: completeCouple.wifeNickname || null,
-        wife_photo_url: completeCouple.wifePhotoUrl || null,
-        wife_birthday: completeCouple.wifeBirthday ? completeCouple.wifeBirthday : null,
-        wife_occupation: completeCouple.wifeOccupation || null,
-        wife_contact: completeCouple.wifeContact || null,
-        wife_email: completeCouple.wifeEmail || null,
-        couple_photo_url: completeCouple.couplePhotoUrl || null,
-        wedding_anniversary: completeCouple.weddingAnniversary ? completeCouple.weddingAnniversary : null,
-        ministry: completeCouple.ministry,
-        household_group_id: completeCouple.householdGroupId || null,
-        household_group_name: completeCouple.householdGroupName || null,
-        barangay: completeCouple.barangay,
-        address: completeCouple.address || null,
-        coordinates: completeCouple.coordinates,
-        status: completeCouple.status,
-        notes: completeCouple.notes || null,
-        updated_at: completeCouple.updatedAt,
-      };
-
+      const payload = formatCoupleForSupabase(completeCouple);
       const { error } = await supabase.from('directory_couples').upsert(payload);
       if (error) {
         console.error('Supabase directory_couples upsert error:', error);
       } else {
         console.log('Successfully saved couple to Supabase directory_couples:', completeCouple.id);
+        notifyDirectoryChange({ action: 'upsert', id: completeCouple.id });
       }
     }
   } catch (err) {
@@ -338,6 +504,7 @@ export async function deleteDirectoryCouple(id: string): Promise<boolean> {
         console.error('Supabase directory_couples delete error:', error);
       } else {
         console.log('Successfully deleted couple from Supabase directory_couples:', id);
+        notifyDirectoryChange({ action: 'delete', id });
       }
     }
   } catch (err) {
@@ -368,7 +535,6 @@ export async function saveDirectoryCouplesBulk(
   }
 
   const current = getLocalDirectoryCouples();
-  const currentMap = new Map<string, DirectoryCouple>(current.map((c) => [c.id, c]));
   const now = new Date().toISOString();
 
   const processedCouples: DirectoryCouple[] = couplesList.map((couple, index) => {
@@ -400,7 +566,7 @@ export async function saveDirectoryCouplesBulk(
       householdGroupName: couple.householdGroupName || '',
       barangay: couple.barangay || 'Rizal (Pob.)',
       address: couple.address?.trim() || '',
-      coordinates: couple.coordinates || [120.7289, 14.0228],
+      coordinates: sanitizeCoordinates(couple.coordinates),
       status: couple.status || 'Active',
       notes: couple.notes?.trim() || '',
       createdAt: couple.createdAt || now,
@@ -420,47 +586,30 @@ export async function saveDirectoryCouplesBulk(
 
   setLocalDirectoryCouples(newCouplesList);
 
-  // Sync to Supabase in batch
+  // Sync to Supabase in batch with fallback
+  let savedCount = 0;
   try {
     const supabase = createClient();
     if (supabase) {
-      const payloadBatch = processedCouples.map((completeCouple) => ({
-        id: completeCouple.id,
-        husband_first_name: completeCouple.husbandFirstName,
-        husband_last_name: completeCouple.husbandLastName,
-        husband_nickname: completeCouple.husbandNickname || null,
-        husband_photo_url: completeCouple.husbandPhotoUrl || null,
-        husband_birthday: completeCouple.husbandBirthday ? completeCouple.husbandBirthday : null,
-        husband_occupation: completeCouple.husbandOccupation || null,
-        husband_contact: completeCouple.husbandContact || null,
-        husband_email: completeCouple.husbandEmail || null,
-        wife_first_name: completeCouple.wifeFirstName,
-        wife_last_name: completeCouple.wifeLastName,
-        wife_nickname: completeCouple.wifeNickname || null,
-        wife_photo_url: completeCouple.wifePhotoUrl || null,
-        wife_birthday: completeCouple.wifeBirthday ? completeCouple.wifeBirthday : null,
-        wife_occupation: completeCouple.wifeOccupation || null,
-        wife_contact: completeCouple.wifeContact || null,
-        wife_email: completeCouple.wifeEmail || null,
-        couple_photo_url: completeCouple.couplePhotoUrl || null,
-        wedding_anniversary: completeCouple.weddingAnniversary ? completeCouple.weddingAnniversary : null,
-        ministry: completeCouple.ministry,
-        household_group_id: completeCouple.householdGroupId || null,
-        household_group_name: completeCouple.householdGroupName || null,
-        barangay: completeCouple.barangay,
-        address: completeCouple.address || null,
-        coordinates: completeCouple.coordinates,
-        status: completeCouple.status,
-        notes: completeCouple.notes || null,
-        updated_at: completeCouple.updatedAt,
-      }));
+      const payloadBatch = processedCouples.map(formatCoupleForSupabase);
 
       const { error } = await supabase.from('directory_couples').upsert(payloadBatch);
       if (error) {
-        console.error('Supabase directory_couples bulk upsert error:', error);
+        console.warn('Supabase batch upsert failed, retrying individual upserts:', error.message);
+        for (const payload of payloadBatch) {
+          const { error: singleErr } = await supabase.from('directory_couples').upsert(payload);
+          if (!singleErr) {
+            savedCount++;
+          } else {
+            console.error('Failed individual upsert for:', payload.id, singleErr.message);
+          }
+        }
       } else {
-        console.log(`Successfully batch saved ${processedCouples.length} couples to Supabase.`);
+        savedCount = processedCouples.length;
+        console.log(`Successfully batch saved ${savedCount} couples to Supabase.`);
       }
+
+      notifyDirectoryChange({ action: 'bulk_upsert', count: savedCount });
     }
   } catch (err) {
     console.warn('Supabase directory_couples bulk sync warning:', err);
@@ -468,8 +617,7 @@ export async function saveDirectoryCouplesBulk(
 
   return {
     success: true,
-    savedCount: processedCouples.length,
+    savedCount: savedCount > 0 ? savedCount : processedCouples.length,
     couples: processedCouples,
   };
 }
-

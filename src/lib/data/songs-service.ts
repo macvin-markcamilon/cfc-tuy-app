@@ -431,6 +431,14 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
             !d.title?.startsWith('__')
         );
 
+        // Clear any stale deleted IDs for songs that exist in Supabase
+        const deletedIds = getDeletedWorshipSongIds();
+        validData.forEach((d: any) => {
+          if (deletedIds.has(d.id)) {
+            removeDeletedWorshipSongId(d.id);
+          }
+        });
+
         const songs: WorshipSong[] = validData.map((d: any) => mapRowToWorshipSong(d));
         setLocalSongs(songs);
         return songs;
@@ -634,35 +642,14 @@ export async function uploadSongAudio(file: File): Promise<{ url: string; fileNa
 }
 
 // -----------------------------------------------------------------------------
-// Visualizer Background Video Settings & Upload
+// Visualizer Background Video Settings & Cloud Sync
 // -----------------------------------------------------------------------------
-export const BUILTIN_VISUALIZER_PRESETS = [
-  {
-    id: 'preset-golden-light',
-    name: '✨ Golden Grace Glow (Warm Worship)',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    category: 'Radiant',
-    description: 'Warm glowing ambient rays suited for praise and thanksgiving',
-  },
-  {
-    id: 'preset-starlight',
-    name: '🌌 Celestial Starlight Waves (Reflective)',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-    category: 'Cosmic',
-    description: 'Deep celestial ambient loop for slow worship & reflection',
-  },
-  {
-    id: 'preset-nebula',
-    name: '🌊 Ocean of Grace & Deep Water',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
-    category: 'Flow',
-    description: 'Flowing water and dynamic movement for praise assemblies',
-  },
-];
 
 export interface VisualizerConfig {
   defaultVideoUrl: string;
   fontColor?: string;
+  isBlurred?: boolean;
+  blurAmount?: number;
   updatedAt: string;
 }
 
@@ -693,10 +680,18 @@ export async function fetchChapterVisualizerSettingsFromDB(): Promise<Visualizer
       parsed = { defaultVideoUrl: data.notes, updatedAt: new Date().toISOString() };
     }
 
-    if (parsed.defaultVideoUrl && isBrowser()) {
-      localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, parsed.defaultVideoUrl);
+    if (isBrowser()) {
+      if (parsed.defaultVideoUrl) {
+        localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, parsed.defaultVideoUrl);
+      }
       if (parsed.fontColor) {
         localStorage.setItem('cfc_presentation_font_color', parsed.fontColor);
+      }
+      if (typeof parsed.isBlurred === 'boolean') {
+        localStorage.setItem('cfc_presentation_blur_video', String(parsed.isBlurred));
+      }
+      if (parsed.blurAmount) {
+        localStorage.setItem('cfc_presentation_blur_amount', String(parsed.blurAmount));
       }
     }
 
@@ -713,10 +708,14 @@ export async function fetchChapterVisualizerSettingsFromDB(): Promise<Visualizer
 export async function saveChapterVisualizerSettingsToDB(config: {
   defaultVideoUrl: string;
   fontColor?: string;
-}): Promise<void> {
+  isBlurred?: boolean;
+  blurAmount?: number;
+}): Promise<VisualizerConfig> {
   const payload: VisualizerConfig = {
     defaultVideoUrl: config.defaultVideoUrl.trim(),
-    fontColor: config.fontColor || '#ffffff',
+    fontColor: config.fontColor,
+    isBlurred: typeof config.isBlurred === 'boolean' ? config.isBlurred : false,
+    blurAmount: config.blurAmount || 8,
     updatedAt: new Date().toISOString(),
   };
 
@@ -731,6 +730,8 @@ export async function saveChapterVisualizerSettingsToDB(config: {
       if (payload.fontColor) {
         localStorage.setItem('cfc_presentation_font_color', payload.fontColor);
       }
+      localStorage.setItem('cfc_presentation_blur_video', String(payload.isBlurred));
+      localStorage.setItem('cfc_presentation_blur_amount', String(payload.blurAmount));
     } catch {}
   }
 
@@ -738,7 +739,7 @@ export async function saveChapterVisualizerSettingsToDB(config: {
   try {
     const supabase = createClient();
     if (supabase) {
-      await supabase.from('worship_songs').upsert({
+      const { error: upsertErr } = await supabase.from('worship_songs').upsert({
         id: SYSTEM_VISUALIZER_SETTINGS_ID,
         title: '__CHAPTER_VISUALIZER_CONFIG__',
         artist: 'Couples For Christ Tuy Chapter',
@@ -750,11 +751,19 @@ export async function saveChapterVisualizerSettingsToDB(config: {
         updated_at: payload.updatedAt,
       });
 
+      if (upsertErr) {
+        console.error('Supabase upsert error for visualizer:', upsertErr);
+        throw new Error(upsertErr.message);
+      }
+
       notifySongsChange({ action: 'chapter_visualizer_saved', payload });
     }
   } catch (err) {
     console.warn('Failed to persist visualizer settings to Supabase DB:', err);
+    throw err;
   }
+
+  return payload;
 }
 
 export async function resolveVisualizerVideoUrl(urlOrToken?: string): Promise<string> {
@@ -799,8 +808,8 @@ export async function resolveVisualizerVideoUrl(urlOrToken?: string): Promise<st
   return token;
 }
 
-export async function setDefaultVisualizerVideo(url: string): Promise<void> {
-  await saveChapterVisualizerSettingsToDB({ defaultVideoUrl: url });
+export async function setDefaultVisualizerVideo(url: string, isBlurred?: boolean, blurAmount?: number): Promise<void> {
+  await saveChapterVisualizerSettingsToDB({ defaultVideoUrl: url, isBlurred, blurAmount });
 }
 
 /**
@@ -835,9 +844,8 @@ export async function uploadSongVideo(
         const { data: publicUrlData } = supabase.storage.from('songs').getPublicUrl(filePath);
         if (publicUrlData?.publicUrl) {
           const directUrl = publicUrlData.publicUrl;
-          const streamUrl = `/api/video?url=${encodeURIComponent(directUrl)}`;
           return {
-            url: streamUrl,
+            url: directUrl,
             fileName: file.name,
             supabaseUrl: directUrl,
           };

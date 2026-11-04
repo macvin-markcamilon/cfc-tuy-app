@@ -13,7 +13,8 @@ import {
   setDefaultVisualizerVideo,
   resolveVisualizerVideoUrl,
   uploadSongVideo,
-  BUILTIN_VISUALIZER_PRESETS,
+  fetchChapterVisualizerSettingsFromDB,
+  saveChapterVisualizerSettingsToDB,
 } from '@/lib/data/songs-service';
 import SongDetailModal from '@/components/music/SongDetailModal';
 import {
@@ -53,6 +54,8 @@ function SongsAdminContent() {
   const [defaultVideo, setDefaultVideo] = useState<string>('');
   const [uploadingDefaultVideo, setUploadingDefaultVideo] = useState<boolean>(false);
   const [customVideoUrlInput, setCustomVideoUrlInput] = useState<string>('');
+  const [isBlurred, setIsBlurred] = useState<boolean>(false);
+  const [blurAmount, setBlurAmount] = useState<number>(8); // px
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -62,20 +65,34 @@ function SongsAdminContent() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Load default visualizer video setting
+  // Load default visualizer video and blur setting from Supabase DB
   useEffect(() => {
     async function loadVid() {
       if (typeof window !== 'undefined') {
         try {
           const resolved = await resolveVisualizerVideoUrl();
-          setDefaultVideo(resolved);
-          const rawToken = getDefaultVisualizerVideo();
+          if (resolved) setDefaultVideo(resolved);
+          const rawToken = getDefaultVisualizerVideo() || '';
           if (rawToken.startsWith('idb:')) {
             setCustomVideoUrlInput('Uploaded Video File (Stored locally in Browser)');
           } else if (rawToken.startsWith('data:video/')) {
             setCustomVideoUrlInput('Custom Video Data Loop');
           } else {
             setCustomVideoUrlInput(rawToken);
+          }
+
+          const dbConfig = await fetchChapterVisualizerSettingsFromDB();
+          if (dbConfig) {
+            if (dbConfig.defaultVideoUrl) {
+              setDefaultVideo(dbConfig.defaultVideoUrl);
+              setCustomVideoUrlInput(dbConfig.defaultVideoUrl);
+            }
+            if (typeof dbConfig.isBlurred === 'boolean') {
+              setIsBlurred(dbConfig.isBlurred);
+            }
+            if (dbConfig.blurAmount) {
+              setBlurAmount(dbConfig.blurAmount);
+            }
           }
         } catch (err) {
           console.warn('Failed to load default visualizer video:', err);
@@ -92,8 +109,8 @@ function SongsAdminContent() {
       setUploadingDefaultVideo(true);
       const { url } = await uploadSongVideo(file, 'default_visualizer');
       setDefaultVideo(url);
-      setCustomVideoUrlInput(`Uploaded: ${file.name}`);
-      triggerToast(`Motion video "${file.name}" attached successfully!`);
+      setCustomVideoUrlInput(url);
+      triggerToast(`Motion video "${file.name}" uploaded to database!`);
     } catch (err: any) {
       console.error('Failed to attach video:', err);
       alert(err.message || 'Could not attach video file.');
@@ -113,7 +130,11 @@ function SongsAdminContent() {
       ) {
         videoToSave = customVideoUrlInput.trim();
       }
-      await setDefaultVisualizerVideo(videoToSave);
+      await saveChapterVisualizerSettingsToDB({
+        defaultVideoUrl: videoToSave,
+        isBlurred,
+        blurAmount,
+      });
       const resolved = await resolveVisualizerVideoUrl();
       setDefaultVideo(resolved);
       triggerToast('Chapter visualizer background video saved to database!');
@@ -124,11 +145,24 @@ function SongsAdminContent() {
     }
   };
 
+  const handleClearDefaultVideo = async () => {
+    try {
+      setDefaultVideo('');
+      setCustomVideoUrlInput('');
+      setIsBlurred(false);
+      await saveChapterVisualizerSettingsToDB({ defaultVideoUrl: '', isBlurred: false });
+      triggerToast('Visualizer video removed from database.');
+      setShowVisualizerModal(false);
+    } catch (err: any) {
+      console.error('Error clearing visualizer video:', err);
+    }
+  };
+
   // Check for saved searchParam from redirect
   const hasHandledSavedParam = useRef(false);
   useEffect(() => {
     if (hasHandledSavedParam.current) return;
-    const savedTitle = searchParams.get('saved');
+    const savedTitle = searchParams ? searchParams.get('saved') : null;
     if (savedTitle) {
       hasHandledSavedParam.current = true;
       triggerToast(`"${savedTitle}" saved successfully!`);
@@ -606,7 +640,12 @@ function SongsAdminContent() {
                         loop
                         muted
                         playsInline
-                        className="w-full h-full object-cover"
+                        className={`w-full h-full object-cover transition-all duration-300 ${
+                          isBlurred ? 'scale-105' : ''
+                        }`}
+                        style={{
+                          filter: isBlurred ? `blur(${blurAmount}px)` : 'none',
+                        }}
                       />
                       <div className="absolute inset-0 bg-slate-950/60 flex flex-col items-center justify-center p-4 pointer-events-none text-center">
                         <p className="text-white text-lg sm:text-2xl font-bold font-montserrat drop-shadow-lg leading-tight">
@@ -626,52 +665,15 @@ function SongsAdminContent() {
                 </div>
               </div>
 
-              {/* Preset Motion Loops */}
-              <div>
-                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
-                  Select a Curated Motion Preset
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {BUILTIN_VISUALIZER_PRESETS.map((preset) => {
-                    const isSelected = defaultVideo === preset.url;
-                    return (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => {
-                          setDefaultVideo(preset.url);
-                          setCustomVideoUrlInput(preset.url);
-                        }}
-                        className={`p-3 rounded-2xl border text-left flex items-start justify-between gap-3 transition-all ${
-                          isSelected
-                            ? 'border-[#243c81] bg-blue-50/70 ring-2 ring-[#243c81]'
-                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
-                        }`}
-                      >
-                        <div>
-                          <p className="text-xs font-black text-slate-900">{preset.name}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{preset.description}</p>
-                        </div>
-                        {isSelected && (
-                          <div className="w-5 h-5 rounded-full bg-[#243c81] text-white flex items-center justify-center shrink-0">
-                            <Check className="w-3 h-3 stroke-[3]" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
               {/* Upload Custom MP4 or WebM */}
-              <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h4 className="text-xs font-black uppercase text-slate-700">Upload Custom Video File</h4>
-                  <p className="text-xs text-slate-500">Supports .mp4, .webm, or .mov motion loops</p>
+                  <h4 className="text-xs font-black uppercase text-slate-800">Upload Motion Video Loop</h4>
+                  <p className="text-xs text-slate-500">Uploads directly to Cloud Database Storage (.mp4, .webm, .mov)</p>
                 </div>
-                <label className="cursor-pointer px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition-all shrink-0">
+                <label className="cursor-pointer px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-blue-800 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md active:scale-95 shrink-0">
                   <Upload className="w-4 h-4 text-amber-400" />
-                  <span>{uploadingDefaultVideo ? 'Reading Video...' : 'Upload Video File'}</span>
+                  <span>{uploadingDefaultVideo ? 'Uploading to Database...' : 'Upload Video File'}</span>
                   <input
                     type="file"
                     accept="video/mp4,video/webm,video/quicktime,video/*"
@@ -698,18 +700,69 @@ function SongsAdminContent() {
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono text-slate-900"
                 />
               </div>
+
+              {/* Blur Visualizer Control */}
+              <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold shrink-0">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black uppercase text-[#243c81]">
+                        Blur Visualizer Background
+                      </h4>
+                      <p className="text-[11px] text-slate-600">
+                        Softens the motion video loop so worship lyrics stand out clearly on projector
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsBlurred((prev) => !prev)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all border ${
+                      isBlurred
+                        ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-sm'
+                        : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                    }`}
+                  >
+                    Blur {isBlurred ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+
+                {isBlurred && (
+                  <div className="pt-2 border-t border-blue-200/60 flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-xs font-bold text-slate-700">Blur Intensity:</span>
+                    <div className="flex items-center gap-1.5">
+                      {[
+                        { label: 'Subtle', val: 4 },
+                        { label: 'Medium', val: 8 },
+                        { label: 'Deep', val: 12 },
+                        { label: 'Max', val: 18 },
+                      ].map((item) => (
+                        <button
+                          key={item.val}
+                          type="button"
+                          onClick={() => setBlurAmount(item.val)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border ${
+                            blurAmount === item.val
+                              ? 'bg-[#243c81] text-white border-[#243c81] shadow-2xs font-black'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {item.label} ({item.val}px)
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={async () => {
-                  setDefaultVideo('');
-                  setCustomVideoUrlInput('');
-                  await setDefaultVisualizerVideo('');
-                  triggerToast('Visualizer video removed.');
-                  setShowVisualizerModal(false);
-                }}
+                onClick={handleClearDefaultVideo}
                 className="text-xs font-bold text-rose-600 hover:underline"
               >
                 Clear / Remove Video

@@ -5,7 +5,8 @@ import {
   WorshipSong,
   getDefaultVisualizerVideo,
   resolveVisualizerVideoUrl,
-  BUILTIN_VISUALIZER_PRESETS,
+  fetchChapterVisualizerSettingsFromDB,
+  subscribeToSongsChanges,
 } from '@/lib/data/songs-service';
 import { transposeChord, transposeSongContent, getChordShape } from '@/lib/music/guitarChords';
 import { parseChordProLine, ChordProWord } from '@/lib/music/chordPro';
@@ -100,6 +101,8 @@ export default function SongPresentationModal({
   // Visualizer Background Video state
   const [showBgVideo, setShowBgVideo] = useState<boolean>(true);
   const [defaultBgVideo, setDefaultBgVideo] = useState<string>('');
+  const [isBlurred, setIsBlurred] = useState<boolean>(false);
+  const [blurAmount, setBlurAmount] = useState<number>(8); // px
 
   // Custom Font Color setting (default #ffffff for high contrast)
   const [fontColor, setFontColor] = useState<string>('#ffffff');
@@ -112,25 +115,67 @@ export default function SongPresentationModal({
     return [];
   }, [playlist, song]);
 
-  // Load saved preferences for visualizer video & font color
+  // Load saved preferences & sync realtime database updates for visualizer video
   useEffect(() => {
-    async function loadPrefs() {
-      if (typeof window !== 'undefined' && isOpen) {
+    if (!isOpen) return;
+
+    async function loadVisualizerSettings() {
+      if (typeof window !== 'undefined') {
         try {
           const resolved = await resolveVisualizerVideoUrl();
-          setDefaultBgVideo(resolved);
+          if (resolved) setDefaultBgVideo(resolved);
+
+          const dbSettings = await fetchChapterVisualizerSettingsFromDB();
+          if (dbSettings) {
+            if (dbSettings.defaultVideoUrl) setDefaultBgVideo(dbSettings.defaultVideoUrl);
+            if (typeof dbSettings.isBlurred === 'boolean') setIsBlurred(dbSettings.isBlurred);
+            if (dbSettings.blurAmount) setBlurAmount(dbSettings.blurAmount);
+            if (dbSettings.fontColor) setFontColor(dbSettings.fontColor);
+          }
         } catch (err) {
           console.warn('Failed to resolve visualizer video:', err);
         }
+
         const savedColor = localStorage.getItem('cfc_presentation_font_color');
         if (savedColor) setFontColor(savedColor);
         const savedVideoPref = localStorage.getItem('cfc_presentation_show_video');
         if (savedVideoPref !== null) {
           setShowBgVideo(savedVideoPref === 'true');
         }
+        const savedBlur = localStorage.getItem('cfc_presentation_blur_video');
+        if (savedBlur !== null) {
+          setIsBlurred(savedBlur === 'true');
+        }
+        const savedBlurAmount = localStorage.getItem('cfc_presentation_blur_amount');
+        if (savedBlurAmount) {
+          setBlurAmount(parseInt(savedBlurAmount, 10) || 8);
+        }
       }
     }
-    loadPrefs();
+
+    loadVisualizerSettings();
+
+    // Subscribe to real-time visualizer changes while presentation is open
+    const unsubscribe = subscribeToSongsChanges(async () => {
+      try {
+        const dbSettings = await fetchChapterVisualizerSettingsFromDB();
+        if (dbSettings?.defaultVideoUrl) {
+          setDefaultBgVideo(dbSettings.defaultVideoUrl);
+        }
+        if (typeof dbSettings?.isBlurred === 'boolean') {
+          setIsBlurred(dbSettings.isBlurred);
+        }
+        if (dbSettings?.blurAmount) {
+          setBlurAmount(dbSettings.blurAmount);
+        }
+      } catch (err) {
+        console.warn('Realtime visualizer refresh error:', err);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [isOpen]);
 
   // Reset slide index when song/playlist changes or modal opens
@@ -791,6 +836,29 @@ export default function SongPresentationModal({
     },
   }[theme];
 
+  // Dynamic font color resolution:
+  // - If motion background video is active, default to white or chosen color with high-contrast text shadow
+  // - If solid theme is active, protect against white-on-white by falling back to themeClasses.lyricText
+  const effectiveFontColor = useMemo(() => {
+    if (showBgVideo && activeBgVideo) {
+      return fontColor || '#ffffff';
+    }
+    if (fontColor) {
+      const lower = fontColor.toLowerCase().trim();
+      const isWhiteOrNearWhite =
+        lower === '#ffffff' ||
+        lower === '#fff' ||
+        lower === 'white' ||
+        lower === '#f8fafc' ||
+        lower === '#f1f5f9';
+      if ((theme === 'white' || theme === 'warm') && isWhiteOrNearWhite) {
+        return undefined;
+      }
+      return fontColor;
+    }
+    return undefined;
+  }, [showBgVideo, activeBgVideo, fontColor, theme]);
+
   return (
     <div className={`fixed inset-0 z-[100] w-screen h-screen ${themeClasses.bg} flex flex-col justify-between overflow-hidden select-none animate-in fade-in duration-200`}>
       {/* =================================================================== */}
@@ -805,7 +873,12 @@ export default function SongPresentationModal({
             loop
             muted
             playsInline
-            className="w-full h-full object-cover"
+            className={`w-full h-full object-cover transition-all duration-300 ${
+              isBlurred ? 'scale-105' : ''
+            }`}
+            style={{
+              filter: isBlurred ? `blur(${blurAmount}px)` : 'none',
+            }}
           />
           {/* Subtle contrast scrim to ensure lyrics are 100% readable */}
           <div className="absolute inset-0 bg-slate-950/65" />
@@ -930,6 +1003,27 @@ export default function SongPresentationModal({
             <Video className="w-4 h-4" />
             <span className="hidden sm:inline">Motion BG {showBgVideo ? 'ON' : 'OFF'}</span>
           </button>
+
+          {/* Blur Visualizer Video Toggle */}
+          {showBgVideo && activeBgVideo && (
+            <button
+              type="button"
+              onClick={() => {
+                const nextVal = !isBlurred;
+                setIsBlurred(nextVal);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('cfc_presentation_blur_video', String(nextVal));
+                }
+              }}
+              className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
+                isBlurred ? themeClasses.btnActive : themeClasses.btnBg
+              }`}
+              title="Toggle Blur Effect on Motion Visualizer"
+            >
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">Blur {isBlurred ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
 
           {/* Font Color Picker Dropdown */}
           <div className="relative">
@@ -1119,12 +1213,12 @@ export default function SongPresentationModal({
 
                 <h1
                   className={`text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black ${
-                    fontColor ? '' : themeClasses.lyricText
+                    effectiveFontColor ? '' : themeClasses.lyricText
                   } tracking-tight font-montserrat leading-tight drop-shadow-md`}
                   style={{
                     fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
                     fontWeight: 800,
-                    ...(fontColor ? { color: fontColor } : {}),
+                    ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
                     textShadow: showBgVideo && activeBgVideo
                       ? '0 4px 24px rgba(0,0,0,0.95), 0 2px 6px rgba(0,0,0,0.9)'
                       : '0 2px 14px rgba(0,0,0,0.25)',
@@ -1135,12 +1229,12 @@ export default function SongPresentationModal({
 
                 <p
                   className={`text-sm sm:text-lg font-bold font-montserrat opacity-80 ${
-                    fontColor ? '' : themeClasses.headerText
+                    effectiveFontColor ? '' : themeClasses.headerText
                   }`}
                   style={{
                     fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
                     fontWeight: 600,
-                    ...(fontColor ? { color: fontColor } : {}),
+                    ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
                   }}
                 >
                   Couples For Christ • Tuy Chapter
@@ -1155,7 +1249,7 @@ export default function SongPresentationModal({
                   <p
                     key={lIdx}
                     className={`font-montserrat font-bold ${
-                      fontColor ? '' : themeClasses.lyricText
+                      effectiveFontColor ? '' : themeClasses.lyricText
                     } ${
                       textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'
                     } leading-snug tracking-normal w-full px-2 transition-all`}
@@ -1164,7 +1258,7 @@ export default function SongPresentationModal({
                       lineHeight: 1.25,
                       fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
                       fontWeight: 700,
-                      ...(fontColor ? { color: fontColor } : {}),
+                      ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
                       textShadow: showBgVideo && activeBgVideo
                         ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
                         : '0 2px 10px rgba(0,0,0,0.2)',
@@ -1234,14 +1328,14 @@ export default function SongPresentationModal({
                                 )}
                                 <span
                                   className={`font-montserrat font-bold ${
-                                    fontColor ? '' : themeClasses.lyricText
+                                    effectiveFontColor ? '' : themeClasses.lyricText
                                   } transition-all tracking-normal leading-snug whitespace-pre`}
                                   style={{
                                     fontSize: `${dynamicLyricFontSize}rem`,
                                     lineHeight: 1.25,
                                     fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
                                     fontWeight: 700,
-                                    ...(fontColor ? { color: fontColor } : {}),
+                                    ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
                                     textShadow: showBgVideo && activeBgVideo
                                       ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
                                       : '0 2px 10px rgba(0,0,0,0.2)',

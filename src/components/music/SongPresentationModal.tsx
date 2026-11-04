@@ -534,6 +534,29 @@ export default function SongPresentationModal({
     return raw;
   }, [activePlaylist, activeSongInfo.songIndex, song, defaultBgVideo]);
 
+  // Dynamic font color resolution:
+  // - If motion background video is active, default to white or chosen color with high-contrast text shadow
+  // - If solid theme is active, protect against white-on-white by falling back to themeClasses.lyricText
+  const effectiveFontColor = useMemo(() => {
+    if (showBgVideo && activeBgVideo) {
+      return fontColor || '#ffffff';
+    }
+    if (fontColor) {
+      const lower = fontColor.toLowerCase().trim();
+      const isWhiteOrNearWhite =
+        lower === '#ffffff' ||
+        lower === '#fff' ||
+        lower === 'white' ||
+        lower === '#f8fafc' ||
+        lower === '#f1f5f9';
+      if ((theme === 'white' || theme === 'warm') && isWhiteOrNearWhite) {
+        return undefined;
+      }
+      return fontColor;
+    }
+    return undefined;
+  }, [showBgVideo, activeBgVideo, fontColor, theme]);
+
   // Transposed current key display
   const currentKey = useMemo(() => {
     const keyToUse = initialKey || activeSongInfo.key || 'G';
@@ -835,29 +858,6 @@ export default function SongPresentationModal({
       pillActive: 'bg-orange-400 text-stone-950 border-orange-300 shadow-md scale-105 font-extrabold',
     },
   }[theme];
-
-  // Dynamic font color resolution:
-  // - If motion background video is active, default to white or chosen color with high-contrast text shadow
-  // - If solid theme is active, protect against white-on-white by falling back to themeClasses.lyricText
-  const effectiveFontColor = useMemo(() => {
-    if (showBgVideo && activeBgVideo) {
-      return fontColor || '#ffffff';
-    }
-    if (fontColor) {
-      const lower = fontColor.toLowerCase().trim();
-      const isWhiteOrNearWhite =
-        lower === '#ffffff' ||
-        lower === '#fff' ||
-        lower === 'white' ||
-        lower === '#f8fafc' ||
-        lower === '#f1f5f9';
-      if ((theme === 'white' || theme === 'warm') && isWhiteOrNearWhite) {
-        return undefined;
-      }
-      return fontColor;
-    }
-    return undefined;
-  }, [showBgVideo, activeBgVideo, fontColor, theme]);
 
   return (
     <div className={`fixed inset-0 z-[100] w-screen h-screen ${themeClasses.bg} flex flex-col justify-between overflow-hidden select-none animate-in fade-in duration-200`}>

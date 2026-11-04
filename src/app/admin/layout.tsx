@@ -34,6 +34,7 @@ export default function AdminLayout({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [userEmail, setUserEmail] = useState('markcamilon@gmail.com');
   const [userName, setUserName] = useState('Bro. Mark Camilon');
+  const [userRole, setUserRole] = useState<'admin' | 'member'>('admin');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   // If on login page, just render children without sidebar
@@ -56,22 +57,33 @@ export default function AdminLayout({
 
       setIsAuthenticated(true);
 
-      const stored = localStorage.getItem('cfc_tuy_admin_user');
-      if (stored) {
-        setUserEmail(stored);
-      }
+      const syncProfileData = () => {
+        const stored = localStorage.getItem('cfc_tuy_admin_user');
+        if (stored) setUserEmail(stored);
 
-      const storedProfile = localStorage.getItem('cfc_tuy_current_user_profile_v1');
-      if (storedProfile) {
-        try {
-          const parsed = JSON.parse(storedProfile);
-          if (parsed?.fullName) {
-            setUserName(parsed.fullName);
-          }
-        } catch {
-          // ignore
+        const storedRole = localStorage.getItem('cfc_tuy_admin_role');
+        if (storedRole === 'member') {
+          setUserRole('member');
+        } else {
+          setUserRole('admin');
         }
-      }
+
+        const storedProfile = localStorage.getItem('cfc_tuy_current_user_profile_v1');
+        if (storedProfile) {
+          try {
+            const parsed = JSON.parse(storedProfile);
+            if (parsed?.fullName) setUserName(parsed.fullName);
+            if (parsed?.role === 'member') setUserRole('member');
+            else if (parsed?.role === 'admin') setUserRole('admin');
+          } catch {}
+        }
+      };
+
+      syncProfileData();
+      window.addEventListener('cfc_user_profile_updated', syncProfileData);
+      return () => {
+        window.removeEventListener('cfc_user_profile_updated', syncProfileData);
+      };
 
       const savedCollapsed = localStorage.getItem('cfc_admin_sidebar_collapsed');
       if (savedCollapsed !== null) {
@@ -443,9 +455,15 @@ export default function AdminLayout({
                     <span className="font-bold text-xs text-white block truncate group-hover:text-amber-300 transition-colors">
                       {userName}
                     </span>
-                    <span className="text-[8px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.2 rounded">
-                      Admin
-                    </span>
+                    {userRole === 'admin' ? (
+                      <span className="text-[8px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.2 rounded border border-amber-400/30">
+                        Admin
+                      </span>
+                    ) : (
+                      <span className="text-[8px] font-black uppercase bg-blue-400/30 text-blue-200 px-1.5 py-0.2 rounded border border-blue-400/30">
+                        Member
+                      </span>
+                    )}
                   </div>
                   <span className="text-[10px] text-white/70 block truncate">
                     {userEmail}

@@ -22,9 +22,11 @@ import {
 } from 'lucide-react';
 import { UserProfile, UserRole, MinistryType } from '@/types';
 import { fetchUsers, saveUser, deleteUser } from '@/lib/data/user-service';
+import { useCurrentUser } from '@/lib/auth/useCurrentUser';
 import { TUY_BARANGAYS } from '@/lib/data/mock-data';
 
 export default function AdminUsersPage() {
+  const { user: currentUser, isAdmin, isMember } = useCurrentUser();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -42,8 +44,9 @@ export default function AdminUsersPage() {
   const [formPassword, setFormPassword] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formBarangay, setFormBarangay] = useState('Poblacion 1');
+  const [formCustomBarangay, setFormCustomBarangay] = useState('');
   const [formMinistry, setFormMinistry] = useState<MinistryType>('CFC');
-  const [formRole, setFormRole] = useState<UserRole>('household_head');
+  const [formRole, setFormRole] = useState<UserRole>('member');
   const [formClpBatch, setFormClpBatch] = useState('Batch 31');
   const [formError, setFormError] = useState<string | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
@@ -82,8 +85,9 @@ export default function AdminUsersPage() {
     setFormPassword('');
     setFormPhone('');
     setFormBarangay('Poblacion 1');
+    setFormCustomBarangay('');
     setFormMinistry('CFC');
-    setFormRole('household_head');
+    setFormRole('member');
     setFormClpBatch('Batch 31');
     setFormError(null);
     setShowAddModal(true);
@@ -96,9 +100,18 @@ export default function AdminUsersPage() {
     setFormEmail(u.email);
     setFormPassword(''); // leave blank if unchanged
     setFormPhone(u.phoneNumber || '');
-    setFormBarangay(u.barangay || 'Poblacion 1');
+    
+    const userB = u.barangay || 'Poblacion 1';
+    if (TUY_BARANGAYS.includes(userB)) {
+      setFormBarangay(userB);
+      setFormCustomBarangay('');
+    } else {
+      setFormBarangay('Other');
+      setFormCustomBarangay(userB);
+    }
+
     setFormMinistry(u.ministry || 'CFC');
-    setFormRole(u.role || 'member');
+    setFormRole(u.role === 'admin' ? 'admin' : 'member');
     setFormClpBatch(u.clpBatch || '');
     setFormError(null);
     setShowAddModal(true);
@@ -133,15 +146,20 @@ export default function AdminUsersPage() {
     setFormError(null);
 
     try {
+      const finalBarangay =
+        formBarangay === 'Other'
+          ? (formCustomBarangay.trim() || 'Other')
+          : formBarangay;
+
       const saved = await saveUser({
         id: editingUser?.id,
         fullName: formFullName.trim(),
         spouseName: formSpouseName.trim() || undefined,
         email: emailToSave,
         phoneNumber: formPhone.trim() || undefined,
-        barangay: formBarangay,
+        barangay: finalBarangay,
         ministry: formMinistry,
-        role: formRole,
+        role: formRole === 'admin' ? 'admin' : 'member',
         clpBatch: formClpBatch.trim() || undefined,
         password: formPassword ? formPassword.trim() : undefined,
       });
@@ -150,7 +168,7 @@ export default function AdminUsersPage() {
       showToast(
         editingUser
           ? `✓ User "${saved.fullName}" updated successfully!`
-          : `✓ New user "${saved.fullName}" added successfully!`
+          : `✓ New user "${saved.fullName}" saved to Supabase Auth and database!`
       );
       loadUsers();
     } catch (err: any) {
@@ -208,39 +226,20 @@ export default function AdminUsersPage() {
   }, [users, searchQuery, roleFilter, ministryFilter]);
 
   const getRoleBadge = (role: UserRole) => {
-    switch (role) {
-      case 'admin':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
-            <ShieldCheck className="w-3 h-3 text-amber-600" />
-            Admin
-          </span>
-        );
-      case 'chapter_servant':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
-            Chapter Servant
-          </span>
-        );
-      case 'unit_leader':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
-            Unit Leader
-          </span>
-        );
-      case 'household_head':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
-            Household Head
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
-            Member
-          </span>
-        );
+    if (role === 'admin') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+          <ShieldCheck className="w-3 h-3 text-amber-600" />
+          Admin
+        </span>
+      );
     }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-200">
+        <UserCheck className="w-3 h-3 text-blue-600" />
+        Member
+      </span>
+    );
   };
 
   const getInitials = (name: string) => {
@@ -275,42 +274,46 @@ export default function AdminUsersPage() {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight">User Management</h1>
           <p className="text-blue-100 text-xs sm:text-sm mt-1 max-w-xl">
-            Authorize and manage chapter servants, household heads, unit leaders, and administrative accounts for Couples for Christ Tuy.
+            Authorize and manage administrator and member credentials for Couples for Christ Tuy Chapter.
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAddModal}
-          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#243c81] font-black text-sm shadow-lg hover:shadow-xl transition-all active:scale-95 shrink-0"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Add New User</span>
-        </button>
+        {isAdmin ? (
+          <button
+            onClick={handleOpenAddModal}
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-[#243c81] font-black text-sm shadow-lg hover:shadow-xl transition-all active:scale-95 shrink-0"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Add New User</span>
+          </button>
+        ) : (
+          <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/15 text-white text-xs font-bold border border-white/20 shrink-0">
+            <Lock className="w-4 h-4 text-amber-300" />
+            <span>Member Mode (View Only)</span>
+          </div>
+        )}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+      {/* Stats Cards (3 Cards: Total, Admins, Members) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Users</p>
           <p className="text-2xl font-black text-slate-900 mt-1">{users.length}</p>
+          <p className="text-xs text-slate-400 mt-1">All registered accounts</p>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Admins</p>
           <p className="text-2xl font-black text-amber-700 mt-1">
             {users.filter((u) => u.role === 'admin').length}
           </p>
+          <p className="text-xs text-amber-600/80 mt-1">Full CRUD privileges</p>
         </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Chapter / Unit</p>
-          <p className="text-2xl font-black text-purple-700 mt-1">
-            {users.filter((u) => u.role === 'chapter_servant' || u.role === 'unit_leader').length}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Members</p>
+          <p className="text-2xl font-black text-blue-700 mt-1">
+            {users.filter((u) => u.role === 'member').length}
           </p>
-        </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Household Heads</p>
-          <p className="text-2xl font-black text-emerald-700 mt-1">
-            {users.filter((u) => u.role === 'household_head').length}
-          </p>
+          <p className="text-xs text-blue-600/80 mt-1">View-only chapter access</p>
         </div>
       </div>
 
@@ -338,11 +341,8 @@ export default function AdminUsersPage() {
             className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-[#243c81]"
           >
             <option value="all">All Roles</option>
-            <option value="admin">Admin</option>
-            <option value="chapter_servant">Chapter Servant</option>
-            <option value="unit_leader">Unit Leader</option>
-            <option value="household_head">Household Head</option>
-            <option value="member">Member</option>
+            <option value="admin">Admin (CRUD)</option>
+            <option value="member">Member (View Only)</option>
           </select>
 
           <div className="flex items-center gap-1.5 text-xs text-slate-500 shrink-0 ml-1">
@@ -414,15 +414,15 @@ export default function AdminUsersPage() {
                         <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
                           {u.ministry}
                         </span>
-                        {u.role !== 'member' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black uppercase tracking-wide" title="Authorized to sign into the Admin Portal">
+                        {u.role === 'admin' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black uppercase tracking-wide" title="Admin with full CRUD privileges">
                             <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                            Admin Access
+                            Full CRUD
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-semibold uppercase tracking-wide" title="Member account without Admin Portal access">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 text-[10px] font-semibold uppercase tracking-wide" title="Member with View-Only access">
                             <Lock className="w-3 h-3 text-slate-400" />
-                            Public Member
+                            View Only
                           </span>
                         )}
                       </div>
@@ -451,23 +451,32 @@ export default function AdminUsersPage() {
                     </div>
                   </div>
 
-                  {/* Actions */}
+                  {/* Actions (Admin CRUD vs Member View Only) */}
                   <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                    <button
-                      onClick={() => handleOpenEditModal(u)}
-                      className="p-2 rounded-xl text-slate-600 hover:text-[#243c81] hover:bg-blue-50 transition-colors border border-slate-200"
-                      title="Edit User"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    {u.email !== 'markcamilon@gmail.com' && (
-                      <button
-                        onClick={() => handleRequestDelete(u)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors border border-slate-200"
-                        title="Delete User"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    {isAdmin ? (
+                      <>
+                        <button
+                          onClick={() => handleOpenEditModal(u)}
+                          className="p-2 rounded-xl text-slate-600 hover:text-[#243c81] hover:bg-blue-50 transition-colors border border-slate-200"
+                          title="Edit User"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        {u.email !== 'markcamilon@gmail.com' && (
+                          <button
+                            onClick={() => handleRequestDelete(u)}
+                            className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors border border-slate-200"
+                            title="Delete User"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-400 text-xs font-semibold flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-slate-400" />
+                        View Only
+                      </span>
                     )}
                   </div>
                 </div>
@@ -494,7 +503,7 @@ export default function AdminUsersPage() {
                   <p className="text-[11px] text-blue-200">
                     {editingUser
                       ? `Updating account details for ${editingUser.fullName}`
-                      : 'Provide login and leadership credentials for Tuy Chapter'}
+                      : 'Create Supabase Auth login & member record for Tuy Chapter'}
                   </p>
                 </div>
               </div>
@@ -565,11 +574,12 @@ export default function AdminUsersPage() {
                   </label>
                   <input
                     type="password"
-                    placeholder={editingUser ? '••••••••' : 'Min. 6 characters'}
+                    placeholder={editingUser ? '••••••••' : 'Min. 6 characters for login'}
                     value={formPassword}
                     onChange={(e) => setFormPassword(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#243c81]"
                   />
+                  <p className="text-[10px] text-slate-400 mt-0.5">Saves directly to Supabase Auth</p>
                 </div>
               </div>
 
@@ -589,7 +599,7 @@ export default function AdminUsersPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Barangay (Tuy) <span className="text-red-500">*</span>
+                    Home Barangay <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={formBarangay}
@@ -601,25 +611,38 @@ export default function AdminUsersPage() {
                         {b}
                       </option>
                     ))}
+                    <option value="Other">Other / Non-Tuy Barangay</option>
                   </select>
+                  {formBarangay === 'Other' && (
+                    <div className="mt-2 animate-in fade-in duration-200">
+                      <label className="block text-[11px] font-bold text-amber-800 mb-1">
+                        Specify Other Barangay / Municipality
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Brgy. Lanatan, Balayan, Batangas"
+                        value={formCustomBarangay}
+                        onChange={(e) => setFormCustomBarangay(e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs rounded-xl border border-amber-300 focus:outline-hidden focus:ring-2 focus:ring-[#243c81] bg-amber-50/70 text-slate-900 font-medium placeholder:text-slate-400"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Ministry Role <span className="text-red-500">*</span>
+                    User Role <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={formRole}
                     onChange={(e) => setFormRole(e.target.value as UserRole)}
-                    className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#243c81] bg-white text-slate-900 font-semibold"
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#243c81] bg-white text-slate-900 font-bold"
                   >
-                    <option value="admin">Admin</option>
-                    <option value="chapter_servant">Chapter Servant</option>
-                    <option value="unit_leader">Unit Leader</option>
-                    <option value="household_head">Household Head</option>
-                    <option value="member">Member</option>
+                    <option value="admin">Admin (Full CRUD)</option>
+                    <option value="member">Member (View Only)</option>
                   </select>
                 </div>
 

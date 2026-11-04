@@ -35,6 +35,7 @@ export default function AdminProfilePage() {
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [barangay, setBarangay] = useState('Poblacion 1');
+  const [customBarangay, setCustomBarangay] = useState('');
   const [ministry, setMinistry] = useState<MinistryType>('CFC');
   const [clpBatch, setClpBatch] = useState('Batch 28');
 
@@ -63,7 +64,16 @@ export default function AdminProfilePage() {
       setSpouseName(data.spouseName || '');
       setEmail(data.email);
       setPhoneNumber(data.phoneNumber || '');
-      setBarangay(data.barangay || 'Poblacion 1');
+      
+      const currentB = data.barangay || 'Poblacion 1';
+      if (TUY_BARANGAYS.includes(currentB)) {
+        setBarangay(currentB);
+        setCustomBarangay('');
+      } else {
+        setBarangay('Other');
+        setCustomBarangay(currentB);
+      }
+
       setMinistry(data.ministry || 'CFC');
       setClpBatch(data.clpBatch || 'Batch 28');
     } catch (err) {
@@ -80,11 +90,14 @@ export default function AdminProfilePage() {
     setSavingProfile(true);
 
     try {
+      const finalBarangay =
+        barangay === 'Other' ? (customBarangay.trim() || 'Other') : barangay;
+
       const updated = await updateCurrentUserProfile({
         fullName: fullName.trim(),
         spouseName: spouseName.trim() || undefined,
         phoneNumber: phoneNumber.trim() || undefined,
-        barangay,
+        barangay: finalBarangay,
         ministry,
         clpBatch: clpBatch.trim() || undefined,
       });
@@ -304,7 +317,23 @@ export default function AdminProfilePage() {
                         {b}
                       </option>
                     ))}
+                    <option value="Other">Other / Non-Tuy Barangay</option>
                   </select>
+                  {barangay === 'Other' && (
+                    <div className="mt-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <label className="block text-[11px] font-bold text-amber-800 mb-1">
+                        Specify Other Barangay / Municipality
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Brgy. Lanatan, Balayan, Batangas"
+                        value={customBarangay}
+                        onChange={(e) => setCustomBarangay(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-amber-300 focus:outline-hidden focus:ring-2 focus:ring-[#243c81] bg-amber-50/70 text-slate-900 font-medium placeholder:text-slate-400"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div>

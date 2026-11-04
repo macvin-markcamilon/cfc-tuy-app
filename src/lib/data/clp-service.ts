@@ -79,7 +79,12 @@ function getLocalPrograms(): CLPProgram[] {
     const raw = localStorage.getItem(STORAGE_KEYS.PROGRAMS);
     if (!raw) return [];
     const list = JSON.parse(raw) as CLPProgram[];
-    return list.filter((p) => !p.id.includes('b29') && !p.id.includes('b30'));
+    return list
+      .filter((p) => !p.id.includes('b29') && !p.id.includes('b30'))
+      .map((p) => ({
+        ...p,
+        chapter: p.chapter || 'Tuy Chapter',
+      }));
   } catch {
     return [];
   }
@@ -199,9 +204,22 @@ export async function fetchCLPPrograms(): Promise<CLPProgram[]> {
       if (!error && data && data.length > 0) {
         const mapped: CLPProgram[] = data.map((row: any) => {
           const rawLeader = row.team_leader || 'Bro. Mark & Sis. Grace Camilon';
-          const cleanLeader = rawLeader.includes('<!--CLP_GROUPINGS_JSON:::')
-            ? rawLeader.split('<!--CLP_GROUPINGS_JSON:::')[0].trim()
-            : rawLeader;
+          let cleanLeader = rawLeader;
+          if (cleanLeader.includes('<!--CLP_GROUPINGS_JSON:::')) {
+            cleanLeader = cleanLeader.split('<!--CLP_GROUPINGS_JSON:::')[0].trim();
+          }
+
+          let chapter = row.chapter || '';
+          if (!chapter && cleanLeader.includes('<!--CHAPTER:')) {
+            const chMatch = cleanLeader.match(/<!--CHAPTER:(.*?)-->/);
+            if (chMatch) {
+              chapter = chMatch[1];
+              cleanLeader = cleanLeader.replace(/<!--CHAPTER:.*?-->/, '').trim();
+            }
+          }
+          if (!chapter) {
+            chapter = 'Tuy Chapter';
+          }
 
           return {
             id: row.id,
@@ -212,6 +230,7 @@ export async function fetchCLPPrograms(): Promise<CLPProgram[]> {
             status: row.status || 'Upcoming',
             batchNumber: row.batch_number || '',
             teamLeader: cleanLeader || 'Bro. Mark & Sis. Grace Camilon',
+            chapter: chapter,
             couplesCount: 0,
             talksCount: 8,
           };
@@ -255,7 +274,8 @@ export async function fetchCLPPrograms(): Promise<CLPProgram[]> {
 export async function saveCLPProgram(program: CLPProgram): Promise<CLPProgram> {
   const supabase = createClient();
   const progId = isValidUUID(program.id) ? program.id : generateUUID();
-  let savedProgram: CLPProgram = { ...program, id: progId };
+  const chapterVal = program.chapter?.trim() || 'Tuy Chapter';
+  let savedProgram: CLPProgram = { ...program, id: progId, chapter: chapterVal };
 
   // 1. Instantly persist locally so UI is responsive and never loses data
   const existing = getLocalPrograms().filter((p) => p.id !== program.id && p.id !== progId);
@@ -264,6 +284,9 @@ export async function saveCLPProgram(program: CLPProgram): Promise<CLPProgram> {
   // 2. Persist to Supabase
   if (supabase) {
     try {
+      const cleanLeader = program.teamLeader || 'Bro. Mark & Sis. Grace Camilon';
+      const leaderToStore = `${cleanLeader} <!--CHAPTER:${chapterVal}-->`;
+
       const payload: any = {
         id: progId,
         name: program.name,
@@ -272,7 +295,7 @@ export async function saveCLPProgram(program: CLPProgram): Promise<CLPProgram> {
         end_date: program.endDate,
         status: program.status || 'Upcoming',
         batch_number: program.batchNumber || null,
-        team_leader: program.teamLeader || null,
+        team_leader: leaderToStore,
       };
 
       const { data, error } = await supabase

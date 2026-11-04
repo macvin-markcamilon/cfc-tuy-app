@@ -5,11 +5,19 @@ import { generateUUID, isValidUUID } from './clp-service';
 const STORAGE_KEYS = {
   USERS: 'cfc_tuy_prod_users_v1',
   CURRENT_USER_PROFILE: 'cfc_tuy_current_user_profile_v1',
+  CURRENT_USER_ROLE: 'cfc_tuy_admin_role',
   DELETED_USERS: 'cfc_tuy_deleted_users_v1',
 };
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined';
+}
+
+export function normalizeRole(role?: any): UserRole {
+  if (!role) return 'member';
+  const r = String(role).toLowerCase().trim();
+  if (r === 'admin' || r === 'administrator') return 'admin';
+  return 'member';
 }
 
 function getDeletedUsers(): string[] {
@@ -54,7 +62,7 @@ const LEGACY_MOCK_USER_IDS = new Set([
   '00000000-0000-0000-0000-000000000005',
 ]);
 
-function getLocalUsers(): UserProfile[] {
+export function getLocalUsers(): UserProfile[] {
   if (!isBrowser()) return INITIAL_CFC_TUY_USERS;
   try {
     const deleted = getDeletedUsers();
@@ -67,12 +75,17 @@ function getLocalUsers(): UserProfile[] {
       const parsed = JSON.parse(raw);
       usersList = Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_CFC_TUY_USERS;
     }
-    return usersList.filter(
-      (u) =>
-        !deleted.includes(u.id) &&
-        !deleted.includes((u.email || '').toLowerCase()) &&
-        !LEGACY_MOCK_USER_IDS.has(u.id)
-    );
+    return usersList
+      .filter(
+        (u) =>
+          !deleted.includes(u.id) &&
+          !deleted.includes((u.email || '').toLowerCase()) &&
+          !LEGACY_MOCK_USER_IDS.has(u.id)
+      )
+      .map((u) => ({
+        ...u,
+        role: normalizeRole(u.role),
+      }));
   } catch {
     const deleted = getDeletedUsers();
     return INITIAL_CFC_TUY_USERS.filter(
@@ -80,14 +93,18 @@ function getLocalUsers(): UserProfile[] {
         !deleted.includes(u.id) &&
         !deleted.includes((u.email || '').toLowerCase()) &&
         !LEGACY_MOCK_USER_IDS.has(u.id)
-    );
+    ).map((u) => ({ ...u, role: normalizeRole(u.role) }));
   }
 }
 
-function setLocalUsers(users: UserProfile[]): void {
+export function setLocalUsers(users: UserProfile[]): void {
   if (!isBrowser()) return;
   try {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    const normalized = users.map((u) => ({
+      ...u,
+      role: normalizeRole(u.role),
+    }));
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(normalized));
   } catch (err) {
     console.error('Error saving local users:', err);
   }
@@ -126,9 +143,9 @@ export async function fetchUsers(): Promise<UserProfile[]> {
               spouseName: row.spouse_name || '',
               email: row.email || '',
               phoneNumber: row.phone_number || '',
-              barangay: row.barangay || 'Poblacion 1',
+              barangay: row.barangay || 'Rizal (Pob.)',
               ministry: (row.ministry as MinistryType) || 'CFC',
-              role: (row.role as UserRole) || 'member',
+              role: normalizeRole(row.role),
               clpBatch: row.clp_batch || '',
               password: existingLocal?.password || row.password || undefined,
               createdAt: row.created_at || new Date().toISOString(),
@@ -136,7 +153,6 @@ export async function fetchUsers(): Promise<UserProfile[]> {
             };
           });
 
-        // Merge with local to ensure default accounts exist unless deleted
         const mergedMap = new Map<string, UserProfile>();
         local.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
         mapped.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
@@ -158,6 +174,9 @@ export async function fetchUsers(): Promise<UserProfile[]> {
 
 /**
  * Save / Create / Update a user
+ * - Saves in Supabase Auth (signUp) so they can log in with credentials
+ * - Saves in public.profiles table in Supabase
+ * - Saves in local cache
  */
 export async function saveUser(
   userData: Partial<UserProfile> & { password?: string }
@@ -190,9 +209,9 @@ export async function saveUser(
     spouseName: userData.spouseName !== undefined ? userData.spouseName : existing?.spouseName || '',
     email: (userData.email || existing?.email || '').toLowerCase(),
     phoneNumber: userData.phoneNumber !== undefined ? userData.phoneNumber : existing?.phoneNumber || '',
-    barangay: userData.barangay || existing?.barangay || 'Poblacion 1',
+    barangay: userData.barangay || existing?.barangay || 'Rizal (Pob.)',
     ministry: userData.ministry || existing?.ministry || 'CFC',
-    role: userData.role || existing?.role || 'member',
+    role: normalizeRole(userData.role || existing?.role),
     clpBatch: userData.clpBatch !== undefined ? userData.clpBatch : existing?.clpBatch || '',
     password: passwordToSave,
     createdAt: userData.createdAt || existing?.createdAt || now,
@@ -207,8 +226,30 @@ export async function saveUser(
 
   const supabase = createClient();
   if (supabase) {
+    // 1. Attempt Supabase Auth creation if password provided
+    if (user.email && passwordToSave) {
+      try {
+        await supabase.auth.signUp({
+          email: user.email,
+          password: passwordToSave,
+          options: {
+            data: {
+              full_name: user.fullName,
+              role: user.role,
+              phone_number: user.phoneNumber,
+              barangay: user.barangay,
+              ministry: user.ministry,
+              clp_batch: user.clpBatch,
+            },
+          },
+        });
+      } catch (authErr) {
+        console.warn('Supabase auth signUp note:', authErr);
+      }
+    }
+
+    // 2. Upsert into public.profiles
     try {
-      // Upsert into profiles
       await supabase.from('profiles').upsert({
         id: user.id,
         full_name: user.fullName,
@@ -224,6 +265,10 @@ export async function saveUser(
     } catch (err) {
       console.warn('Supabase profile save error, saved locally:', err);
     }
+  }
+
+  if (isBrowser()) {
+    window.dispatchEvent(new Event('cfc_user_profile_updated'));
   }
 
   return user;
@@ -245,43 +290,28 @@ export async function deleteUser(id: string, email?: string): Promise<{ success:
 
   const supabase = createClient();
   if (supabase) {
-    const supabaseErrors: string[] = [];
     try {
       if (isValidUUID(id)) {
-        const { error: errId } = await supabase.from('profiles').delete().eq('id', id);
-        if (errId) {
-          console.warn('Supabase delete profile by id error:', errId.message);
-          supabaseErrors.push(errId.message);
-        }
+        await supabase.from('profiles').delete().eq('id', id);
       }
       if (email) {
-        const { error: errEmail } = await supabase
-          .from('profiles')
-          .delete()
-          .eq('email', email.toLowerCase());
-        if (errEmail) {
-          console.warn('Supabase delete profile by email error:', errEmail.message);
-          supabaseErrors.push(errEmail.message);
-        }
+        await supabase.from('profiles').delete().eq('email', email.toLowerCase());
       }
     } catch (err: any) {
       console.warn('Supabase delete user error:', err);
-      supabaseErrors.push(err?.message || 'Supabase delete exception');
     }
+  }
 
-    if (supabaseErrors.length > 0) {
-      return {
-        success: true,
-        message: `Removed locally. Supabase note: ${supabaseErrors.join('; ')}`,
-      };
-    }
+  if (isBrowser()) {
+    window.dispatchEvent(new Event('cfc_user_profile_updated'));
   }
 
   return { success: true };
 }
 
 /**
- * Authenticate user credentials against user management list
+ * Authenticate user credentials against registered users and Supabase Auth
+ * - Admins and Members are both allowed to log in!
  */
 export async function authenticateUser(
   emailInput: string,
@@ -298,7 +328,7 @@ export async function authenticateUser(
   const users = await fetchUsers();
   const matchedUser = users.find((u) => u.email.toLowerCase() === email);
 
-  // 2. Attempt Supabase Auth if available
+  // 2. Attempt Supabase Auth signInWithPassword
   const supabase = createClient();
   let supabaseAuthSuccess = false;
   if (supabase) {
@@ -318,7 +348,7 @@ export async function authenticateUser(
     if (matchedUser.password) {
       isValidPassword = matchedUser.password === password;
     } else {
-      // Preset fallbacks
+      // Default initial fallbacks
       if (email === 'markcamilon@gmail.com' && (password === 'weakPassword' || password === 'password123')) {
         isValidPassword = true;
       } else if (password === 'password123') {
@@ -330,7 +360,7 @@ export async function authenticateUser(
   if (!matchedUser) {
     return {
       success: false,
-      message: 'Account not found. Only authorized CFC Tuy chapter servants can access the admin portal.',
+      message: 'Account not found. Please verify your email or ask an administrator to register your account.',
     };
   }
 
@@ -341,22 +371,37 @@ export async function authenticateUser(
     };
   }
 
-  // Role check: Only leaders / servants can access the admin portal
-  if (matchedUser.role === 'member') {
-    return {
-      success: false,
-      message: 'Access Restricted: Your account is listed as a general member. Only Chapter Servants, Unit Leaders, Household Heads, and Administrators can access the Admin Portal.',
-    };
-  }
+  // Normalize user role
+  matchedUser.role = normalizeRole(matchedUser.role);
 
   // Store login session
   if (isBrowser()) {
     localStorage.setItem('cfc_tuy_admin_auth', 'true');
     localStorage.setItem('cfc_tuy_admin_user', matchedUser.email);
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ROLE, matchedUser.role);
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER_PROFILE, JSON.stringify(matchedUser));
+    window.dispatchEvent(new Event('cfc_user_profile_updated'));
   }
 
   return { success: true, user: matchedUser };
+}
+
+/**
+ * Get current logged in user's role: 'admin' | 'member'
+ */
+export function getCurrentUserRole(): 'admin' | 'member' {
+  if (!isBrowser()) return 'admin';
+  try {
+    const role = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_ROLE);
+    if (role === 'member') return 'member';
+    if (role === 'admin') return 'admin';
+    const raw = localStorage.getItem(STORAGE_KEYS.CURRENT_USER_PROFILE);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p?.role) return normalizeRole(p.role);
+    }
+  } catch {}
+  return 'admin';
 }
 
 /**
@@ -368,7 +413,10 @@ export async function getCurrentUserProfile(fallbackEmail?: string): Promise<Use
     if (rawSaved) {
       try {
         const parsed = JSON.parse(rawSaved);
-        if (parsed && parsed.email) return parsed;
+        if (parsed && parsed.email) {
+          parsed.role = normalizeRole(parsed.role);
+          return parsed;
+        }
       } catch {
         // continue
       }
@@ -401,14 +449,15 @@ export async function getCurrentUserProfile(fallbackEmail?: string): Promise<Use
             spouseName: profile.spouse_name || 'Sis. Grace Camilon',
             email: profile.email || user.email,
             phoneNumber: profile.phone_number || '0917-123-4567',
-            barangay: profile.barangay || 'Poblacion 1',
+            barangay: profile.barangay || 'Rizal (Pob.)',
             ministry: (profile.ministry as MinistryType) || 'CFC',
-            role: (profile.role as UserRole) || 'admin',
+            role: normalizeRole(profile.role),
             clpBatch: profile.clp_batch || 'Batch 28',
             createdAt: profile.created_at || new Date().toISOString(),
           };
           if (isBrowser()) {
             localStorage.setItem(STORAGE_KEYS.CURRENT_USER_PROFILE, JSON.stringify(loaded));
+            localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ROLE, loaded.role);
           }
           return loaded;
         }
@@ -421,8 +470,10 @@ export async function getCurrentUserProfile(fallbackEmail?: string): Promise<Use
   const all = getLocalUsers();
   const match =
     all.find((u) => u.email.toLowerCase() === emailToLookup.toLowerCase()) || all[0];
+  match.role = normalizeRole(match.role);
   if (isBrowser()) {
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER_PROFILE, JSON.stringify(match));
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ROLE, match.role);
   }
   return match;
 }
@@ -437,14 +488,17 @@ export async function updateCurrentUserProfile(
   const updated: UserProfile = {
     ...current,
     ...profileData,
+    role: normalizeRole(profileData.role || current.role),
     updatedAt: new Date().toISOString(),
   };
 
   if (isBrowser()) {
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER_PROFILE, JSON.stringify(updated));
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ROLE, updated.role);
     if (updated.email) {
       localStorage.setItem('cfc_tuy_admin_user', updated.email);
     }
+    window.dispatchEvent(new Event('cfc_user_profile_updated'));
   }
 
   await saveUser(updated);
@@ -453,6 +507,8 @@ export async function updateCurrentUserProfile(
 
 /**
  * Change current user password
+ * - Updates Supabase Auth if session exists
+ * - Updates local user profile and credentials
  */
 export async function updateUserPassword(newPassword: string): Promise<{ success: boolean; message: string }> {
   const supabase = createClient();
@@ -472,16 +528,19 @@ export async function updateUserPassword(newPassword: string): Promise<{ success
         }
       }
     } catch (err: any) {
-      console.warn('Supabase auth session check failed:', err?.message);
+      console.warn('Supabase auth session check notice:', err?.message);
     }
   }
 
-  // Always sync password in current user profile (profiles table & localStorage cache)
   try {
     const currentProfile = await getCurrentUserProfile();
     if (currentProfile) {
       currentProfile.password = newPassword;
       await saveUser(currentProfile);
+      if (isBrowser()) {
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER_PROFILE, JSON.stringify(currentProfile));
+        window.dispatchEvent(new Event('cfc_user_profile_updated'));
+      }
     }
     return { success: true, message: 'Password updated successfully!' };
   } catch (err: any) {
@@ -510,4 +569,3 @@ export async function saveUsersBulk(
   }
   return saved;
 }
-

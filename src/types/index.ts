@@ -179,6 +179,7 @@ export interface CLPProgram {
   status: 'Upcoming' | 'Ongoing' | 'Completed';
   batchNumber: string;
   teamLeader: string;
+  chapter?: string;
   couplesCount?: number;
   talksCount?: number;
 }
@@ -187,7 +188,7 @@ export interface CLPProgram {
 // User & Profile Management
 // =====================================
 
-export type UserRole = 'admin' | 'chapter_servant' | 'unit_leader' | 'household_head' | 'member';
+export type UserRole = 'admin' | 'member';
 
 export interface UserProfile {
   id: string;

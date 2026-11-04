@@ -9,6 +9,8 @@ import {
   saveDirectoryCouple,
   deleteDirectoryCouple,
   fileToDataUrl,
+  checkDatabaseSyncStatus,
+  syncLocalCouplesToDatabase,
 } from '@/lib/data/members-service';
 import { HouseholdGroup, DirectoryCouple, MinistryType } from '@/types';
 import TuyMapPicker from '@/components/map/TuyMapPicker';
@@ -44,6 +46,8 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   IdCard,
+  FileText,
+  RefreshCw,
 } from 'lucide-react';
 import AnniversaryGreetingCardModal from '@/components/common/AnniversaryGreetingCardModal';
 import BirthdayGreetingCardModal from '@/components/common/BirthdayGreetingCardModal';
@@ -86,6 +90,128 @@ export default function MembersAdminPage() {
   // Delete Confirmation Modal State
   const [deleteModalCouple, setDeleteModalCouple] = useState<DirectoryCouple | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Cloud Database Sync Status
+  const [dbSyncStatus, setDbSyncStatus] = useState<{
+    tableExists: boolean;
+    cloudCount: number;
+    localCount: number;
+    error?: string;
+  } | null>(null);
+  const [isSyncingDb, setIsSyncingDb] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  const SQL_SETUP_SCRIPT = `-- Couples for Christ Tuy Chapter - Directory Tables Setup
+-- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/_/sql
+
+-- 1. Create Directory Couples Table
+CREATE TABLE IF NOT EXISTS public.directory_couples (
+  id TEXT PRIMARY KEY,
+  husband_first_name TEXT NOT NULL,
+  husband_last_name TEXT NOT NULL,
+  husband_nickname TEXT,
+  husband_photo_url TEXT,
+  husband_birthday DATE,
+  husband_occupation TEXT,
+  husband_contact TEXT,
+  husband_email TEXT,
+  wife_first_name TEXT NOT NULL,
+  wife_last_name TEXT NOT NULL,
+  wife_nickname TEXT,
+  wife_photo_url TEXT,
+  wife_birthday DATE,
+  wife_occupation TEXT,
+  wife_contact TEXT,
+  wife_email TEXT,
+  couple_photo_url TEXT,
+  wedding_anniversary DATE,
+  ministry TEXT DEFAULT 'CFC',
+  household_group_id TEXT,
+  household_group_name TEXT,
+  barangay TEXT NOT NULL,
+  address TEXT,
+  coordinates DOUBLE PRECISION[],
+  status TEXT DEFAULT 'Active',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.directory_couples ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow full access on directory_couples" ON public.directory_couples;
+CREATE POLICY "Allow full access on directory_couples"
+  ON public.directory_couples FOR ALL USING (true) WITH CHECK (true);
+
+-- 2. Create Household Groups Table
+CREATE TABLE IF NOT EXISTS public.household_groups (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  leader_name TEXT NOT NULL,
+  leader_contact TEXT,
+  co_leader_name TEXT,
+  co_leader_contact TEXT,
+  ministry TEXT NOT NULL DEFAULT 'CFC',
+  barangay TEXT NOT NULL DEFAULT 'Rizal (Pob.)',
+  meeting_schedule TEXT,
+  meeting_day TEXT,
+  meeting_venue TEXT,
+  members_count INTEGER DEFAULT 0,
+  members JSONB DEFAULT '[]'::jsonb,
+  unit_leader_name TEXT,
+  status TEXT DEFAULT 'Active',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.household_groups ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow full access on household_groups" ON public.household_groups;
+CREATE POLICY "Allow full access on household_groups"
+  ON public.household_groups FOR ALL USING (true) WITH CHECK (true);
+`;
+
+  const handleCopySql = async () => {
+    try {
+      await navigator.clipboard.writeText(SQL_SETUP_SCRIPT);
+      setCopiedSql(true);
+      triggerToast('SQL script copied! Paste and click Run in Supabase SQL Editor.');
+      setTimeout(() => setCopiedSql(false), 3500);
+    } catch (err) {
+      console.error('Failed to copy SQL script:', err);
+    }
+  };
+
+  const handleCheckAndSyncDb = async () => {
+    try {
+      setIsSyncingDb(true);
+      const status = await checkDatabaseSyncStatus();
+      setDbSyncStatus(status);
+
+      if (status.tableExists) {
+        if (status.localCount > 0) {
+          const res = await syncLocalCouplesToDatabase();
+          triggerToast(res.message);
+          const updatedStatus = await checkDatabaseSyncStatus();
+          setDbSyncStatus(updatedStatus);
+          const updatedCouples = await fetchDirectoryCouples();
+          setCouples(updatedCouples);
+        } else {
+          const updatedCouples = await fetchDirectoryCouples();
+          setCouples(updatedCouples);
+          triggerToast('Connected to Supabase! Directory updated.');
+        }
+      } else {
+        triggerToast('Table "directory_couples" not found yet. Please run the SQL in Supabase.');
+      }
+    } catch (err) {
+      console.error('Database check/sync error:', err);
+      triggerToast('Error checking database status.');
+    } finally {
+      setIsSyncingDb(false);
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Add Couple Form States (with Nickname & 3 Photo Uploads!)
@@ -159,12 +285,14 @@ export default function MembersAdminPage() {
     async function loadData() {
       try {
         setLoading(true);
-        const [couplesData, groupsData] = await Promise.all([
+        const [couplesData, groupsData, syncInfo] = await Promise.all([
           fetchDirectoryCouples(),
           fetchHouseholdGroups(),
+          checkDatabaseSyncStatus(),
         ]);
         setCouples(couplesData);
         setHouseholdGroups(groupsData);
+        setDbSyncStatus(syncInfo);
       } catch (err) {
         console.error('Failed to load directory members:', err);
       } finally {
@@ -485,6 +613,85 @@ export default function MembersAdminPage() {
           </Link>
         </div>
       </div>
+
+      {/* ===================================================================== */}
+      {/* DATABASE SYNC STATUS BANNER                                           */}
+      {/* ===================================================================== */}
+      {dbSyncStatus && !dbSyncStatus.tableExists && (
+        <div className="p-5 sm:p-6 rounded-3xl bg-amber-50 border-2 border-amber-300 shadow-sm text-amber-950 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 mt-0.5 font-bold shadow-xs">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="font-black text-sm sm:text-base text-amber-900">
+                  Cloud Database Setup Required for Cross-Browser Sync
+                </h4>
+                <span className="text-[10px] uppercase font-black bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md">
+                  Action Needed
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-amber-800 mt-1 max-w-3xl leading-relaxed">
+                The <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold text-amber-900">directory_couples</code> table has not been created in Supabase yet.
+                {couples.length > 0 ? (
+                  <> Your <strong>{couples.length} couples (86 brethren)</strong> are safely preserved in this browser’s local cache, but will not show in other browsers until the table is created.</>
+                ) : (
+                  <> Members added or imported in other browsers cannot sync until the table is created in Supabase.</>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0 self-start md:self-auto flex-wrap">
+            <button
+              type="button"
+              onClick={handleCopySql}
+              className="px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-blue-900 text-white font-black text-xs shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+            >
+              {copiedSql ? <Check className="w-4 h-4 text-emerald-400" /> : <FileText className="w-4 h-4 text-amber-300" />}
+              <span>{copiedSql ? 'Copied SQL!' : 'Copy SQL Setup Script'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCheckAndSyncDb}
+              disabled={isSyncingDb}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDb ? 'animate-spin' : ''}`} />
+              <span>{isSyncingDb ? 'Checking...' : 'Check & Sync Table'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {dbSyncStatus && dbSyncStatus.tableExists && dbSyncStatus.localCount > dbSyncStatus.cloudCount && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-blue-50 border border-blue-200 shadow-xs text-blue-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#243c81] text-amber-300 flex items-center justify-center shrink-0">
+              <Upload className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-bold text-slate-900">
+                Found {dbSyncStatus.localCount} couples stored locally in this browser.
+              </p>
+              <p className="text-[11px] text-slate-600">
+                Push your local directory data to Supabase so it appears across all browsers and devices.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleCheckAndSyncDb}
+            disabled={isSyncingDb}
+            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-sm transition-all active:scale-95 flex items-center gap-2 shrink-0 self-start sm:self-auto cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDb ? 'animate-spin' : ''}`} />
+            <span>{isSyncingDb ? 'Syncing...' : 'Sync to Cloud Database'}</span>
+          </button>
+        </div>
+      )}
 
       {/* ===================================================================== */}
       {/* QUICK STATS CARDS                                                     */}

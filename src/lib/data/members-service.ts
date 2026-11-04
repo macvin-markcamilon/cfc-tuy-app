@@ -141,21 +141,88 @@ export async function fetchDirectoryCouples(): Promise<DirectoryCouple[]> {
         });
 
         const supabaseIds = new Set(merged.map((c) => c.id));
+        const pendingUploads: DirectoryCouple[] = [];
         for (const [id, localItem] of localMap.entries()) {
           if (!supabaseIds.has(id) && !deletedIds.has(id)) {
             merged.push(localItem);
+            pendingUploads.push(localItem);
           }
+        }
+
+        // Automatic background sync to Supabase for any locally cached couples
+        if (pendingUploads.length > 0) {
+          saveDirectoryCouplesBulk(pendingUploads).catch((err) => {
+            console.warn('Background sync error pushing couples to Supabase:', err);
+          });
         }
 
         setLocalDirectoryCouples(merged);
         return merged;
       }
     }
-  } catch {
-    // Fall back to local storage
+  } catch (err) {
+    console.warn('Error fetching directory couples from Supabase, falling back to local:', err);
   }
 
   return localCouples;
+}
+
+export async function checkDatabaseSyncStatus(): Promise<{
+  tableExists: boolean;
+  cloudCount: number;
+  localCount: number;
+  error?: string;
+}> {
+  const localCouples = getLocalDirectoryCouples();
+  const supabase = createClient();
+  if (!supabase) {
+    return { tableExists: false, cloudCount: 0, localCount: localCouples.length, error: 'Supabase client not configured' };
+  }
+
+  try {
+    const { count, error } = await supabase
+      .from('directory_couples')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) {
+      return {
+        tableExists: false,
+        cloudCount: 0,
+        localCount: localCouples.length,
+        error: error.message || error.code || 'Table not found',
+      };
+    }
+
+    return {
+      tableExists: true,
+      cloudCount: count ?? 0,
+      localCount: localCouples.length,
+    };
+  } catch (err: any) {
+    return {
+      tableExists: false,
+      cloudCount: 0,
+      localCount: localCouples.length,
+      error: err?.message || 'Database connection error',
+    };
+  }
+}
+
+export async function syncLocalCouplesToDatabase(): Promise<{ success: boolean; syncedCount: number; message: string }> {
+  const localCouples = getLocalDirectoryCouples();
+  if (localCouples.length === 0) {
+    return { success: true, syncedCount: 0, message: 'No local couples found in this browser to sync.' };
+  }
+
+  const result = await saveDirectoryCouplesBulk(localCouples);
+  if (result.success) {
+    return {
+      success: true,
+      syncedCount: result.savedCount,
+      message: `Successfully synced ${result.savedCount} couples to Supabase database!`,
+    };
+  }
+  return { success: false, syncedCount: 0, message: 'Failed to sync couples to database.' };
 }
 
 export async function saveDirectoryCouple(couple: Partial<DirectoryCouple>): Promise<DirectoryCouple> {

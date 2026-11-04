@@ -81,6 +81,22 @@ export async function fetchHouseholdGroups(): Promise<HouseholdGroup[]> {
           updatedAt: row.updated_at ? String(row.updated_at) : undefined,
         }));
 
+        const local = getLocalGroups();
+        const localMap = new Map<string, HouseholdGroup>(local.map((g) => [g.id, g]));
+        const supabaseIds = new Set(mapped.map((g) => g.id));
+        const pendingUploads: HouseholdGroup[] = [];
+
+        for (const [id, localItem] of localMap.entries()) {
+          if (!supabaseIds.has(id)) {
+            mapped.push(localItem);
+            pendingUploads.push(localItem);
+          }
+        }
+
+        if (pendingUploads.length > 0) {
+          Promise.all(pendingUploads.map((g) => saveHouseholdGroup(g))).catch(() => {});
+        }
+
         setLocalGroups(mapped);
         return mapped;
       }

@@ -157,6 +157,7 @@ export function transposeChord(chord: string, semitones: number): string {
  * Transpose an entire ChordPro or Chord-annotated text by semitones
  */
 export function transposeSongContent(content: string, semitones: number): string {
+  if (!content || typeof content !== 'string') return '';
   if (semitones === 0) return content;
 
   // Bracket notation [G] -> [A]

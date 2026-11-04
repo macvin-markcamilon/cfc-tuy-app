@@ -75,7 +75,61 @@ export interface PresentationLine {
   }[];
 }
 
-export default function SongPresentationModal({
+class PresentationErrorBoundary extends React.Component<
+  { children: React.ReactNode; onClose?: () => void },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('SongPresentationModal Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-[100] bg-slate-950/95 text-white flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-amber-400 text-slate-950 flex items-center justify-center mb-4 shadow-xl font-black">
+            <Tv className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black mb-2">Unable to load presentation view</h2>
+          <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
+            {this.state.error?.message || 'A display issue occurred while preparing the presentation slides.'}
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                if (this.props.onClose) this.props.onClose();
+              }}
+              className="px-5 py-2.5 rounded-2xl bg-white text-slate-950 font-black text-xs hover:bg-slate-200 transition-all shadow-md active:scale-95"
+            >
+              Exit Presentation
+            </button>
+            <button
+              type="button"
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="px-5 py-2.5 rounded-2xl bg-[#243c81] text-white font-black text-xs hover:bg-blue-800 transition-all shadow-md active:scale-95"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function SongPresentationModalContent({
   isOpen,
   song,
   playlist,
@@ -731,16 +785,24 @@ export default function SongPresentationModal({
 
   // HTML5 Fullscreen handler
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch((err) => {
-        console.error('Failed to enter fullscreen:', err);
-      });
-      setIsFullscreen(true);
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
+    try {
+      if (!document.fullscreenElement) {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else if ((document.documentElement as any).webkitRequestFullscreen) {
+          (document.documentElement as any).webkitRequestFullscreen();
+        }
+        setIsFullscreen(true);
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
+        }
+        setIsFullscreen(false);
       }
-      setIsFullscreen(false);
+    } catch (err) {
+      console.warn('Fullscreen toggle failed:', err);
     }
   };
 
@@ -1374,14 +1436,14 @@ export default function SongPresentationModal({
                           )}
                           <span
                             className={`font-montserrat font-bold ${
-                              fontColor ? '' : themeClasses.lyricText
+                              effectiveFontColor ? '' : themeClasses.lyricText
                             } transition-all tracking-normal leading-snug whitespace-pre`}
                             style={{
                               fontSize: `${dynamicLyricFontSize}rem`,
                               lineHeight: 1.25,
                               fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
                               fontWeight: 700,
-                              ...(fontColor ? { color: fontColor } : {}),
+                              ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
                               textShadow: showBgVideo && activeBgVideo
                                 ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
                                 : '0 2px 10px rgba(0,0,0,0.2)',
@@ -1470,7 +1532,7 @@ export default function SongPresentationModal({
               }`}
               title="Next Slide (Right Arrow / Space / Down / PageDown)"
             >
-              <span>{isLastSlideOfCurrentSong && nextSongTitle ? `Next: ${nextSongTitle.substring(0, 10)}..` : 'Next Slide'}</span>
+              <span>{isLastSlideOfCurrentSong && nextSongTitle ? `Next: ${String(nextSongTitle).substring(0, 10)}..` : 'Next Slide'}</span>
               <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
 
@@ -1548,7 +1610,7 @@ export default function SongPresentationModal({
                 currentSlideIndex === idx ? themeClasses.pillActive : themeClasses.pillBg
               }`}
             >
-              {slide.totalSongsInPlaylist > 1 ? `${slide.songTitle.substring(0, 8)}..: ${slide.title}` : (slide.title || `Slide ${idx + 1}`)}
+              {slide.totalSongsInPlaylist > 1 ? `${String(slide.songTitle || 'Song').substring(0, 8)}..: ${slide.title || 'Slide'}` : (slide.title || `Slide ${idx + 1}`)}
             </button>
           ))}
         </div>
@@ -1604,5 +1666,14 @@ export default function SongPresentationModal({
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function SongPresentationModal(props: SongPresentationModalProps) {
+  if (!props.isOpen) return null;
+  return (
+    <PresentationErrorBoundary onClose={props.onClose}>
+      <SongPresentationModalContent {...props} />
+    </PresentationErrorBoundary>
   );
 }

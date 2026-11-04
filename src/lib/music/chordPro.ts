@@ -56,6 +56,9 @@ export function getSectionType(
  * Parse a single line of ChordPro formatted or standard text
  */
 export function parseChordProLine(line: string): ChordProLineParsed {
+  if (!line || typeof line !== 'string') {
+    return { type: 'empty' };
+  }
   const trimmed = line.trim();
   if (!trimmed) {
     return { type: 'empty' };

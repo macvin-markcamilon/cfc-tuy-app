@@ -8,6 +8,7 @@ import {
   fetchWorshipSongs,
   deleteWorshipSong,
   isYouTubeUrl,
+  subscribeToSongsChanges,
 } from '@/lib/data/songs-service';
 import SongDetailModal from '@/components/music/SongDetailModal';
 import {
@@ -56,20 +57,43 @@ function SongsAdminContent() {
     }
   }, [searchParams]);
 
-  // Load songs
+  // Load songs + Real-time Sync
   useEffect(() => {
+    let isMounted = true;
+
     async function load() {
       try {
         setLoading(true);
         const data = await fetchWorshipSongs();
-        setSongs(data);
+        if (isMounted) {
+          setSongs(data);
+        }
       } catch (err) {
         console.error('Failed to load songs:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     load();
+
+    // Subscribe to cross-device and cross-tab real-time songs changes
+    const unsubscribe = subscribeToSongsChanges(async () => {
+      try {
+        const fresh = await fetchWorshipSongs();
+        if (isMounted) {
+          setSongs(fresh);
+        }
+      } catch (err) {
+        console.error('Songs admin realtime sync refresh error:', err);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Filtered & Sorted Songs

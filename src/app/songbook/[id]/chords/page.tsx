@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   WorshipSong,
   fetchWorshipSongById,
+  subscribeToSongsChanges,
 } from '@/lib/data/songs-service';
 import InteractiveChordSheet from '@/components/music/InteractiveChordSheet';
 import SongPresentationModal from '@/components/music/SongPresentationModal';
@@ -43,18 +44,40 @@ export default function ChordsOnlyPage({ params }: ChordsOnlyPageProps) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadData() {
       try {
         setLoading(true);
         const targetSong = await fetchWorshipSongById(songId);
-        setSong(targetSong);
+        if (isMounted) {
+          setSong(targetSong);
+        }
       } catch (err) {
         console.error('Failed to load song chords:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadData();
+
+    const unsubscribe = subscribeToSongsChanges(async () => {
+      try {
+        const targetSong = await fetchWorshipSongById(songId);
+        if (isMounted) {
+          setSong(targetSong);
+        }
+      } catch (err) {
+        console.error('Song chords realtime sync refresh error:', err);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [songId]);
 
   // Audio control

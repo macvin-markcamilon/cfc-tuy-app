@@ -46,235 +46,96 @@ export function isYouTubeUrl(url?: string): boolean {
 }
 
 const STORAGE_KEY = 'cfc_tuy_worship_songs_v1';
+const DELETED_SONGS_KEY = 'cfc_tuy_worship_songs_deleted_v1';
 
-// Seed CFC Worship Songs Repertoire with authentic chords
-export const DEFAULT_CFC_SONGS: WorshipSong[] = [
-  {
-    id: 'song-1-light-of-christ',
-    title: 'The Light of Christ',
-    artist: 'Couples for Christ',
-    key: 'G',
-    tempo: 'Upbeat (110 BPM)',
-    timeSignature: '4/4',
-    category: 'Gathering',
-    ministry: 'CFC',
-    tags: ['Gathering', 'Praise', 'Assembly'],
-    audioUrl: '',
-    youtubeUrl: 'https://www.youtube.com/watch?v=uwKeGjfZbhv',
-    createdAt: new Date().toISOString(),
-    lyricsAndChords: `[Intro]
-[G]  [C]  [D]  [G]
+/**
+ * Empty default list - real songs are always sourced from Supabase.
+ */
+export const DEFAULT_CFC_SONGS: WorshipSong[] = [];
 
-[Verse 1]
-[G]The light of Christ has [C]come into the [G]world
-The [Em]light of Christ has [C]come into the [D]world
-[G]We must all be [C]born again to [G]see the Kingdom of [Em]God
-The [C]light of Christ has [D]come into the [G]world.
-
-[Chorus]
-[G]All have died and [C]are no more, [D]Christ has won the [G]victory!
-[G]All have died and [C]are no more, [D]Christ has won the [G]victory!
-
-[Verse 2]
-[G]The Spirit of God breathes [C]wherever it [G]wills
-The [Em]Spirit of God breathes [C]wherever it [D]wills
-[G]We must all be [C]born again to [G]see the Kingdom of [Em]God
-The [C]light of Christ has [D]come into the [G]world.
-
-[Chorus]
-[G]All have died and [C]are no more, [D]Christ has won the [G]victory!
-[G]All have died and [C]are no more, [D]Christ has won the [G]victory!
-
-[Outro]
-[C]The light of Christ has [D]come into the [G]world!`,
-  },
-  {
-    id: 'song-2-ablaze',
-    title: 'Ablaze for Jesus',
-    artist: 'Youth for Christ / CFC',
-    key: 'D',
-    tempo: 'Fast Praise (128 BPM)',
-    timeSignature: '4/4',
-    category: 'Praise',
-    ministry: 'YFC',
-    tags: ['Fast Praise', 'Youth', 'Energizing'],
-    audioUrl: '',
-    createdAt: new Date().toISOString(),
-    lyricsAndChords: `[Intro]
-[D]  [G]  [Bm]  [A]
-
-[Verse 1]
-[D]I want to live my [G]life for You
-[Bm]In everything I [A]say and do
-[D]Your fire burning [G]deep inside
-[Bm]I will not run, [A]I will not hide.
-
-[Chorus]
-[D]Ablaze! Ablaze for [G]Jesus!
-[Bm]Setting the world on [A]fire!
-[D]Ablaze! With passion and [G]purpose!
-[Bm]Lifting Your name on [A]high!
-
-[Verse 2]
-[D]We are the light in the [G]darkest night
-[Bm]Walking by faith and [A]not by sight
-[D]One generation [G]standing strong
-[Bm]Singing the victor's [A]holy song!
-
-[Chorus]
-[D]Ablaze! Ablaze for [G]Jesus!
-[Bm]Setting the world on [A]fire!
-[D]Ablaze! With passion and [G]purpose!
-[Bm]Lifting Your name on [A]high!
-
-[Bridge]
-[G]No turning back, [A]no backing down
-[Bm]We wear the cross, [D/F#]we seek the crown
-[G]Jesus, You are [A]Lord of all!`,
-  },
-  {
-    id: 'song-3-god-is-enough',
-    title: 'God is Enough',
-    artist: 'CFC Music Ministry',
-    key: 'G',
-    tempo: 'Slow Worship (68 BPM)',
-    timeSignature: '4/4',
-    category: 'Worship',
-    ministry: 'CFC',
-    tags: ['Worship', 'Surrender', 'Reflection'],
-    audioUrl: '',
-    createdAt: new Date().toISOString(),
-    lyricsAndChords: `[Intro]
-[G]  [D/F#]  [Em]  [C]
-
-[Verse 1]
-[G]I hear Your voice, [D/F#]calling my name
-[Em]Pulling me close, [C]healing my pain
-[G]You are my refuge, [D/F#]You are my shield
-[Em]Unto Your love my [C]heart will yield.
-
-[Chorus]
-[G]God is enough for [D/F#]me
-[Em]His love is all I [C]need
-[G]Through every storm, through [D/F#]every trial
-[Em]His grace will carry [C]me
-God is e[G]nough!
-
-[Verse 2]
-[G]When shadows fall and [D/F#]nights are long
-[Em]You fill my soul with [C]heaven's song
-[G]No earthly treasure, [D/F#]no human praise
-[Em]Can match the glory [C]of Your ways.
-
-[Chorus]
-[G]God is enough for [D/F#]me
-[Em]His love is all I [C]need
-[G]Through every storm, through [D/F#]every trial
-[Em]His grace will carry [C]me
-God is e[G]nough!`,
-  },
-  {
-    id: 'song-4-you-are-near',
-    title: 'You Are Near',
-    artist: 'Dan Schutte',
-    key: 'C',
-    tempo: 'Reflective Worship',
-    timeSignature: '4/4',
-    category: 'Reflection',
-    ministry: 'CFC',
-    tags: ['Reflection', 'Peace', 'Comfort'],
-    audioUrl: '',
-    createdAt: new Date().toISOString(),
-    lyricsAndChords: `[Chorus]
-[C]Yahweh, I [F]know You are [C]near,
-[Dm]Standing [G]always at my [C]side.
-[Am]You guard me from the [Em]foe,
-And You [F]lead me in [G]ways ever[C]lasting.
-
-[Verse 1]
-[C]Lord, You have [F]searched my [C]heart,
-And You [Dm]know when I [G]sit and when I [C]stand.
-[Am]Your hand is u[Em]pon me,
-Protec[F]ting me from [G]death,
-Keeping me from [C]harm.
-
-[Chorus]
-[C]Yahweh, I [F]know You are [C]near,
-[Dm]Standing [G]always at my [C]side.
-[Am]You guard me from the [Em]foe,
-And You [F]lead me in [G]ways ever[C]lasting.`,
-  },
-  {
-    id: 'song-5-offer-my-life',
-    title: 'I Offer My Life',
-    artist: 'Don Moen',
-    key: 'D',
-    tempo: 'Gentle Offertory (74 BPM)',
-    timeSignature: '4/4',
-    category: 'Offertory',
-    ministry: 'CFC',
-    tags: ['Offertory', 'Consecration', 'Giving'],
-    audioUrl: '',
-    createdAt: new Date().toISOString(),
-    lyricsAndChords: `[Intro]
-[D]  [G]  [A]  [D]
-
-[Verse 1]
-[D]All that I have, [G]all that I am
-[A]All I require to [D]give into Your hands
-[Bm]This is my offering, [G]Lord unto You
-[Em]All of my days and [A]all I pursue.
-
-[Chorus]
-[D]Lord, I offer my [Bm]life to You
-Every[G]thing I've been through, use it [A]for Your glory
-[D]Lord, I offer my [Bm]days to You
-Lifting my [G]praise to You as a [A]pleasing sacrifice
-[G]Lord, I offer [A]You my [D]life.
-
-[Verse 2]
-[D]Things in the past, [G]things yet unseen
-[A]Wishes and dreams that are [D]yet to come true
-[Bm]All of my hopes, [G]all of my plans
-My [Em]heart and my hands are [A]lifted to You.
-
-[Chorus]
-[D]Lord, I offer my [Bm]life to You
-Every[G]thing I've been through, use it [A]for Your glory
-[D]Lord, I offer my [Bm]days to You
-Lifting my [G]praise to You as a [A]pleasing sacrifice
-[G]Lord, I offer [A]You my [D]life.`,
-  },
-];
+/**
+ * Identifiers of former static placeholder / mock songs to filter out
+ */
+export const LEGACY_MOCK_SONG_IDS = new Set([
+  'song-1-light-of-christ',
+  'song-2-ablaze',
+  'song-3-god-is-enough',
+  'song-4-you-are-near',
+  'song-5-offer-my-life',
+]);
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined';
 }
 
-function getLocalSongs(): WorshipSong[] {
-  if (!isBrowser()) return DEFAULT_CFC_SONGS;
+export function getDeletedWorshipSongIds(): Set<string> {
+  if (!isBrowser()) return new Set();
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_CFC_SONGS));
-      return DEFAULT_CFC_SONGS;
-    }
+    const raw = localStorage.getItem(DELETED_SONGS_KEY);
+    if (!raw) return new Set();
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_CFC_SONGS;
+    return new Set(Array.isArray(parsed) ? parsed : []);
   } catch {
-    return DEFAULT_CFC_SONGS;
+    return new Set();
   }
 }
 
-function setLocalSongs(songs: WorshipSong[]): void {
+export function addDeletedWorshipSongId(id: string): void {
   if (!isBrowser()) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(songs));
+    const deleted = getDeletedWorshipSongIds();
+    deleted.add(id);
+    localStorage.setItem(DELETED_SONGS_KEY, JSON.stringify(Array.from(deleted)));
+  } catch (err) {
+    console.error('Failed to record deleted worship song ID:', err);
+  }
+}
+
+export function removeDeletedWorshipSongId(id: string): void {
+  if (!isBrowser()) return;
+  try {
+    const deleted = getDeletedWorshipSongIds();
+    deleted.delete(id);
+    localStorage.setItem(DELETED_SONGS_KEY, JSON.stringify(Array.from(deleted)));
+  } catch (err) {
+    console.error('Failed to remove deleted worship song ID:', err);
+  }
+}
+
+export function getLocalSongs(): WorshipSong[] {
+  if (!isBrowser()) return [];
+  const deletedIds = getDeletedWorshipSongIds();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (s: WorshipSong) => s && s.id && !deletedIds.has(s.id) && !LEGACY_MOCK_SONG_IDS.has(s.id)
+      );
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export function setLocalSongs(songs: WorshipSong[]): void {
+  if (!isBrowser()) return;
+  const deletedIds = getDeletedWorshipSongIds();
+  const cleanSongs = songs.filter(
+    (s) => s && s.id && !deletedIds.has(s.id) && !LEGACY_MOCK_SONG_IDS.has(s.id)
+  );
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanSongs));
   } catch (err) {
     console.error('Failed to save worship songs to local storage:', err);
-    // If quota exceeded (often caused by large base64 data URIs), strip data URIs for local cache
     try {
-      const sanitized = songs.map((s) => ({
+      const sanitized = cleanSongs.map((s) => ({
         ...s,
         audioUrl: s.audioUrl?.startsWith('data:') ? '' : s.audioUrl,
       }));
@@ -285,6 +146,97 @@ function setLocalSongs(songs: WorshipSong[]): void {
   }
 }
 
+// -----------------------------------------------------------------------------
+// Realtime Broadcast Channel & Notifications
+// -----------------------------------------------------------------------------
+let sharedSongsBroadcastChannel: any = null;
+
+export function getSongsRealtimeChannel() {
+  if (!isBrowser()) return null;
+  if (!sharedSongsBroadcastChannel) {
+    const supabase = createClient();
+    if (supabase) {
+      sharedSongsBroadcastChannel = supabase.channel('cfc_songs_live');
+      sharedSongsBroadcastChannel.subscribe();
+    }
+  }
+  return sharedSongsBroadcastChannel;
+}
+
+export function notifySongsChange(payload?: any) {
+  if (!isBrowser()) return;
+  try {
+    const ch = getSongsRealtimeChannel();
+    if (ch) {
+      ch.send({
+        type: 'broadcast',
+        event: 'songs_changed',
+        payload: payload || { timestamp: Date.now() },
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to broadcast song change:', err);
+  }
+}
+
+/**
+ * Subscribes to real-time song repertoire updates across browsers, devices, and tabs.
+ */
+export function subscribeToSongsChanges(onChange: () => void): () => void {
+  if (!isBrowser()) {
+    return () => {};
+  }
+
+  const supabase = createClient();
+  let channel: any = null;
+
+  if (supabase) {
+    channel = supabase
+      .channel(`cfc_songs_sub_${Math.random().toString(36).substring(2, 7)}`)
+      .on('broadcast', { event: 'songs_changed' }, () => {
+        onChange();
+      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'worship_songs' },
+        () => {
+          onChange();
+        }
+      )
+      .subscribe();
+  }
+
+  // Cross-tab storage changes
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY || e.key === DELETED_SONGS_KEY) {
+      onChange();
+    }
+  };
+  window.addEventListener('storage', handleStorage);
+
+  // Tab focus change
+  const handleFocus = () => {
+    onChange();
+  };
+  window.addEventListener('focus', handleFocus);
+
+  // Tab visibility change
+  const handleVisibility = () => {
+    if (document.visibilityState === 'visible') {
+      onChange();
+    }
+  };
+  document.addEventListener('visibilitychange', handleVisibility);
+
+  return () => {
+    if (channel && supabase) {
+      supabase.removeChannel(channel);
+    }
+    window.removeEventListener('storage', handleStorage);
+    window.removeEventListener('focus', handleFocus);
+    document.removeEventListener('visibilitychange', handleVisibility);
+  };
+}
 
 /**
  * Maps a Supabase DB row to the application's WorshipSong interface
@@ -332,17 +284,14 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
 
 /**
  * Maps WorshipSong to Supabase worship_songs database row schema
- * (strictly conforms to public.worship_songs table columns)
  */
 export function mapSongToRow(song: WorshipSong) {
   let finalAudioUrl = song.audioUrl || '';
   let notes = song.notes || '';
 
-  // If youtubeUrl is specified and audioUrl is empty, use audio_url column
   if (song.youtubeUrl && !finalAudioUrl) {
     finalAudioUrl = song.youtubeUrl;
   } else if (song.youtubeUrl && finalAudioUrl) {
-    // If both exist, preserve YouTube link in notes metadata tag
     if (!notes.includes('[YOUTUBE:')) {
       notes = notes ? `${notes}\n[YOUTUBE: ${song.youtubeUrl}]` : `[YOUTUBE: ${song.youtubeUrl}]`;
     }
@@ -371,6 +320,10 @@ export function mapSongToRow(song: WorshipSong) {
  * Push a single song to Supabase database
  */
 export async function pushSongToSupabase(song: WorshipSong): Promise<boolean> {
+  if (LEGACY_MOCK_SONG_IDS.has(song.id)) return false;
+  const deletedIds = getDeletedWorshipSongIds();
+  if (deletedIds.has(song.id)) return false;
+
   try {
     const supabase = createClient();
     if (!supabase) return false;
@@ -389,6 +342,7 @@ export async function pushSongToSupabase(song: WorshipSong): Promise<boolean> {
 }
 
 export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
+  const deletedIds = getDeletedWorshipSongIds();
   const localSongs = getLocalSongs();
   const localMap = new Map<string, WorshipSong>(localSongs.map((s) => [s.id, s]));
 
@@ -401,12 +355,16 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
         .order('title', { ascending: true });
 
       if (!error && data) {
-        const merged: WorshipSong[] = data.map((d: any) => {
+        // Exclude deleted or legacy mock songs
+        const validData = data.filter(
+          (d: any) => !deletedIds.has(d.id) && !LEGACY_MOCK_SONG_IDS.has(d.id)
+        );
+
+        const merged: WorshipSong[] = validData.map((d: any) => {
           const local = localMap.get(d.id);
           const supabaseUpdatedAt = d.updated_at ? new Date(d.updated_at).getTime() : 0;
           const localUpdatedAt = local?.updatedAt ? new Date(local.updatedAt).getTime() : 0;
 
-          // If local version has a strictly newer update timestamp, preserve local edits
           if (local && localUpdatedAt > supabaseUpdatedAt) {
             return local;
           }
@@ -414,20 +372,23 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
           return mapRowToWorshipSong(d, local);
         });
 
-        // Detect any local songs that are not yet in Supabase (e.g. created locally before DB sync)
-        const supabaseIds = new Set(data.map((d: any) => d.id));
+        // Detect any authentic local songs that are not yet in Supabase
+        const supabaseIds = new Set(validData.map((d: any) => d.id));
         const pendingUploads: WorshipSong[] = [];
 
         for (const [id, localSong] of localMap.entries()) {
-          if (!supabaseIds.has(id)) {
+          if (!supabaseIds.has(id) && !deletedIds.has(id) && !LEGACY_MOCK_SONG_IDS.has(id)) {
             merged.push(localSong);
             pendingUploads.push(localSong);
           }
         }
 
-        // Auto-sync all local-only songs up to Supabase in background
         if (pendingUploads.length > 0) {
-          Promise.all(pendingUploads.map((s) => pushSongToSupabase(s))).catch(() => {});
+          try {
+            await Promise.all(pendingUploads.map((s) => pushSongToSupabase(s)));
+          } catch (err) {
+            console.warn('Sync error pushing pending songs to Supabase:', err);
+          }
         }
 
         setLocalSongs(merged);
@@ -443,6 +404,16 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
 
 export async function fetchWorshipSongById(id: string): Promise<WorshipSong | null> {
   const decodedId = decodeURIComponent(id);
+  const deletedIds = getDeletedWorshipSongIds();
+
+  if (
+    LEGACY_MOCK_SONG_IDS.has(id) ||
+    LEGACY_MOCK_SONG_IDS.has(decodedId) ||
+    deletedIds.has(id) ||
+    deletedIds.has(decodedId)
+  ) {
+    return null;
+  }
 
   // 1. Direct query to Supabase for instant real-time sync across devices
   try {
@@ -455,11 +426,13 @@ export async function fetchWorshipSongById(id: string): Promise<WorshipSong | nu
         .maybeSingle();
 
       if (!error && data) {
+        if (LEGACY_MOCK_SONG_IDS.has(data.id) || deletedIds.has(data.id)) {
+          return null;
+        }
         const localSongs = getLocalSongs();
         const local = localSongs.find((s) => s.id === decodedId || s.id === id);
         const song = mapRowToWorshipSong(data, local);
 
-        // Update local cache
         const idx = localSongs.findIndex((s) => s.id === song.id);
         if (idx >= 0) {
           localSongs[idx] = song;
@@ -476,28 +449,22 @@ export async function fetchWorshipSongById(id: string): Promise<WorshipSong | nu
 
   // 2. Fallback to all songs
   const songs = await fetchWorshipSongs();
-  const found = songs.find((s) => s.id === decodedId || s.id === id) || null;
-  if (found) {
-    // If found in local cache, ensure it is synced to Supabase
-    pushSongToSupabase(found).catch(() => {});
-  }
-  return found;
+  return songs.find((s) => s.id === decodedId || s.id === id) || null;
 }
 
 export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<WorshipSong> {
   const current = getLocalSongs();
   const id = song.id || `song-${Date.now()}`;
+  removeDeletedWorshipSongId(id);
   const now = new Date().toISOString();
 
   let finalYoutubeUrl = song.youtubeUrl?.trim() || '';
   let finalAudioUrl = song.audioUrl?.trim() || '';
 
-  // Auto-detect YouTube URL pasted into audioUrl
   if (isYouTubeUrl(finalAudioUrl) && !finalYoutubeUrl) {
     finalYoutubeUrl = finalAudioUrl;
   }
 
-  // If audioUrl is a YouTube link, clean audioUrl so MP3 player doesn't try to play HTML webpage as MP3
   if (isYouTubeUrl(finalAudioUrl)) {
     finalAudioUrl = '';
   }
@@ -537,10 +504,15 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
   // Synchronize to Supabase database
   await pushSongToSupabase(completeSong);
 
+  // Broadcast real-time change to all other tabs and browsers
+  notifySongsChange({ action: 'save', id: completeSong.id });
+
   return completeSong;
 }
 
 export async function deleteWorshipSong(id: string): Promise<boolean> {
+  addDeletedWorshipSongId(id);
+
   const current = getLocalSongs();
   const filtered = current.filter((s) => s.id !== id);
   setLocalSongs(filtered);
@@ -550,11 +522,26 @@ export async function deleteWorshipSong(id: string): Promise<boolean> {
     if (supabase) {
       await supabase.from('worship_songs').delete().eq('id', id);
     }
-  } catch {
-    // Ignored
+  } catch (err) {
+    console.error('Failed to delete song from Supabase:', err);
   }
 
+  // Broadcast real-time deletion to all other tabs and browsers
+  notifySongsChange({ action: 'delete', id });
+
   return true;
+}
+
+/**
+ * Helper to convert File to base64 audio data URL
+ */
+export function fileToAudioDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 /**
@@ -567,12 +554,10 @@ export async function uploadSongAudio(file: File): Promise<{ url: string; fileNa
     throw new Error('Supabase client is not configured.');
   }
 
-  // Validate file type
   if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|ogg|m4a|aac)$/i)) {
     throw new Error('Please upload an audio file (.mp3, .wav, .ogg, .m4a).');
   }
 
-  // Clean filename and make unique
   const fileExt = file.name.split('.').pop() || 'mp3';
   const cleanBase = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '_');
   const fileName = `${Date.now()}-${cleanBase}.${fileExt}`;
@@ -587,35 +572,19 @@ export async function uploadSongAudio(file: File): Promise<{ url: string; fileNa
     });
 
   if (uploadError) {
-    console.error('Supabase Storage upload error:', uploadError);
-    throw new Error(
-      `Supabase storage error: ${uploadError.message}. Make sure a public bucket named "songs" exists in Supabase Storage.`
-    );
+    console.error('Supabase storage upload error:', uploadError);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ url: reader.result as string, fileName: file.name });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
 
-  const { data: publicUrlData } = supabase.storage
-    .from('songs')
-    .getPublicUrl(filePath);
-
-  if (!publicUrlData?.publicUrl) {
-    throw new Error('Could not retrieve public URL for uploaded audio file.');
-  }
+  const { data: publicUrlData } = supabase.storage.from('songs').getPublicUrl(filePath);
 
   return {
     url: publicUrlData.publicUrl,
     fileName: file.name,
   };
 }
-
-/**
- * Fallback helper to convert an uploaded audio file into a Base64 data URI
- */
-export function fileToAudioDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-

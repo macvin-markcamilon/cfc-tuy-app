@@ -8,6 +8,7 @@ import {
   fetchWorshipSongs,
   isYouTubeUrl,
   extractYouTubeId,
+  subscribeToSongsChanges,
 } from '@/lib/data/songs-service';
 import {
   getActivePlaylistIds,
@@ -72,22 +73,45 @@ export default function SongbookPage() {
   const [activeYouTubeId, setActiveYouTubeId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Load songs & playlists on mount
+  // Load songs & playlists on mount + Real-time Sync
   useEffect(() => {
+    let isMounted = true;
+
     async function load() {
       try {
         setLoading(true);
         const data = await fetchWorshipSongs();
-        setSongs(data);
-        setPlaylistIds(getActivePlaylistIds());
-        setSavedPlaylists(getSavedPlaylists());
+        if (isMounted) {
+          setSongs(data);
+          setPlaylistIds(getActivePlaylistIds());
+          setSavedPlaylists(getSavedPlaylists());
+        }
       } catch (err) {
         console.error('Failed to load songs repertoire:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     load();
+
+    // Subscribe to cross-device and cross-tab real-time songs changes
+    const unsubscribe = subscribeToSongsChanges(async () => {
+      try {
+        const fresh = await fetchWorshipSongs();
+        if (isMounted) {
+          setSongs(fresh);
+        }
+      } catch (err) {
+        console.error('Songbook realtime sync refresh error:', err);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   // Cleanup audio on unmount

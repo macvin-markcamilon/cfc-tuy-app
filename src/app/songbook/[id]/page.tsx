@@ -7,6 +7,8 @@ import {
   WorshipSong,
   fetchWorshipSongById,
   fetchWorshipSongs,
+  saveWorshipSong,
+  subscribeToSongsChanges,
 } from '@/lib/data/songs-service';
 import {
   getActivePlaylistIds,
@@ -64,6 +66,8 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadData() {
       try {
         setLoading(true);
@@ -71,15 +75,39 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
           fetchWorshipSongById(songId),
           fetchWorshipSongs(),
         ]);
-        setSong(targetSong);
-        setAllSongs(list);
+        if (isMounted) {
+          setSong(targetSong);
+          setAllSongs(list);
+        }
       } catch (err) {
         console.error('Failed to load song detail:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadData();
+
+    const unsubscribe = subscribeToSongsChanges(async () => {
+      try {
+        const [targetSong, list] = await Promise.all([
+          fetchWorshipSongById(songId),
+          fetchWorshipSongs(),
+        ]);
+        if (isMounted) {
+          setSong(targetSong);
+          setAllSongs(list);
+        }
+      } catch (err) {
+        console.error('Song detail realtime sync refresh error:', err);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [songId]);
 
   // Derived playlist songs
@@ -405,10 +433,9 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
           initialSong={song}
           onClose={() => setIsEditorOpen(false)}
           onSave={async (updatedData) => {
+            const saved = await saveWorshipSong(updatedData);
+            setSong(saved);
             setIsEditorOpen(false);
-            // Refresh data
-            const updated = await fetchWorshipSongById(songId);
-            if (updated) setSong(updated);
           }}
         />
       )}

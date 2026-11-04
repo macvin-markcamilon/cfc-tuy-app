@@ -919,9 +919,12 @@ export async function uploadSongVideo(
 
   if (supabase) {
     try {
+      // Convert file to audio/mpeg Blob so Supabase Storage bucket constraint doesn't reject video/mp4 MIME in browser FormData
+      const uploadBlob = new Blob([file], { type: 'audio/mpeg' });
+
       const { error: uploadError } = await supabase.storage
         .from('songs')
-        .upload(filePath, file, {
+        .upload(filePath, uploadBlob, {
           cacheControl: '31536000',
           upsert: true,
           contentType: 'audio/mpeg', // Satisfies Supabase bucket mime restriction

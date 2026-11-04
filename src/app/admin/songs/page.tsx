@@ -8,6 +8,7 @@ import {
   fetchWorshipSongs,
   deleteWorshipSong,
   isYouTubeUrl,
+  extractYouTubeId,
   subscribeToSongsChanges,
   getDefaultVisualizerVideo,
   setDefaultVisualizerVideo,
@@ -134,11 +135,12 @@ function SongsAdminContent() {
           return;
         }
         if (
+          !isYouTubeUrl(videoToSave) &&
           !videoToSave.startsWith('http://') &&
           !videoToSave.startsWith('https://') &&
           !videoToSave.startsWith('/api/video')
         ) {
-          alert('Please enter a valid video link starting with https://, or click "Upload Video File" to upload your MP4 video.');
+          alert('Please enter a valid video link (YouTube URL or direct .mp4 link), or click "Upload Video File".');
           return;
         }
       }
@@ -646,24 +648,40 @@ function SongsAdminContent() {
                 <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner flex items-center justify-center">
                   {defaultVideo ? (
                     <>
-                      <video
-                        key={defaultVideo}
-                        src={
-                          defaultVideo.includes('.supabase.co/storage/v1/object/public/songs/videos/')
-                            ? `/api/video?url=${encodeURIComponent(defaultVideo)}`
-                            : defaultVideo
-                        }
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        className={`w-full h-full object-cover transition-all duration-300 ${
-                          isBlurred ? 'scale-105' : ''
-                        }`}
-                        style={{
-                          filter: isBlurred ? `blur(${blurAmount}px)` : 'none',
-                        }}
-                      />
+                      {isYouTubeUrl(defaultVideo) ? (
+                        <iframe
+                          key={defaultVideo}
+                          src={`https://www.youtube.com/embed/${extractYouTubeId(defaultVideo)}?autoplay=1&mute=1&controls=0&loop=1&playlist=${extractYouTubeId(defaultVideo)}&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&modestbranding=1`}
+                          className={`w-full h-full pointer-events-none transition-all duration-300 scale-125 ${
+                            isBlurred ? 'scale-135' : ''
+                          }`}
+                          style={{
+                            filter: isBlurred ? `blur(${blurAmount}px)` : 'none',
+                            border: 'none',
+                          }}
+                          allow="autoplay; encrypted-media"
+                          title="YouTube Visualizer Preview"
+                        />
+                      ) : (
+                        <video
+                          key={defaultVideo}
+                          src={
+                            defaultVideo.includes('.supabase.co/storage/v1/object/public/songs/videos/')
+                              ? `/api/video?url=${encodeURIComponent(defaultVideo)}`
+                              : defaultVideo
+                          }
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className={`w-full h-full object-cover transition-all duration-300 ${
+                            isBlurred ? 'scale-105' : ''
+                          }`}
+                          style={{
+                            filter: isBlurred ? `blur(${blurAmount}px)` : 'none',
+                          }}
+                        />
+                      )}
                       <div className="absolute inset-0 bg-slate-950/60 flex flex-col items-center justify-center p-4 pointer-events-none text-center">
                         <p className="text-white text-lg sm:text-2xl font-bold font-montserrat drop-shadow-lg leading-tight">
                           &quot;I once was lost, but now am found&quot;
@@ -700,20 +718,25 @@ function SongsAdminContent() {
                 </label>
               </div>
 
-              {/* Direct Video URL input */}
+              {/* Direct Video / YouTube URL input */}
               <div>
-                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-                  Or Direct Video URL:
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
+                    Or YouTube / Direct Video URL:
+                  </label>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    Supports YouTube loops or .mp4 links
+                  </span>
+                </div>
                 <input
-                  type="url"
+                  type="text"
                   value={customVideoUrlInput}
                   onChange={(e) => {
                     const val = e.target.value;
                     setCustomVideoUrlInput(val);
                     setDefaultVideo(val);
                   }}
-                  placeholder="https://assets.mixkit.co/videos/...mp4"
+                  placeholder="https://www.youtube.com/watch?v=0JX8ZbTsBic or direct .mp4 URL"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono text-slate-900"
                 />
               </div>

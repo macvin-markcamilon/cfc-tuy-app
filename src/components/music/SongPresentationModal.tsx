@@ -7,6 +7,8 @@ import {
   resolveVisualizerVideoUrl,
   fetchChapterVisualizerSettingsFromDB,
   subscribeToSongsChanges,
+  isYouTubeUrl,
+  extractYouTubeId,
 } from '@/lib/data/songs-service';
 import { transposeChord, transposeSongContent, getChordShape } from '@/lib/music/guitarChords';
 import { parseChordProLine, ChordProWord } from '@/lib/music/chordPro';
@@ -585,6 +587,9 @@ function SongPresentationModalContent({
     if (!raw || raw.startsWith('blob:') || raw.startsWith('Uploaded:')) {
       return '';
     }
+    if (isYouTubeUrl(raw)) {
+      return raw.trim();
+    }
     if (raw.includes('.supabase.co/storage/v1/object/public/songs/videos/')) {
       return `/api/video?url=${encodeURIComponent(raw)}`;
     }
@@ -937,32 +942,49 @@ function SongPresentationModalContent({
     <div className={`fixed inset-0 z-[100] w-screen h-screen ${themeClasses.bg} flex flex-col justify-between overflow-hidden select-none animate-in fade-in duration-200`}>
       {/* =================================================================== */}
       {/* BACKGROUND VISUALIZER MOTION VIDEO LOOP (FOR PROJECTOR / STAGE)    */}
+      {/* Supports both uploaded MP4 video loops and YouTube ambient loops   */}
       {/* =================================================================== */}
       {showBgVideo && activeBgVideo && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-          <video
-            ref={presentationVideoRef}
-            key={activeBgVideo}
-            src={activeBgVideo}
-            autoPlay
-            loop
-            muted
-            playsInline
-            onLoadedData={() => {
-              if (presentationVideoRef.current) {
-                presentationVideoRef.current.play().catch(() => {});
-              }
-            }}
-            onError={(e) => {
-              console.warn('Background motion video failed to load:', activeBgVideo, e);
-            }}
-            className={`w-full h-full object-cover transition-all duration-300 ${
-              isBlurred ? 'scale-105' : ''
-            }`}
-            style={{
-              filter: isBlurred ? `blur(${blurAmount}px)` : 'none',
-            }}
-          />
+          {isYouTubeUrl(activeBgVideo) ? (
+            <iframe
+              key={activeBgVideo}
+              src={`https://www.youtube.com/embed/${extractYouTubeId(activeBgVideo)}?autoplay=1&mute=1&controls=0&loop=1&playlist=${extractYouTubeId(activeBgVideo)}&showinfo=0&rel=0&iv_load_policy=3&disablekb=1&modestbranding=1`}
+              className={`w-full h-full pointer-events-none transition-all duration-300 scale-125 ${
+                isBlurred ? 'scale-135' : ''
+              }`}
+              style={{
+                filter: isBlurred ? `blur(${blurAmount}px)` : 'none',
+                border: 'none',
+              }}
+              allow="autoplay; encrypted-media"
+              title="YouTube Background Visualizer Loop"
+            />
+          ) : (
+            <video
+              ref={presentationVideoRef}
+              key={activeBgVideo}
+              src={activeBgVideo}
+              autoPlay
+              loop
+              muted
+              playsInline
+              onLoadedData={() => {
+                if (presentationVideoRef.current) {
+                  presentationVideoRef.current.play().catch(() => {});
+                }
+              }}
+              onError={(e) => {
+                console.warn('Background motion video failed to load:', activeBgVideo, e);
+              }}
+              className={`w-full h-full object-cover transition-all duration-300 ${
+                isBlurred ? 'scale-105' : ''
+              }`}
+              style={{
+                filter: isBlurred ? `blur(${blurAmount}px)` : 'none',
+              }}
+            />
+          )}
           {/* Subtle contrast scrim to ensure lyrics are 100% readable */}
           <div className="absolute inset-0 bg-slate-950/65" />
         </div>

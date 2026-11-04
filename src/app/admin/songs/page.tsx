@@ -116,7 +116,7 @@ function SongsAdminContent() {
       await setDefaultVisualizerVideo(videoToSave);
       const resolved = await resolveVisualizerVideoUrl();
       setDefaultVideo(resolved);
-      triggerToast('Chapter visualizer background video saved successfully!');
+      triggerToast('Chapter visualizer background video saved to database!');
       setShowVisualizerModal(false);
     } catch (err: any) {
       console.error('Error saving visualizer video:', err);
@@ -578,7 +578,7 @@ function SongsAdminContent() {
                 </div>
                 <div>
                   <h2 className="text-lg font-black tracking-tight">Presentation Visualizer Video</h2>
-                  <p className="text-xs text-blue-200">Default motion background loop for projector presentations</p>
+                  <p className="text-xs text-blue-200">Default motion background loop synced across all devices and web users</p>
                 </div>
               </div>
               <button
@@ -726,9 +726,10 @@ function SongsAdminContent() {
                 <button
                   type="button"
                   onClick={handleSaveDefaultVisualizer}
-                  className="px-5 py-2 rounded-xl bg-[#243c81] hover:bg-blue-800 text-white font-black text-xs shadow-md"
+                  className="px-5 py-2 rounded-xl bg-[#243c81] hover:bg-blue-800 text-white font-black text-xs shadow-md transition-all active:scale-95 flex items-center gap-1.5"
                 >
-                  Save Visualizer Settings
+                  <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+                  <span>Save to Database</span>
                 </button>
               </div>
             </div>

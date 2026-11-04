@@ -55,6 +55,8 @@ export function isYouTubeUrl(url?: string): boolean {
 
 const STORAGE_KEY = 'cfc_tuy_worship_songs_v1';
 const DELETED_SONGS_KEY = 'cfc_tuy_worship_songs_deleted_v1';
+export const SYSTEM_VISUALIZER_SETTINGS_ID = 'system-visualizer-settings';
+export const DEFAULT_VISUALIZER_VIDEO_KEY = 'cfc_tuy_default_visualizer_video_v1';
 
 /**
  * Empty default list - real songs are always sourced from Supabase.
@@ -122,7 +124,13 @@ export function getLocalSongs(): WorshipSong[] {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       return parsed.filter(
-        (s: WorshipSong) => s && s.id && !deletedIds.has(s.id) && !LEGACY_MOCK_SONG_IDS.has(s.id)
+        (s: WorshipSong) =>
+          s &&
+          s.id &&
+          !deletedIds.has(s.id) &&
+          !LEGACY_MOCK_SONG_IDS.has(s.id) &&
+          s.id !== SYSTEM_VISUALIZER_SETTINGS_ID &&
+          !s.title?.startsWith('__')
       );
     }
     return [];
@@ -135,7 +143,13 @@ export function setLocalSongs(songs: WorshipSong[]): void {
   if (!isBrowser()) return;
   const deletedIds = getDeletedWorshipSongIds();
   const cleanSongs = songs.filter(
-    (s) => s && s.id && !deletedIds.has(s.id) && !LEGACY_MOCK_SONG_IDS.has(s.id)
+    (s) =>
+      s &&
+      s.id &&
+      !deletedIds.has(s.id) &&
+      !LEGACY_MOCK_SONG_IDS.has(s.id) &&
+      s.id !== SYSTEM_VISUALIZER_SETTINGS_ID &&
+      !s.title?.startsWith('__')
   );
 
   try {
@@ -376,6 +390,7 @@ export function mapSongToRow(song: WorshipSong) {
  */
 export async function pushSongToSupabase(song: WorshipSong): Promise<boolean> {
   if (LEGACY_MOCK_SONG_IDS.has(song.id)) return false;
+  if (song.id === SYSTEM_VISUALIZER_SETTINGS_ID || song.title?.startsWith('__')) return false;
   const deletedIds = getDeletedWorshipSongIds();
   if (deletedIds.has(song.id)) return false;
 
@@ -406,9 +421,14 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
         .order('title', { ascending: true });
 
       if (!error && data) {
-        // Exclude legacy mock songs
+        // Exclude legacy mock songs and system configuration records
         const validData = data.filter(
-          (d: any) => d && d.id && !LEGACY_MOCK_SONG_IDS.has(d.id)
+          (d: any) =>
+            d &&
+            d.id &&
+            !LEGACY_MOCK_SONG_IDS.has(d.id) &&
+            d.id !== SYSTEM_VISUALIZER_SETTINGS_ID &&
+            !d.title?.startsWith('__')
         );
 
         const songs: WorshipSong[] = validData.map((d: any) => mapRowToWorshipSong(d));
@@ -534,6 +554,7 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
 }
 
 export async function deleteWorshipSong(id: string): Promise<boolean> {
+  if (id === SYSTEM_VISUALIZER_SETTINGS_ID) return false;
   addDeletedWorshipSongId(id);
 
   const current = getLocalSongs();
@@ -615,8 +636,6 @@ export async function uploadSongAudio(file: File): Promise<{ url: string; fileNa
 // -----------------------------------------------------------------------------
 // Visualizer Background Video Settings & Upload
 // -----------------------------------------------------------------------------
-export const DEFAULT_VISUALIZER_VIDEO_KEY = 'cfc_tuy_default_visualizer_video_v1';
-
 export const BUILTIN_VISUALIZER_PRESETS = [
   {
     id: 'preset-golden-light',
@@ -641,14 +660,119 @@ export const BUILTIN_VISUALIZER_PRESETS = [
   },
 ];
 
+export interface VisualizerConfig {
+  defaultVideoUrl: string;
+  fontColor?: string;
+  updatedAt: string;
+}
+
 export function getDefaultVisualizerVideo(): string {
   if (!isBrowser()) return '';
   return localStorage.getItem(DEFAULT_VISUALIZER_VIDEO_KEY) || '';
 }
 
+/**
+ * Fetch chapter visualizer configuration from Supabase DB
+ */
+export async function fetchChapterVisualizerSettingsFromDB(): Promise<VisualizerConfig | null> {
+  try {
+    const supabase = createClient();
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('worship_songs')
+      .select('notes')
+      .eq('id', SYSTEM_VISUALIZER_SETTINGS_ID)
+      .maybeSingle();
+
+    if (error || !data || !data.notes) return null;
+
+    let parsed: VisualizerConfig;
+    try {
+      parsed = JSON.parse(data.notes);
+    } catch {
+      parsed = { defaultVideoUrl: data.notes, updatedAt: new Date().toISOString() };
+    }
+
+    if (parsed.defaultVideoUrl && isBrowser()) {
+      localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, parsed.defaultVideoUrl);
+      if (parsed.fontColor) {
+        localStorage.setItem('cfc_presentation_font_color', parsed.fontColor);
+      }
+    }
+
+    return parsed;
+  } catch (err) {
+    console.warn('Failed to fetch visualizer settings from Supabase:', err);
+    return null;
+  }
+}
+
+/**
+ * Persist chapter visualizer configuration to Supabase DB so anyone using the web app has it
+ */
+export async function saveChapterVisualizerSettingsToDB(config: {
+  defaultVideoUrl: string;
+  fontColor?: string;
+}): Promise<void> {
+  const payload: VisualizerConfig = {
+    defaultVideoUrl: config.defaultVideoUrl.trim(),
+    fontColor: config.fontColor || '#ffffff',
+    updatedAt: new Date().toISOString(),
+  };
+
+  // 1. Update localStorage cache
+  if (isBrowser()) {
+    try {
+      if (!payload.defaultVideoUrl) {
+        localStorage.removeItem(DEFAULT_VISUALIZER_VIDEO_KEY);
+      } else {
+        localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, payload.defaultVideoUrl);
+      }
+      if (payload.fontColor) {
+        localStorage.setItem('cfc_presentation_font_color', payload.fontColor);
+      }
+    } catch {}
+  }
+
+  // 2. Persist to Supabase Database
+  try {
+    const supabase = createClient();
+    if (supabase) {
+      await supabase.from('worship_songs').upsert({
+        id: SYSTEM_VISUALIZER_SETTINGS_ID,
+        title: '__CHAPTER_VISUALIZER_CONFIG__',
+        artist: 'Couples For Christ Tuy Chapter',
+        key_signature: 'G',
+        category: 'Worship',
+        ministry: 'CFC',
+        lyrics_and_chords: '{system: visualizer configuration}',
+        notes: JSON.stringify(payload),
+        updated_at: payload.updatedAt,
+      });
+
+      notifySongsChange({ action: 'chapter_visualizer_saved', payload });
+    }
+  } catch (err) {
+    console.warn('Failed to persist visualizer settings to Supabase DB:', err);
+  }
+}
+
 export async function resolveVisualizerVideoUrl(urlOrToken?: string): Promise<string> {
   if (!isBrowser()) return '';
-  const token = urlOrToken || getDefaultVisualizerVideo();
+
+  let token = urlOrToken;
+
+  // If no specific video passed, check Supabase DB & localStorage for chapter default
+  if (!token) {
+    token = getDefaultVisualizerVideo();
+
+    // Check Supabase DB in parallel / if not cached
+    const dbConfig = await fetchChapterVisualizerSettingsFromDB();
+    if (dbConfig?.defaultVideoUrl) {
+      token = dbConfig.defaultVideoUrl;
+    }
+  }
+
   if (!token) return '';
 
   if (token.startsWith('idb:')) {
@@ -657,18 +781,15 @@ export async function resolveVisualizerVideoUrl(urlOrToken?: string): Promise<st
     return blobUrl || '';
   }
 
-  if (token.startsWith('blob:') || token.startsWith('http://') || token.startsWith('https://')) {
+  if (token.startsWith('blob:') || token.startsWith('http://') || token.startsWith('https://') || token.startsWith('/api/video')) {
     return token;
   }
 
-  // If a data URL was pasted, migrate to IndexedDB to free localStorage
+  // If a data URL was pasted, convert to binary Blob and save to IndexedDB
   if (token.startsWith('data:video/')) {
     try {
       const blob = dataUrlToBlob(token);
       const blobUrl = await saveVideoBlob('default_visualizer', blob);
-      try {
-        localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, 'idb:default_visualizer');
-      } catch {}
       return blobUrl;
     } catch {
       return token;
@@ -679,42 +800,57 @@ export async function resolveVisualizerVideoUrl(urlOrToken?: string): Promise<st
 }
 
 export async function setDefaultVisualizerVideo(url: string): Promise<void> {
-  if (!isBrowser()) return;
-
-  try {
-    let tokenToStore = url.trim();
-
-    // If it's a huge data URL, save to IndexedDB instead of localStorage
-    if (tokenToStore.startsWith('data:video/')) {
-      const blob = dataUrlToBlob(tokenToStore);
-      await saveVideoBlob('default_visualizer', blob);
-      tokenToStore = 'idb:default_visualizer';
-    } else if (tokenToStore.startsWith('blob:')) {
-      tokenToStore = 'idb:default_visualizer';
-    }
-
-    if (!tokenToStore) {
-      localStorage.removeItem(DEFAULT_VISUALIZER_VIDEO_KEY);
-      await deleteVideoBlob('default_visualizer');
-    } else {
-      localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, tokenToStore);
-    }
-
-    notifySongsChange({ action: 'default_video_updated', url: tokenToStore });
-  } catch (err) {
-    console.warn('Failed to set default visualizer video in storage:', err);
-  }
+  await saveChapterVisualizerSettingsToDB({ defaultVideoUrl: url });
 }
 
 /**
  * Upload a visualizer background video (.mp4, .webm, .mov)
- * Uses IndexedDB to store the video binary, returning a fast, native Blob URL
+ * Uploads directly to Supabase Storage bucket 'songs' under /videos so it's accessible globally
  */
-export async function uploadSongVideo(file: File, key = 'default_visualizer'): Promise<{ url: string; fileName: string }> {
+export async function uploadSongVideo(
+  file: File,
+  key = 'default_visualizer'
+): Promise<{ url: string; fileName: string; supabaseUrl?: string }> {
   if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov|m4v|ogg)$/i)) {
     throw new Error('Please upload a video file (.mp4, .webm, .mov).');
   }
 
+  const supabase = createClient();
+  const fileExt = file.name.split('.').pop() || 'mp4';
+  const cleanBase = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '_');
+  const fileName = `${Date.now()}-${cleanBase}.${fileExt}`;
+  const filePath = `videos/${fileName}`;
+
+  if (supabase) {
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('songs')
+        .upload(filePath, file, {
+          cacheControl: '31536000',
+          upsert: true,
+          contentType: 'audio/mpeg', // Satisfies Supabase bucket mime restriction
+        });
+
+      if (!uploadError) {
+        const { data: publicUrlData } = supabase.storage.from('songs').getPublicUrl(filePath);
+        if (publicUrlData?.publicUrl) {
+          const directUrl = publicUrlData.publicUrl;
+          const streamUrl = `/api/video?url=${encodeURIComponent(directUrl)}`;
+          return {
+            url: streamUrl,
+            fileName: file.name,
+            supabaseUrl: directUrl,
+          };
+        }
+      } else {
+        console.warn('Supabase storage video upload warning:', uploadError.message);
+      }
+    } catch (storageErr) {
+      console.warn('Supabase video upload failed, using local IndexedDB fallback:', storageErr);
+    }
+  }
+
+  // Fallback to IndexedDB
   const blobUrl = await saveVideoBlob(key, file);
   return {
     url: blobUrl,

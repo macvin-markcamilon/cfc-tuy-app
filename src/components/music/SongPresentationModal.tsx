@@ -482,7 +482,11 @@ export default function SongPresentationModal({
   // Active visualizer background video URL
   const activeBgVideo = useMemo(() => {
     const currentSong = activePlaylist[activeSongInfo.songIndex] || song;
-    return currentSong?.videoUrl || defaultBgVideo || '';
+    const raw = currentSong?.videoUrl || defaultBgVideo || '';
+    if (raw.includes('.supabase.co/storage/v1/object/public/songs/videos/')) {
+      return `/api/video?url=${encodeURIComponent(raw)}`;
+    }
+    return raw;
   }, [activePlaylist, activeSongInfo.songIndex, song, defaultBgVideo]);
 
   // Transposed current key display

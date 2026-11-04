@@ -122,16 +122,17 @@ export function formatCoupleForSupabase(completeCouple: DirectoryCouple) {
 // -----------------------------------------------------------------------------
 // Realtime Broadcast Channel & Notifications
 // -----------------------------------------------------------------------------
+const DIRECTORY_CHANNEL_NAME = 'cfc_directory_live';
 let sharedBroadcastChannel: any = null;
 
 export function getDirectoryRealtimeChannel() {
   if (!isBrowser()) return null;
+  const supabase = createClient();
+  if (!supabase) return null;
+
   if (!sharedBroadcastChannel) {
-    const supabase = createClient();
-    if (supabase) {
-      sharedBroadcastChannel = supabase.channel('cfc_directory_live');
-      sharedBroadcastChannel.subscribe();
-    }
+    sharedBroadcastChannel = supabase.channel(DIRECTORY_CHANNEL_NAME);
+    sharedBroadcastChannel.subscribe();
   }
   return sharedBroadcastChannel;
 }
@@ -154,7 +155,7 @@ export function notifyDirectoryChange(payload?: any) {
 
 /**
  * Subscribes to real-time changes across browsers via Supabase Broadcast & Postgres Changes,
- * as well as storage events and tab focus.
+ * as well as storage events, tab focus, and periodic heartbeat.
  */
 export function subscribeToDirectoryChanges(onChange: () => void): () => void {
   if (!isBrowser()) {
@@ -166,7 +167,7 @@ export function subscribeToDirectoryChanges(onChange: () => void): () => void {
 
   if (supabase) {
     channel = supabase
-      .channel(`cfc_dir_sub_${Math.random().toString(36).substring(2, 7)}`)
+      .channel(DIRECTORY_CHANNEL_NAME)
       .on('broadcast', { event: 'directory_changed' }, () => {
         onChange();
       })
@@ -177,7 +178,11 @@ export function subscribeToDirectoryChanges(onChange: () => void): () => void {
           onChange();
         }
       )
-      .subscribe();
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          onChange();
+        }
+      });
   }
 
   // Listen for storage events (same browser tabs)
@@ -201,6 +206,11 @@ export function subscribeToDirectoryChanges(onChange: () => void): () => void {
   };
   document.addEventListener('visibilitychange', handleVisibility);
 
+  // Heartbeat fallback poll (every 5 seconds)
+  const pollTimer = setInterval(() => {
+    onChange();
+  }, 5000);
+
   return () => {
     if (channel && supabase) {
       supabase.removeChannel(channel);
@@ -208,6 +218,7 @@ export function subscribeToDirectoryChanges(onChange: () => void): () => void {
     window.removeEventListener('storage', handleStorage);
     window.removeEventListener('focus', handleFocus);
     document.removeEventListener('visibilitychange', handleVisibility);
+    clearInterval(pollTimer);
   };
 }
 

@@ -149,16 +149,17 @@ export function setLocalSongs(songs: WorshipSong[]): void {
 // -----------------------------------------------------------------------------
 // Realtime Broadcast Channel & Notifications
 // -----------------------------------------------------------------------------
+const SONGS_CHANNEL_NAME = 'cfc_songs_live';
 let sharedSongsBroadcastChannel: any = null;
 
 export function getSongsRealtimeChannel() {
   if (!isBrowser()) return null;
+  const supabase = createClient();
+  if (!supabase) return null;
+
   if (!sharedSongsBroadcastChannel) {
-    const supabase = createClient();
-    if (supabase) {
-      sharedSongsBroadcastChannel = supabase.channel('cfc_songs_live');
-      sharedSongsBroadcastChannel.subscribe();
-    }
+    sharedSongsBroadcastChannel = supabase.channel(SONGS_CHANNEL_NAME);
+    sharedSongsBroadcastChannel.subscribe();
   }
   return sharedSongsBroadcastChannel;
 }
@@ -191,8 +192,10 @@ export function subscribeToSongsChanges(onChange: () => void): () => void {
   let channel: any = null;
 
   if (supabase) {
-    channel = supabase
-      .channel(`cfc_songs_sub_${Math.random().toString(36).substring(2, 7)}`)
+    // MUST match the shared channel name 'cfc_songs_live' so broadcasts are received
+    channel = supabase.channel(SONGS_CHANNEL_NAME);
+
+    channel
       .on('broadcast', { event: 'songs_changed' }, () => {
         onChange();
       })
@@ -203,7 +206,11 @@ export function subscribeToSongsChanges(onChange: () => void): () => void {
           onChange();
         }
       )
-      .subscribe();
+      .subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          onChange();
+        }
+      });
   }
 
   // Cross-tab storage changes
@@ -228,6 +235,11 @@ export function subscribeToSongsChanges(onChange: () => void): () => void {
   };
   document.addEventListener('visibilitychange', handleVisibility);
 
+  // Heartbeat fallback poll (every 5 seconds) to ensure real-time guarantee across network drops
+  const pollTimer = setInterval(() => {
+    onChange();
+  }, 5000);
+
   return () => {
     if (channel && supabase) {
       supabase.removeChannel(channel);
@@ -235,6 +247,7 @@ export function subscribeToSongsChanges(onChange: () => void): () => void {
     window.removeEventListener('storage', handleStorage);
     window.removeEventListener('focus', handleFocus);
     document.removeEventListener('visibilitychange', handleVisibility);
+    clearInterval(pollTimer);
   };
 }
 
@@ -386,6 +399,7 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
         if (pendingUploads.length > 0) {
           try {
             await Promise.all(pendingUploads.map((s) => pushSongToSupabase(s)));
+            notifySongsChange({ action: 'pending_uploaded', count: pendingUploads.length });
           } catch (err) {
             console.warn('Sync error pushing pending songs to Supabase:', err);
           }

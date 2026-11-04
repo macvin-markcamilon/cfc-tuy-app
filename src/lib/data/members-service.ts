@@ -268,7 +268,10 @@ export function getLocalDirectoryCouples(): DirectoryCouple[] {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       return parsed.filter(
-        (c: DirectoryCouple) => !deletedIds.has(c.id) && !LEGACY_MOCK_COUPLE_IDS.has(c.id)
+        (c: DirectoryCouple) =>
+          !deletedIds.has(c.id) &&
+          !LEGACY_MOCK_COUPLE_IDS.has(c.id) &&
+          (c as any).status !== 'SYSTEM_USER'
       );
     }
     return [];
@@ -297,6 +300,7 @@ export async function fetchDirectoryCouples(): Promise<DirectoryCouple[]> {
       const { data, error } = await supabase
         .from('directory_couples')
         .select('*')
+        .neq('status', 'SYSTEM_USER')
         .order('husband_last_name', { ascending: true });
 
       if (!error && data) {

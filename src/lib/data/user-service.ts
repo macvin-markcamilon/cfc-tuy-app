@@ -111,51 +111,92 @@ export function setLocalUsers(users: UserProfile[]): void {
 }
 
 /**
- * Fetch all users (from Supabase profiles or local cache)
+ * Fetch all users (from Supabase directory_couples system users, profiles, or local cache)
  */
 export async function fetchUsers(): Promise<UserProfile[]> {
   const deleted = getDeletedUsers();
   const supabase = createClient();
+  const local = getLocalUsers();
+  const localMap = new Map<string, UserProfile>();
+  local.forEach((u) => localMap.set(u.email.toLowerCase(), u));
+
   if (supabase) {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
+      // 1. Fetch system users stored in Supabase directory_couples
+      const { data: systemUsersData, error: sysError } = await supabase
+        .from('directory_couples')
         .select('*')
+        .eq('status', 'SYSTEM_USER')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        const local = getLocalUsers();
-        const localMap = new Map<string, UserProfile>();
-        local.forEach((u) => localMap.set(u.email.toLowerCase(), u));
+      const cloudUsers: UserProfile[] = [];
 
-        const mapped: UserProfile[] = data
-          .filter(
-            (row: any) =>
-              !deleted.includes(row.id) &&
-              !deleted.includes((row.email || '').toLowerCase())
-          )
-          .map((row: any) => {
+      if (!sysError && systemUsersData && systemUsersData.length > 0) {
+        for (const row of systemUsersData) {
+          const emailLower = (row.husband_email || '').toLowerCase();
+          if (deleted.includes(row.id) || deleted.includes(emailLower)) continue;
+
+          let extra: any = {};
+          if (row.notes) {
+            try {
+              extra = JSON.parse(row.notes);
+            } catch {}
+          }
+
+          const existingLocal = localMap.get(emailLower);
+          cloudUsers.push({
+            id: row.id,
+            fullName: row.husband_first_name || 'Member',
+            spouseName: row.wife_first_name || '',
+            email: emailLower,
+            phoneNumber: row.husband_contact || '',
+            barangay: row.barangay || 'Rizal (Pob.)',
+            ministry: (row.ministry as MinistryType) || 'CFC',
+            role: normalizeRole(extra.role || 'member'),
+            clpBatch: extra.clpBatch || '',
+            password: extra.password || existingLocal?.password || 'password123',
+            createdAt: row.created_at || new Date().toISOString(),
+            updatedAt: row.updated_at || undefined,
+          });
+        }
+      }
+
+      // 2. Fetch profiles table if available
+      try {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (profilesData && profilesData.length > 0) {
+          for (const row of profilesData) {
             const emailLower = (row.email || '').toLowerCase();
+            if (deleted.includes(row.id) || deleted.includes(emailLower)) continue;
             const existingLocal = localMap.get(emailLower);
-            return {
+
+            cloudUsers.push({
               id: row.id,
               fullName: row.full_name || 'Member',
               spouseName: row.spouse_name || '',
-              email: row.email || '',
+              email: emailLower,
               phoneNumber: row.phone_number || '',
               barangay: row.barangay || 'Rizal (Pob.)',
               ministry: (row.ministry as MinistryType) || 'CFC',
               role: normalizeRole(row.role),
               clpBatch: row.clp_batch || '',
-              password: existingLocal?.password || row.password || undefined,
+              password: existingLocal?.password || row.password || 'password123',
               createdAt: row.created_at || new Date().toISOString(),
               updatedAt: row.updated_at || undefined,
-            };
-          });
+            });
+          }
+        }
+      } catch {}
 
+      // If we got cloud users, merge them with local users and persist
+      if (cloudUsers.length > 0) {
         const mergedMap = new Map<string, UserProfile>();
         local.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
-        mapped.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
+        cloudUsers.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
 
         const finalUsers = Array.from(mergedMap.values()).filter(
           (u) => !deleted.includes(u.id) && !deleted.includes((u.email || '').toLowerCase())
@@ -175,13 +216,13 @@ export async function fetchUsers(): Promise<UserProfile[]> {
 /**
  * Save / Create / Update a user
  * - Saves in Supabase Auth (signUp) so they can log in with credentials
- * - Saves in public.profiles table in Supabase
+ * - Saves in Supabase directory_couples (status: 'SYSTEM_USER') for real-time multi-browser sync
  * - Saves in local cache
  */
 export async function saveUser(
   userData: Partial<UserProfile> & { password?: string }
 ): Promise<UserProfile> {
-  const userId = isValidUUID(userData.id) ? userData.id! : generateUUID();
+  const userId = userData.id || generateUUID();
   const now = new Date().toISOString();
 
   // Un-mark from deleted if being saved
@@ -226,7 +267,31 @@ export async function saveUser(
 
   const supabase = createClient();
   if (supabase) {
-    // 1. Attempt Supabase Auth creation if password provided
+    // 1. Persist to Supabase directory_couples as SYSTEM_USER for real-time cloud sync
+    try {
+      await supabase.from('directory_couples').upsert({
+        id: user.id,
+        husband_first_name: user.fullName,
+        husband_last_name: '',
+        wife_first_name: user.spouseName || '',
+        wife_last_name: '',
+        husband_email: user.email.toLowerCase(),
+        husband_contact: user.phoneNumber || null,
+        barangay: user.barangay,
+        ministry: user.ministry,
+        status: 'SYSTEM_USER',
+        notes: JSON.stringify({
+          role: user.role,
+          password: passwordToSave,
+          clpBatch: user.clpBatch,
+        }),
+        updated_at: user.updatedAt,
+      });
+    } catch (syncErr) {
+      console.warn('Supabase system user sync notice:', syncErr);
+    }
+
+    // 2. Attempt Supabase Auth creation if password provided
     if (user.email && passwordToSave) {
       try {
         await supabase.auth.signUp({
@@ -248,7 +313,7 @@ export async function saveUser(
       }
     }
 
-    // 2. Upsert into public.profiles
+    // 3. Upsert into public.profiles if permitted
     try {
       await supabase.from('profiles').upsert({
         id: user.id,
@@ -262,9 +327,7 @@ export async function saveUser(
         clp_batch: user.clpBatch || null,
         updated_at: user.updatedAt,
       });
-    } catch (err) {
-      console.warn('Supabase profile save error, saved locally:', err);
-    }
+    } catch {}
   }
 
   if (isBrowser()) {
@@ -291,10 +354,13 @@ export async function deleteUser(id: string, email?: string): Promise<{ success:
   const supabase = createClient();
   if (supabase) {
     try {
-      if (isValidUUID(id)) {
+      // Delete from Supabase system users
+      if (id) {
+        await supabase.from('directory_couples').delete().eq('id', id);
         await supabase.from('profiles').delete().eq('id', id);
       }
       if (email) {
+        await supabase.from('directory_couples').delete().eq('husband_email', email.toLowerCase());
         await supabase.from('profiles').delete().eq('email', email.toLowerCase());
       }
     } catch (err: any) {

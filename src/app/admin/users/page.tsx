@@ -381,7 +381,7 @@ export default function AdminUsersPage() {
           <div className="divide-y divide-slate-100">
             {filteredUsers.map((u) => {
               const initials = getInitials(u.fullName);
-              const isAdmin = u.role === 'admin';
+              const isRowUserAdmin = u.role === 'admin';
 
               return (
                 <div
@@ -392,7 +392,7 @@ export default function AdminUsersPage() {
                     {/* User Avatar */}
                     <div
                       className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${
-                        isAdmin
+                        isRowUserAdmin
                           ? 'bg-amber-400 text-[#243c81] ring-2 ring-amber-300'
                           : 'bg-[#243c81] text-white'
                       }`}

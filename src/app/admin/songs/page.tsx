@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -48,12 +48,13 @@ function SongsAdminContent() {
   };
 
   // Check for saved searchParam from redirect
+  const hasHandledSavedParam = useRef(false);
   useEffect(() => {
+    if (hasHandledSavedParam.current) return;
     const savedTitle = searchParams.get('saved');
     if (savedTitle) {
+      hasHandledSavedParam.current = true;
       triggerToast(`"${savedTitle}" saved successfully!`);
-      // Clean up search param URL without refreshing
-      window.history.replaceState({}, '', '/admin/songs');
     }
   }, [searchParams]);
 
@@ -101,24 +102,30 @@ function SongsAdminContent() {
     const q = searchQuery.trim().toLowerCase();
 
     const list = songs.filter((s) => {
+      if (!s) return false;
+      const titleStr = (s.title || '').toLowerCase();
+      const artistStr = (s.artist || '').toLowerCase();
+      const lyricsStr = (s.lyricsAndChords || '').toLowerCase();
+      const keyStr = (s.key || '').toLowerCase();
+
       const matchesSearch =
         !q ||
-        s.title.toLowerCase().includes(q) ||
-        s.artist.toLowerCase().includes(q) ||
-        s.lyricsAndChords.toLowerCase().includes(q) ||
-        s.key.toLowerCase().includes(q);
+        titleStr.includes(q) ||
+        artistStr.includes(q) ||
+        lyricsStr.includes(q) ||
+        keyStr.includes(q);
 
-      const matchesCat = selectedCategory === 'ALL' || s.category === selectedCategory;
-      const matchesKey = selectedKey === 'ALL' || s.key === selectedKey;
+      const matchesCat = selectedCategory === 'ALL' || (s.category || '').toLowerCase() === selectedCategory.toLowerCase();
+      const matchesKey = selectedKey === 'ALL' || (s.key || '').toUpperCase() === selectedKey.toUpperCase();
 
       return matchesSearch && matchesCat && matchesKey;
     });
 
     return list.sort((a, b) => {
-      if (sortBy === 'title-asc') return a.title.localeCompare(b.title);
-      if (sortBy === 'title-desc') return b.title.localeCompare(a.title);
-      if (sortBy === 'key-asc') return a.key.localeCompare(b.key);
-      if (sortBy === 'category-asc') return a.category.localeCompare(b.category);
+      if (sortBy === 'title-asc') return (a.title || '').localeCompare(b.title || '');
+      if (sortBy === 'title-desc') return (b.title || '').localeCompare(a.title || '');
+      if (sortBy === 'key-asc') return (a.key || '').localeCompare(b.key || '');
+      if (sortBy === 'category-asc') return (a.category || '').localeCompare(b.category || '');
       return 0;
     });
   }, [songs, searchQuery, selectedCategory, selectedKey, sortBy]);
@@ -133,22 +140,27 @@ function SongsAdminContent() {
     triggerToast(`"${title}" deleted.`);
   };
 
-  // Extract unique chords from a song's lyricsAndChords string
-  const getSongChordsList = (content: string): string[] => {
-    const chords = new Set<string>();
-    const matches = content.matchAll(/\[([A-G][#b]?[^\]]*)\]/g);
-    for (const m of matches) {
-      const c = m[1].trim();
-      if (
-        c &&
-        !['verse', 'chorus', 'bridge', 'intro', 'outro', 'refrain'].some((tag) =>
-          c.toLowerCase().includes(tag)
-        )
-      ) {
-        chords.add(c);
+  // Extract unique chords from a song's lyricsAndChords string safely
+  const getSongChordsList = (content?: string): string[] => {
+    if (!content) return [];
+    try {
+      const chords = new Set<string>();
+      const matches = content.matchAll(/\[([A-G][#b]?[^\]]*)\]/g);
+      for (const m of matches) {
+        const c = m[1]?.trim();
+        if (
+          c &&
+          !['verse', 'chorus', 'bridge', 'intro', 'outro', 'refrain', 'c:', 'comment:'].some((tag) =>
+            c.toLowerCase().includes(tag)
+          )
+        ) {
+          chords.add(c);
+        }
       }
+      return Array.from(chords).slice(0, 6);
+    } catch {
+      return [];
     }
-    return Array.from(chords).slice(0, 6);
   };
 
   return (

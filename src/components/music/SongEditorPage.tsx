@@ -211,8 +211,8 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
         notes,
       });
 
-      // Redirect back to songs list page
-      router.push('/admin/songs?saved=' + encodeURIComponent(saved.title));
+      // Redirect back to songs list page cleanly
+      window.location.href = '/admin/songs?saved=' + encodeURIComponent(saved.title);
     } catch (err) {
       console.error('Failed to save song:', err);
       alert('Failed to save worship song. Please try again.');

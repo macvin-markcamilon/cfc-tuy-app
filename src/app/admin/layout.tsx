@@ -80,15 +80,16 @@ export default function AdminLayout({
       };
 
       syncProfileData();
-      window.addEventListener('cfc_user_profile_updated', syncProfileData);
-      return () => {
-        window.removeEventListener('cfc_user_profile_updated', syncProfileData);
-      };
 
       const savedCollapsed = localStorage.getItem('cfc_admin_sidebar_collapsed');
       if (savedCollapsed !== null) {
         setIsCollapsed(savedCollapsed === 'true');
       }
+
+      window.addEventListener('cfc_user_profile_updated', syncProfileData);
+      return () => {
+        window.removeEventListener('cfc_user_profile_updated', syncProfileData);
+      };
     }
   }, [pathname, isLoginPage, router]);
 

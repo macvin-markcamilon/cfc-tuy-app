@@ -7,6 +7,7 @@ import { fetchHouseholdGroups } from '@/lib/data/groups-service';
 import {
   fetchDirectoryCouples,
   saveDirectoryCouple,
+  saveDirectoryCouplesBulk,
   deleteDirectoryCouple,
   fileToDataUrl,
   checkDatabaseSyncStatus,
@@ -48,6 +49,8 @@ import {
   IdCard,
   FileText,
   RefreshCw,
+  Download,
+  ExternalLink,
 } from 'lucide-react';
 import AnniversaryGreetingCardModal from '@/components/common/AnniversaryGreetingCardModal';
 import BirthdayGreetingCardModal from '@/components/common/BirthdayGreetingCardModal';
@@ -211,6 +214,52 @@ CREATE POLICY "Allow full access on household_groups"
     } finally {
       setIsSyncingDb(false);
     }
+  };
+
+  const jsonFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleExportBackup = () => {
+    if (couples.length === 0) {
+      alert('No directory records to export.');
+      return;
+    }
+    const dataStr = JSON.stringify(couples, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cfc_tuy_directory_members_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    triggerToast(`Exported ${couples.length} couples to JSON file!`);
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          alert('Invalid backup file. Expected an array of couples.');
+          return;
+        }
+
+        const res = await saveDirectoryCouplesBulk(parsed);
+        setCouples(res.couples);
+        triggerToast(`Successfully imported ${res.savedCount} couples into directory!`);
+      } catch (err) {
+        console.error('Failed to import backup:', err);
+        alert('Could not read file. Please ensure it is a valid JSON file.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   // ---------------------------------------------------------------------------
@@ -585,28 +634,54 @@ CREATE POLICY "Allow full access on household_groups"
           </p>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap self-start md:self-auto">
+        <div className="flex items-center gap-2.5 flex-wrap self-start md:self-auto">
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
+            className="px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
           >
-            <Plus className="w-4.5 h-4.5 stroke-[2.5]" />
-            <span>+ Add Member / Couple</span>
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>+ Add Member</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowBulkUploadModal(true)}
-            className="px-4.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs sm:text-sm shadow-md transition-all active:scale-95 flex items-center gap-2"
+            className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs sm:text-sm shadow-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
           >
-            <FileSpreadsheet className="w-4.5 h-4.5 stroke-[2.5]" />
+            <FileSpreadsheet className="w-4 h-4 stroke-[2.5]" />
             <span>Bulk Upload CSV</span>
           </button>
 
+          {/* Instant Transfer between Browsers */}
+          <button
+            type="button"
+            onClick={handleExportBackup}
+            className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+            title="Export all members to a JSON file to transfer directly to another browser"
+          >
+            <Download className="w-4 h-4 text-slate-600" />
+            <span>Export Backup</span>
+          </button>
+
+          <label
+            className="px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold text-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+            title="Import JSON backup directly into this browser"
+          >
+            <Upload className="w-4 h-4 text-slate-600" />
+            <span>Import Backup</span>
+            <input
+              ref={jsonFileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleImportBackup}
+            />
+          </label>
+
           <Link
             href="/admin/groups"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[#243c81] font-bold text-xs sm:text-sm transition-all"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[#243c81] font-bold text-xs sm:text-sm transition-all"
           >
             <Layers className="w-4 h-4" />
             <span>Household Units</span>
@@ -635,9 +710,9 @@ CREATE POLICY "Allow full access on household_groups"
               <p className="text-xs sm:text-sm text-amber-800 mt-1 max-w-3xl leading-relaxed">
                 The <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold text-amber-900">directory_couples</code> table has not been created in Supabase yet.
                 {couples.length > 0 ? (
-                  <> Your <strong>{couples.length} couples (86 brethren)</strong> are safely preserved in this browser’s local cache, but will not show in other browsers until the table is created.</>
+                  <> Your <strong>{couples.length} couples (86 brethren)</strong> are currently saved in this browser’s local storage. They cannot be synced across browsers until the table is created in Supabase.</>
                 ) : (
-                  <> Members added or imported in other browsers cannot sync until the table is created in Supabase.</>
+                  <> This browser currently has 0 members because the Supabase cloud table has not been created yet.</>
                 )}
               </p>
             </div>
@@ -650,8 +725,18 @@ CREATE POLICY "Allow full access on household_groups"
               className="px-4 py-2.5 rounded-xl bg-[#243c81] hover:bg-blue-900 text-white font-black text-xs shadow-md transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
             >
               {copiedSql ? <Check className="w-4 h-4 text-emerald-400" /> : <FileText className="w-4 h-4 text-amber-300" />}
-              <span>{copiedSql ? 'Copied SQL!' : 'Copy SQL Setup Script'}</span>
+              <span>{copiedSql ? 'Copied SQL!' : 'Copy SQL Script'}</span>
             </button>
+
+            <a
+              href="https://supabase.com/dashboard/project/qfuwxhcljvckywhmottj/sql/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Open Supabase SQL Editor</span>
+            </a>
 
             <button
               type="button"
@@ -660,7 +745,7 @@ CREATE POLICY "Allow full access on household_groups"
               className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-sm transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDb ? 'animate-spin' : ''}`} />
-              <span>{isSyncingDb ? 'Checking...' : 'Check & Sync Table'}</span>
+              <span>{isSyncingDb ? 'Checking...' : 'Check & Sync Now'}</span>
             </button>
           </div>
         </div>

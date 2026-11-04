@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   WorshipSong,
   getDefaultVisualizerVideo,
@@ -582,11 +582,23 @@ function SongPresentationModalContent({
   const activeBgVideo = useMemo(() => {
     const currentSong = activePlaylist[activeSongInfo.songIndex] || song;
     const raw = currentSong?.videoUrl || defaultBgVideo || '';
+    if (!raw || raw.startsWith('blob:') || raw.startsWith('Uploaded:')) {
+      return '';
+    }
     if (raw.includes('.supabase.co/storage/v1/object/public/songs/videos/')) {
       return `/api/video?url=${encodeURIComponent(raw)}`;
     }
     return raw;
   }, [activePlaylist, activeSongInfo.songIndex, song, defaultBgVideo]);
+
+  const presentationVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (showBgVideo && activeBgVideo && presentationVideoRef.current) {
+      presentationVideoRef.current.muted = true;
+      presentationVideoRef.current.play().catch(() => {});
+    }
+  }, [showBgVideo, activeBgVideo]);
 
   // Dynamic font color resolution:
   // - If motion background video is active, default to white or chosen color with high-contrast text shadow
@@ -929,12 +941,21 @@ function SongPresentationModalContent({
       {showBgVideo && activeBgVideo && (
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
           <video
+            ref={presentationVideoRef}
             key={activeBgVideo}
             src={activeBgVideo}
             autoPlay
             loop
             muted
             playsInline
+            onLoadedData={() => {
+              if (presentationVideoRef.current) {
+                presentationVideoRef.current.play().catch(() => {});
+              }
+            }}
+            onError={(e) => {
+              console.warn('Background motion video failed to load:', activeBgVideo, e);
+            }}
             className={`w-full h-full object-cover transition-all duration-300 ${
               isBlurred ? 'scale-105' : ''
             }`}

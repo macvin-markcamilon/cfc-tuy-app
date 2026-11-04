@@ -110,7 +110,12 @@ function SongsAdminContent() {
       const { url } = await uploadSongVideo(file, 'default_visualizer');
       setDefaultVideo(url);
       setCustomVideoUrlInput(url);
-      triggerToast(`Motion video "${file.name}" uploaded to database!`);
+      await saveChapterVisualizerSettingsToDB({
+        defaultVideoUrl: url,
+        isBlurred,
+        blurAmount,
+      });
+      triggerToast(`Motion video "${file.name}" uploaded and saved to database!`);
     } catch (err: any) {
       console.error('Failed to attach video:', err);
       alert(err.message || 'Could not attach video file.');
@@ -121,15 +126,23 @@ function SongsAdminContent() {
 
   const handleSaveDefaultVisualizer = async () => {
     try {
-      let videoToSave = defaultVideo;
-      if (
-        customVideoUrlInput &&
-        !customVideoUrlInput.startsWith('Uploaded:') &&
-        !customVideoUrlInput.startsWith('Uploaded Video') &&
-        !customVideoUrlInput.startsWith('Custom Video')
-      ) {
-        videoToSave = customVideoUrlInput.trim();
+      let videoToSave = customVideoUrlInput.trim() || defaultVideo;
+
+      if (videoToSave) {
+        if (videoToSave.startsWith('blob:') || videoToSave.startsWith('Uploaded:')) {
+          alert('Please click "Upload Video File" to upload your video file directly to the database.');
+          return;
+        }
+        if (
+          !videoToSave.startsWith('http://') &&
+          !videoToSave.startsWith('https://') &&
+          !videoToSave.startsWith('/api/video')
+        ) {
+          alert('Please enter a valid video link starting with https://, or click "Upload Video File" to upload your MP4 video.');
+          return;
+        }
       }
+
       await saveChapterVisualizerSettingsToDB({
         defaultVideoUrl: videoToSave,
         isBlurred,
@@ -635,7 +648,11 @@ function SongsAdminContent() {
                     <>
                       <video
                         key={defaultVideo}
-                        src={defaultVideo}
+                        src={
+                          defaultVideo.includes('.supabase.co/storage/v1/object/public/songs/videos/')
+                            ? `/api/video?url=${encodeURIComponent(defaultVideo)}`
+                            : defaultVideo
+                        }
                         autoPlay
                         loop
                         muted

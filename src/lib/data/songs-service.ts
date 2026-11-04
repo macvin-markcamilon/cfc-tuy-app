@@ -719,9 +719,16 @@ export async function fetchChapterVisualizerSettingsFromDB(): Promise<Visualizer
       parsed = { defaultVideoUrl: data.notes, updatedAt: new Date().toISOString() };
     }
 
+    // Clean any expired/temporary local blob URLs that might have been saved
+    if (parsed.defaultVideoUrl?.startsWith('blob:') || parsed.defaultVideoUrl?.startsWith('Uploaded:')) {
+      parsed.defaultVideoUrl = '';
+    }
+
     if (isBrowser()) {
       if (parsed.defaultVideoUrl) {
         localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, parsed.defaultVideoUrl);
+      } else {
+        localStorage.removeItem(DEFAULT_VISUALIZER_VIDEO_KEY);
       }
       if (parsed.fontColor) {
         localStorage.setItem('cfc_presentation_font_color', parsed.fontColor);
@@ -750,8 +757,13 @@ export async function saveChapterVisualizerSettingsToDB(config: {
   isBlurred?: boolean;
   blurAmount?: number;
 }): Promise<VisualizerConfig> {
+  let cleanUrl = config.defaultVideoUrl.trim();
+  if (cleanUrl.startsWith('blob:') || cleanUrl.startsWith('Uploaded:')) {
+    throw new Error('Local browser temporary files cannot be saved to cloud database. Please upload the video file using "Upload Video File".');
+  }
+
   const payload: VisualizerConfig = {
-    defaultVideoUrl: config.defaultVideoUrl.trim(),
+    defaultVideoUrl: cleanUrl,
     fontColor: config.fontColor,
     isBlurred: typeof config.isBlurred === 'boolean' ? config.isBlurred : false,
     blurAmount: config.blurAmount || 8,
@@ -823,13 +835,18 @@ export async function resolveVisualizerVideoUrl(urlOrToken?: string): Promise<st
 
   if (!token) return '';
 
+  // Reject dead in-memory blobs or invalid upload labels
+  if (token.startsWith('blob:') || token.startsWith('Uploaded:')) {
+    return '';
+  }
+
   if (token.startsWith('idb:')) {
     const key = token.replace(/^idb:/, '').split('|')[0] || 'default_visualizer';
     const blobUrl = await getVideoBlobUrl(key);
     return blobUrl || '';
   }
 
-  if (token.startsWith('blob:') || token.startsWith('http://') || token.startsWith('https://') || token.startsWith('/api/video')) {
+  if (token.startsWith('http://') || token.startsWith('https://') || token.startsWith('/api/video')) {
     return token;
   }
 
@@ -860,9 +877,40 @@ export async function uploadSongVideo(
   key = 'default_visualizer'
 ): Promise<{ url: string; fileName: string; supabaseUrl?: string }> {
   if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov|m4v|ogg)$/i)) {
-    throw new Error('Please upload a video file (.mp4, .webm, .mov).');
+    throw new Error('Please upload a valid motion video loop (.mp4, .webm, .mov).');
   }
 
+  // 1. First attempt: Server API upload route (robust, no CORS/header issues)
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('key', key);
+
+    const res = await fetch('/api/video/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.url) {
+        return {
+          url: data.url,
+          fileName: file.name,
+          supabaseUrl: data.url,
+        };
+      }
+    } else {
+      const errData = await res.json().catch(() => null);
+      if (errData?.error) {
+        console.warn('API video upload returned error, trying direct client upload:', errData.error);
+      }
+    }
+  } catch (apiErr) {
+    console.warn('API video upload request failed, trying direct client upload:', apiErr);
+  }
+
+  // 2. Second attempt: Direct client Supabase upload
   const supabase = createClient();
   const fileExt = file.name.split('.').pop() || 'mp4';
   const cleanBase = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9-_]/g, '_');
@@ -890,17 +938,13 @@ export async function uploadSongVideo(
           };
         }
       } else {
-        console.warn('Supabase storage video upload warning:', uploadError.message);
+        console.error('Supabase direct video upload error:', uploadError.message);
+        throw new Error(`Cloud storage upload failed: ${uploadError.message}`);
       }
-    } catch (storageErr) {
-      console.warn('Supabase video upload failed, using local IndexedDB fallback:', storageErr);
+    } catch (storageErr: any) {
+      throw new Error(storageErr?.message || 'Failed to upload video to cloud storage.');
     }
   }
 
-  // Fallback to IndexedDB
-  const blobUrl = await saveVideoBlob(key, file);
-  return {
-    url: blobUrl,
-    fileName: file.name,
-  };
+  throw new Error('Unable to connect to cloud storage. Please check your internet connection.');
 }

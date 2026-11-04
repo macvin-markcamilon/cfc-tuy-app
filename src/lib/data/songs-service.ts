@@ -355,10 +355,6 @@ export async function pushSongToSupabase(song: WorshipSong): Promise<boolean> {
 }
 
 export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
-  const deletedIds = getDeletedWorshipSongIds();
-  const localSongs = getLocalSongs();
-  const localMap = new Map<string, WorshipSong>(localSongs.map((s) => [s.id, s]));
-
   try {
     const supabase = createClient();
     if (supabase) {
@@ -368,52 +364,21 @@ export async function fetchWorshipSongs(): Promise<WorshipSong[]> {
         .order('title', { ascending: true });
 
       if (!error && data) {
-        // Exclude deleted or legacy mock songs
+        // Exclude legacy mock songs
         const validData = data.filter(
-          (d: any) => !deletedIds.has(d.id) && !LEGACY_MOCK_SONG_IDS.has(d.id)
+          (d: any) => d && d.id && !LEGACY_MOCK_SONG_IDS.has(d.id)
         );
 
-        const merged: WorshipSong[] = validData.map((d: any) => {
-          const local = localMap.get(d.id);
-          const supabaseUpdatedAt = d.updated_at ? new Date(d.updated_at).getTime() : 0;
-          const localUpdatedAt = local?.updatedAt ? new Date(local.updatedAt).getTime() : 0;
-
-          if (local && localUpdatedAt > supabaseUpdatedAt) {
-            return local;
-          }
-
-          return mapRowToWorshipSong(d, local);
-        });
-
-        // Detect any authentic local songs that are not yet in Supabase
-        const supabaseIds = new Set(validData.map((d: any) => d.id));
-        const pendingUploads: WorshipSong[] = [];
-
-        for (const [id, localSong] of localMap.entries()) {
-          if (!supabaseIds.has(id) && !deletedIds.has(id) && !LEGACY_MOCK_SONG_IDS.has(id)) {
-            merged.push(localSong);
-            pendingUploads.push(localSong);
-          }
-        }
-
-        if (pendingUploads.length > 0) {
-          try {
-            await Promise.all(pendingUploads.map((s) => pushSongToSupabase(s)));
-            notifySongsChange({ action: 'pending_uploaded', count: pendingUploads.length });
-          } catch (err) {
-            console.warn('Sync error pushing pending songs to Supabase:', err);
-          }
-        }
-
-        setLocalSongs(merged);
-        return merged;
+        const songs: WorshipSong[] = validData.map((d: any) => mapRowToWorshipSong(d));
+        setLocalSongs(songs);
+        return songs;
       }
     }
   } catch (err) {
     console.warn('Error fetching songs from Supabase, falling back to local storage:', err);
   }
 
-  return localSongs;
+  return getLocalSongs();
 }
 
 export async function fetchWorshipSongById(id: string): Promise<WorshipSong | null> {

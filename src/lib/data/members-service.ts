@@ -346,19 +346,22 @@ export async function fetchDirectoryCouples(): Promise<DirectoryCouple[]> {
 
         const supabaseIds = new Set(merged.map((c) => c.id));
         const pendingUploads: DirectoryCouple[] = [];
-        for (const [id, localItem] of localMap.entries()) {
-          if (!supabaseIds.has(id) && !deletedIds.has(id)) {
-            merged.push(localItem);
-            pendingUploads.push(localItem);
-          }
-        }
 
-        // Automatic background sync to Supabase for any locally cached couples
-        if (pendingUploads.length > 0) {
-          try {
-            await saveDirectoryCouplesBulk(pendingUploads);
-          } catch (err) {
-            console.warn('Sync error pushing pending couples to Supabase:', err);
+        // Only upload local items if Supabase database table was completely empty
+        if (data.length === 0) {
+          for (const [id, localItem] of localMap.entries()) {
+            if (!supabaseIds.has(id) && !deletedIds.has(id)) {
+              merged.push(localItem);
+              pendingUploads.push(localItem);
+            }
+          }
+
+          if (pendingUploads.length > 0) {
+            try {
+              await saveDirectoryCouplesBulk(pendingUploads);
+            } catch (err) {
+              console.warn('Sync error pushing pending couples to Supabase:', err);
+            }
           }
         }
 

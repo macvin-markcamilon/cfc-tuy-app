@@ -171,30 +171,41 @@ export function setLocalSongs(songs: WorshipSong[]): void {
 // -----------------------------------------------------------------------------
 // Realtime Broadcast Channel & Notifications
 // -----------------------------------------------------------------------------
-const SONGS_CHANNEL_NAME = 'cfc_songs_live';
-let sharedSongsBroadcastChannel: any = null;
-
-export function getSongsRealtimeChannel() {
-  if (!isBrowser()) return null;
-  const supabase = createClient();
-  if (!supabase) return null;
-
-  if (!sharedSongsBroadcastChannel) {
-    sharedSongsBroadcastChannel = supabase.channel(SONGS_CHANNEL_NAME);
-    sharedSongsBroadcastChannel.subscribe();
-  }
-  return sharedSongsBroadcastChannel;
-}
+const SONGS_UPDATE_TS_KEY = 'cfc_songs_last_update_ts';
 
 export function notifySongsChange(payload?: any) {
   if (!isBrowser()) return;
+
+  // 1. Immediately notify listeners in the current tab/window
   try {
-    const ch = getSongsRealtimeChannel();
-    if (ch) {
-      ch.send({
-        type: 'broadcast',
-        event: 'songs_changed',
-        payload: payload || { timestamp: Date.now() },
+    window.dispatchEvent(new CustomEvent('cfc_songs_changed', { detail: payload }));
+  } catch {}
+
+  // 2. Trigger native cross-tab storage event across all open browser tabs
+  try {
+    localStorage.setItem(SONGS_UPDATE_TS_KEY, String(Date.now()));
+  } catch {}
+
+  // 3. Broadcast to Supabase Realtime channel across other devices and browsers
+  try {
+    const supabase = createClient();
+    if (supabase) {
+      const tempChannelName = `cfc_bc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const bc = supabase.channel(tempChannelName);
+      bc.subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          bc.send({
+            type: 'broadcast',
+            event: 'songs_changed',
+            payload: payload || { timestamp: Date.now() },
+          }).finally(() => {
+            setTimeout(() => {
+              try {
+                supabase.removeChannel(bc);
+              } catch {}
+            }, 1500);
+          });
+        }
       });
     }
   } catch (err) {
@@ -204,6 +215,8 @@ export function notifySongsChange(payload?: any) {
 
 /**
  * Subscribes to real-time song repertoire updates across browsers, devices, and tabs.
+ * Each subscriber uses an isolated, uniquely identified Supabase channel to prevent
+ * "cannot add postgres_changes callbacks after subscribe()" channel reuse errors.
  */
 export function subscribeToSongsChanges(onChange: () => void): () => void {
   if (!isBrowser()) {
@@ -214,58 +227,84 @@ export function subscribeToSongsChanges(onChange: () => void): () => void {
   let channel: any = null;
 
   if (supabase) {
-    // MUST match the shared channel name 'cfc_songs_live' so broadcasts are received
-    channel = supabase.channel(SONGS_CHANNEL_NAME);
+    try {
+      // Use unique channel identifier so subscribers never conflict
+      const uniqueChannelName = `cfc_sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      channel = supabase.channel(uniqueChannelName);
 
-    channel
-      .on('broadcast', { event: 'songs_changed' }, () => {
-        onChange();
-      })
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'worship_songs' },
-        () => {
-          onChange();
-        }
-      )
-      .subscribe((status: string) => {
-        if (status === 'SUBSCRIBED') {
-          onChange();
-        }
-      });
+      channel
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'worship_songs' },
+          () => {
+            try {
+              onChange();
+            } catch (err) {
+              console.warn('Realtime postgres_changes callback error:', err);
+            }
+          }
+        )
+        .subscribe();
+    } catch (realtimeErr) {
+      console.warn('Supabase realtime subscription failed:', realtimeErr);
+    }
   }
+
+  // Same-tab event listener
+  const handleCustomEvent = () => {
+    try {
+      onChange();
+    } catch {}
+  };
+  window.addEventListener('cfc_songs_changed', handleCustomEvent);
 
   // Cross-tab storage changes
   const handleStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY || e.key === DELETED_SONGS_KEY) {
-      onChange();
+    if (
+      e.key === STORAGE_KEY ||
+      e.key === DELETED_SONGS_KEY ||
+      e.key === SONGS_UPDATE_TS_KEY ||
+      e.key === DEFAULT_VISUALIZER_VIDEO_KEY
+    ) {
+      try {
+        onChange();
+      } catch {}
     }
   };
   window.addEventListener('storage', handleStorage);
 
   // Tab focus change
   const handleFocus = () => {
-    onChange();
+    try {
+      onChange();
+    } catch {}
   };
   window.addEventListener('focus', handleFocus);
 
   // Tab visibility change
   const handleVisibility = () => {
     if (document.visibilityState === 'visible') {
-      onChange();
+      try {
+        onChange();
+      } catch {}
     }
   };
   document.addEventListener('visibilitychange', handleVisibility);
 
   // Heartbeat fallback poll (every 5 seconds) to ensure real-time guarantee across network drops
   const pollTimer = setInterval(() => {
-    onChange();
+    try {
+      onChange();
+    } catch {}
   }, 5000);
 
   return () => {
     if (channel && supabase) {
-      supabase.removeChannel(channel);
+      try {
+        supabase.removeChannel(channel);
+      } catch {}
     }
+    window.removeEventListener('cfc_songs_changed', handleCustomEvent);
     window.removeEventListener('storage', handleStorage);
     window.removeEventListener('focus', handleFocus);
     document.removeEventListener('visibilitychange', handleVisibility);

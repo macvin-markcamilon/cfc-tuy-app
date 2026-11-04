@@ -15,6 +15,8 @@ export interface WorshipSong {
   audioUrl?: string; // MP3 URL or base64 data URI
   audioFileName?: string;
   youtubeUrl?: string; // YouTube video or audio link
+  videoUrl?: string; // Visualizer background video URL (.mp4, .webm)
+  videoFileName?: string;
   tags?: string[];
   notes?: string;
   createdAt: string;
@@ -258,6 +260,8 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
   let youtubeUrl = d.youtube_url || local?.youtubeUrl || '';
   let audioUrl = d.audio_url || local?.audioUrl || '';
   let notes = d.notes || local?.notes || '';
+  let videoUrl = d.video_url || local?.videoUrl || '';
+  let videoFileName = d.video_file_name || local?.videoFileName || '';
 
   // 1. If audio_url is actually a YouTube link, route it to youtubeUrl
   if (!youtubeUrl && audioUrl && isYouTubeUrl(audioUrl)) {
@@ -271,6 +275,24 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
     if (match) {
       if (!youtubeUrl) youtubeUrl = match[1].trim();
       notes = notes.replace(/\[YOUTUBE:\s*[^\]]+\]/, '').trim();
+    }
+  }
+
+  // 3. If Visualizer Video URL was encoded inside notes with [VIDEO: ...], extract it
+  if (notes && notes.includes('[VIDEO:')) {
+    const match = notes.match(/\[VIDEO:\s*([^\]]+)\]/);
+    if (match) {
+      if (!videoUrl) videoUrl = match[1].trim();
+      notes = notes.replace(/\[VIDEO:\s*[^\]]+\]/, '').trim();
+    }
+  }
+
+  // 4. If Video file name was encoded inside notes with [VIDEO_FILE: ...], extract it
+  if (notes && notes.includes('[VIDEO_FILE:')) {
+    const match = notes.match(/\[VIDEO_FILE:\s*([^\]]+)\]/);
+    if (match) {
+      if (!videoFileName) videoFileName = match[1].trim();
+      notes = notes.replace(/\[VIDEO_FILE:\s*[^\]]+\]/, '').trim();
     }
   }
 
@@ -288,6 +310,8 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
     audioUrl: audioUrl,
     audioFileName: d.audio_file_name || local?.audioFileName,
     youtubeUrl: youtubeUrl,
+    videoUrl: videoUrl,
+    videoFileName: videoFileName,
     tags: d.tags || local?.tags || [],
     notes: notes,
     createdAt: d.created_at || local?.createdAt || new Date().toISOString(),
@@ -307,6 +331,18 @@ export function mapSongToRow(song: WorshipSong) {
   } else if (song.youtubeUrl && finalAudioUrl) {
     if (!notes.includes('[YOUTUBE:')) {
       notes = notes ? `${notes}\n[YOUTUBE: ${song.youtubeUrl}]` : `[YOUTUBE: ${song.youtubeUrl}]`;
+    }
+  }
+
+  if (song.videoUrl) {
+    if (!notes.includes('[VIDEO:')) {
+      notes = notes ? `${notes}\n[VIDEO: ${song.videoUrl}]` : `[VIDEO: ${song.videoUrl}]`;
+    }
+  }
+
+  if (song.videoFileName) {
+    if (!notes.includes('[VIDEO_FILE:')) {
+      notes = notes ? `${notes}\n[VIDEO_FILE: ${song.videoFileName}]` : `[VIDEO_FILE: ${song.videoFileName}]`;
     }
   }
 
@@ -462,6 +498,8 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
     audioUrl: finalAudioUrl,
     audioFileName: song.audioFileName || '',
     youtubeUrl: finalYoutubeUrl,
+    videoUrl: song.videoUrl?.trim() || '',
+    videoFileName: song.videoFileName?.trim() || '',
     tags: song.tags || [],
     notes: song.notes || '',
     createdAt: song.createdAt || now,
@@ -566,4 +604,61 @@ export async function uploadSongAudio(file: File): Promise<{ url: string; fileNa
     url: publicUrlData.publicUrl,
     fileName: file.name,
   };
+}
+
+// -----------------------------------------------------------------------------
+// Visualizer Background Video Settings & Upload
+// -----------------------------------------------------------------------------
+export const DEFAULT_VISUALIZER_VIDEO_KEY = 'cfc_tuy_default_visualizer_video_v1';
+
+export const BUILTIN_VISUALIZER_PRESETS = [
+  {
+    id: 'preset-golden-light',
+    name: '✨ Golden Grace Glow (Warm Worship)',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    category: 'Radiant',
+    description: 'Warm glowing ambient rays suited for praise and thanksgiving',
+  },
+  {
+    id: 'preset-starlight',
+    name: '🌌 Celestial Starlight Waves (Reflective)',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+    category: 'Cosmic',
+    description: 'Deep celestial ambient loop for slow worship & reflection',
+  },
+  {
+    id: 'preset-nebula',
+    name: '🌊 Ocean of Grace & Deep Water',
+    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4',
+    category: 'Flow',
+    description: 'Flowing water and dynamic movement for praise assemblies',
+  },
+];
+
+export function getDefaultVisualizerVideo(): string {
+  if (!isBrowser()) return '';
+  return localStorage.getItem(DEFAULT_VISUALIZER_VIDEO_KEY) || '';
+}
+
+export function setDefaultVisualizerVideo(url: string): void {
+  if (!isBrowser()) return;
+  localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, url);
+  notifySongsChange({ action: 'default_video_updated', url });
+}
+
+/**
+ * Upload a visualizer background video (.mp4, .webm, .mov)
+ * Uses FileReader Data URL / Blob URL for smooth reliable looping playback
+ */
+export async function uploadSongVideo(file: File): Promise<{ url: string; fileName: string }> {
+  if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov|m4v|ogg)$/i)) {
+    throw new Error('Please upload a video file (.mp4, .webm, .mov).');
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ url: reader.result as string, fileName: file.name });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }

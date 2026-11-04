@@ -8,6 +8,7 @@ import {
   fetchWorshipSongById,
   saveWorshipSong,
   uploadSongAudio,
+  uploadSongVideo,
   fileToAudioDataUrl,
   isYouTubeUrl,
 } from '@/lib/data/songs-service';
@@ -20,6 +21,7 @@ import {
   Check,
   Upload,
   FileAudio,
+  Video,
   Trash2,
   Sparkles,
   Edit3,
@@ -61,6 +63,8 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
   const [audioUrl, setAudioUrl] = useState('');
   const [audioFileName, setAudioFileName] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
+  const [videoFileName, setVideoFileName] = useState('');
   const [ccliNumber, setCcliNumber] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -69,6 +73,7 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
   const [customChordInput, setCustomChordInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const [showAdvancedMetadata, setShowAdvancedMetadata] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -94,6 +99,8 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
             setAudioUrl(fetched.audioUrl || '');
             setAudioFileName(fetched.audioFileName || '');
             setYoutubeUrl(fetched.youtubeUrl || '');
+            setVideoUrl(fetched.videoUrl || '');
+            setVideoFileName(fetched.videoFileName || '');
             setCcliNumber(fetched.ccliNumber || '');
             setNotes(fetched.notes || '');
           }
@@ -184,6 +191,26 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
     }
   };
 
+  // Handle Visualizer Video upload
+  const handleVideoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingVideo(true);
+      const { url, fileName } = await uploadSongVideo(file);
+      setVideoUrl(url);
+      setVideoFileName(fileName);
+      setToastMsg('Visualizer motion video attached successfully!');
+    } catch (err: any) {
+      console.error('Failed to attach video:', err);
+      alert(err.message || 'Could not attach video file.');
+    } finally {
+      setUploadingVideo(false);
+      setTimeout(() => setToastMsg(null), 4000);
+    }
+  };
+
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,6 +235,8 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
         audioUrl,
         audioFileName,
         youtubeUrl,
+        videoUrl,
+        videoFileName,
         notes,
       });
 
@@ -598,6 +627,98 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
                 />
               </div>
             )}
+
+            {/* Visualizer Background Motion Video (Presentation Mode) */}
+            <div className="pt-4 border-t-2 border-dashed border-indigo-200/80">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+                <div>
+                  <h3 className="font-extrabold text-sm text-[#243c81] flex items-center gap-2">
+                    <Video className="w-4.5 h-4.5 text-indigo-600" />
+                    <span>Visualizer Background Video (Presentation Mode)</span>
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Upload an MP4/WebM motion background loop that plays behind lyrics on church projectors.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {videoUrl ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-indigo-800 bg-indigo-100 px-3 py-1.5 rounded-xl flex items-center gap-1.5 truncate max-w-[260px] border border-indigo-300">
+                        <Check className="w-4 h-4 text-indigo-600" />
+                        <span className="truncate">{videoFileName || 'Motion Video Attached'}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVideoUrl('');
+                          setVideoFileName('');
+                        }}
+                        className="p-2 rounded-xl text-rose-600 hover:bg-rose-100/70 transition-colors"
+                        title="Remove Visualizer Video"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95">
+                      <Upload className="w-4 h-4" />
+                      <span>{uploadingVideo ? 'Uploading...' : 'Upload Video Loop'}</span>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm,video/quicktime,video/*"
+                        onChange={handleVideoFileChange}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Direct Video URL Input */}
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-slate-500 font-semibold shrink-0">Or Video URL:</span>
+                <input
+                  type="url"
+                  value={videoUrl.startsWith('data:') ? '' : videoUrl}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setVideoUrl(val);
+                    if (val && !videoFileName) {
+                      setVideoFileName('Custom Video URL');
+                    }
+                  }}
+                  placeholder="https://assets.mixkit.co/videos/...mp4"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 font-mono"
+                />
+              </div>
+
+              {/* Live Video Thumbnail Preview */}
+              {videoUrl && (
+                <div className="mt-3 p-2.5 rounded-2xl bg-slate-900 border border-slate-700 max-w-sm">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold mb-1.5 px-1">
+                    <span>Motion Background Preview</span>
+                    <span className="text-emerald-400">Looping</span>
+                  </div>
+                  <div className="relative aspect-video rounded-xl overflow-hidden bg-black border border-slate-800">
+                    <video
+                      key={videoUrl}
+                      src={videoUrl}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-slate-950/40 flex items-center justify-center pointer-events-none">
+                      <p className="text-white text-sm font-bold font-montserrat drop-shadow-md text-center px-2">
+                        Sample Lyrics Preview
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

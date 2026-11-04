@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { WorshipSong } from '@/lib/data/songs-service';
+import { WorshipSong, getDefaultVisualizerVideo, BUILTIN_VISUALIZER_PRESETS } from '@/lib/data/songs-service';
 import { transposeChord, transposeSongContent, getChordShape } from '@/lib/music/guitarChords';
 import { parseChordProLine, ChordProWord } from '@/lib/music/chordPro';
 import {
@@ -15,6 +15,7 @@ import {
   Minimize2,
   Tv,
   Music,
+  Video,
   Eye,
   EyeOff,
   ZoomIn,
@@ -29,6 +30,7 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  Check,
 } from 'lucide-react';
 
 interface SongPresentationModalProps {
@@ -51,6 +53,7 @@ export interface PresentationSlide {
   songTitle: string;
   songKey: string;
   songCategory: string;
+  songVideoUrl?: string;
   songIndex: number;
   totalSongsInPlaylist: number;
 }
@@ -87,7 +90,15 @@ export default function SongPresentationModal({
   const [autoPlayInterval, setAutoPlayInterval] = useState<number>(8); // seconds
 
   // Theme styling (White background with brand blue text default, Stage Dark, Deep Navy, High Contrast Black, Warm Sunset)
-  const [theme, setTheme] = useState<'white' | 'stage' | 'navy' | 'black' | 'warm'>('white');
+  const [theme, setTheme] = useState<'white' | 'stage' | 'navy' | 'black' | 'warm'>('stage');
+
+  // Visualizer Background Video state
+  const [showBgVideo, setShowBgVideo] = useState<boolean>(true);
+  const [defaultBgVideo, setDefaultBgVideo] = useState<string>('');
+
+  // Custom Font Color setting (default #ffffff for high contrast)
+  const [fontColor, setFontColor] = useState<string>('#ffffff');
+  const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
 
   // Compute active playlist songs list
   const activePlaylist = useMemo<WorshipSong[]>(() => {
@@ -95,6 +106,20 @@ export default function SongPresentationModal({
     if (song) return [song];
     return [];
   }, [playlist, song]);
+
+  // Load saved preferences for visualizer video & font color
+  useEffect(() => {
+    if (typeof window !== 'undefined' && isOpen) {
+      const def = getDefaultVisualizerVideo();
+      setDefaultBgVideo(def);
+      const savedColor = localStorage.getItem('cfc_presentation_font_color');
+      if (savedColor) setFontColor(savedColor);
+      const savedVideoPref = localStorage.getItem('cfc_presentation_show_video');
+      if (savedVideoPref !== null) {
+        setShowBgVideo(savedVideoPref === 'true');
+      }
+    }
+  }, [isOpen]);
 
   // Reset slide index when song/playlist changes or modal opens
   useEffect(() => {
@@ -407,6 +432,7 @@ export default function SongPresentationModal({
             songTitle: currentSong.title,
             songKey: currentSong.key,
             songCategory: currentSong.category || 'Worship',
+            songVideoUrl: currentSong.videoUrl || '',
             songIndex: songIdx,
             totalSongsInPlaylist: activePlaylist.length,
           });
@@ -440,6 +466,12 @@ export default function SongPresentationModal({
       totalSongs: activeSlide.totalSongsInPlaylist,
     };
   }, [activeSlide, activePlaylist, song]);
+
+  // Active visualizer background video URL
+  const activeBgVideo = useMemo(() => {
+    const currentSong = activePlaylist[activeSongInfo.songIndex] || song;
+    return currentSong?.videoUrl || defaultBgVideo || '';
+  }, [activePlaylist, activeSongInfo.songIndex, song, defaultBgVideo]);
 
   // Transposed current key display
   const currentKey = useMemo(() => {
@@ -746,19 +778,38 @@ export default function SongPresentationModal({
   return (
     <div className={`fixed inset-0 z-[100] w-screen h-screen ${themeClasses.bg} flex flex-col justify-between overflow-hidden select-none animate-in fade-in duration-200`}>
       {/* =================================================================== */}
+      {/* BACKGROUND VISUALIZER MOTION VIDEO LOOP (FOR PROJECTOR / STAGE)    */}
+      {/* =================================================================== */}
+      {showBgVideo && activeBgVideo && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+          <video
+            key={activeBgVideo}
+            src={activeBgVideo}
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="w-full h-full object-cover"
+          />
+          {/* Subtle contrast scrim to ensure lyrics are 100% readable */}
+          <div className="absolute inset-0 bg-slate-950/65" />
+        </div>
+      )}
+
+      {/* =================================================================== */}
       {/* TOP PRESENTATION BAR                                                */}
       {/* =================================================================== */}
-      <header className={`px-4 sm:px-8 py-3.5 ${themeClasses.headerBg} backdrop-blur-md border-b flex items-center justify-between gap-4 shrink-0 shadow-xs z-20`}>
-        <div className="flex items-center gap-3 overflow-hidden">
-          <div className={`w-10 h-10 rounded-xl ${themeClasses.iconBg} flex items-center justify-center shrink-0 shadow-xs`}>
+      <header className={`px-4 sm:px-8 py-3 sm:py-4 ${themeClasses.headerBg} backdrop-blur-md border-b flex items-center justify-between gap-4 shrink-0 shadow-xs relative z-20`}>
+        <div className="flex items-center gap-3 overflow-hidden min-w-0">
+          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ${themeClasses.iconBg} flex items-center justify-center shrink-0 shadow-xs`}>
             {activeSongInfo.totalSongs > 1 ? (
-              <ListMusic className="w-5 h-5" />
+              <ListMusic className="w-5 h-5 sm:w-6 sm:h-6" />
             ) : (
-              <Tv className="w-5 h-5" />
+              <Tv className="w-5 h-5 sm:w-6 sm:h-6" />
             )}
           </div>
-          <div className="truncate">
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="min-w-0 truncate">
+            <div className="flex items-center gap-2 flex-wrap mb-0.5">
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${themeClasses.badgeBg}`}>
                 {activeSongInfo.category}
               </span>
@@ -789,7 +840,12 @@ export default function SongPresentationModal({
                 </div>
               )}
             </div>
-            <h1 className={`text-base sm:text-xl font-black ${themeClasses.headerText} truncate tracking-tight`}>
+            {/* Song Title (Large enough to easily identify across the hall / projector) */}
+            <h1
+              className={`text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black ${themeClasses.headerText} truncate tracking-tight`}
+              style={{ fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif', fontWeight: 800 }}
+              title={activeSongInfo.title}
+            >
               {activeSongInfo.title}
             </h1>
           </div>
@@ -838,6 +894,116 @@ export default function SongPresentationModal({
             >
               <AlignRight className="w-4 h-4" />
             </button>
+          </div>
+
+          {/* Motion Video BG Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextVal = !showBgVideo;
+              setShowBgVideo(nextVal);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('cfc_presentation_show_video', String(nextVal));
+              }
+            }}
+            className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
+              showBgVideo ? themeClasses.btnActive : themeClasses.btnBg
+            }`}
+            title="Toggle Motion Background Video Loop"
+          >
+            <Video className="w-4 h-4" />
+            <span className="hidden sm:inline">Motion BG {showBgVideo ? 'ON' : 'OFF'}</span>
+          </button>
+
+          {/* Font Color Picker Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowColorPicker((prev) => !prev)}
+              className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${themeClasses.btnBg}`}
+              title="Customize Lyrics Font Color"
+            >
+              <div
+                className="w-3.5 h-3.5 rounded-full border border-white/60 shadow-xs shrink-0"
+                style={{ backgroundColor: fontColor || (theme === 'white' ? '#243c81' : '#ffffff') }}
+              />
+              <span className="hidden sm:inline">Font Color</span>
+            </button>
+
+            {showColorPicker && (
+              <div className="absolute right-0 top-full mt-2 p-3 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl z-50 w-60 flex flex-col gap-2.5 text-white">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                  <span>Lyrics Font Color</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFontColor(theme === 'white' ? '#243c81' : '#ffffff');
+                      setShowColorPicker(false);
+                      if (typeof window !== 'undefined') {
+                        localStorage.removeItem('cfc_presentation_font_color');
+                      }
+                    }}
+                    className="text-[10px] text-amber-400 hover:underline"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { hex: '#ffffff', label: 'Pure White' },
+                    { hex: '#facc15', label: 'Vibrant Yellow' },
+                    { hex: '#fbbf24', label: 'Warm Amber' },
+                    { hex: '#38bdf8', label: 'Sky Cyan' },
+                    { hex: '#4ade80', label: 'Pastel Green' },
+                    { hex: '#fb7185', label: 'Soft Rose' },
+                    { hex: '#e2e8f0', label: 'Silver' },
+                    { hex: '#243c81', label: 'CFC Navy' },
+                  ].map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() => {
+                        setFontColor(c.hex);
+                        setShowColorPicker(false);
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('cfc_presentation_font_color', c.hex);
+                        }
+                      }}
+                      className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-transform hover:scale-105 active:scale-95 ${
+                        fontColor.toLowerCase() === c.hex.toLowerCase() ? 'ring-2 ring-amber-400 scale-105 border-white' : 'border-slate-700'
+                      }`}
+                      style={{ backgroundColor: c.hex }}
+                      title={c.label}
+                    >
+                      {fontColor.toLowerCase() === c.hex.toLowerCase() && (
+                        <Check
+                          className={`w-4 h-4 ${
+                            c.hex === '#ffffff' || c.hex === '#facc15' || c.hex === '#fbbf24' || c.hex === '#4ade80' || c.hex === '#e2e8f0'
+                              ? 'text-black'
+                              : 'text-white'
+                          }`}
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                  <label className="text-xs text-slate-400 font-medium">Custom:</label>
+                  <input
+                    type="color"
+                    value={fontColor.startsWith('#') ? fontColor : '#ffffff'}
+                    onChange={(e) => {
+                      setFontColor(e.target.value);
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('cfc_presentation_font_color', e.target.value);
+                      }
+                    }}
+                    className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0"
+                  />
+                  <span className="text-xs font-mono text-slate-300 uppercase truncate">{fontColor}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Toggle Chords */}
@@ -913,7 +1079,7 @@ export default function SongPresentationModal({
       {/* =================================================================== */}
       {/* PRESENTATION SLIDE CANVAS (FILLED SCREEN CONTENT)                   */}
       {/* =================================================================== */}
-      <main className="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 max-w-7xl mx-auto w-full relative overflow-y-auto no-scrollbar">
+      <main className="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 max-w-7xl mx-auto w-full relative z-10 overflow-y-auto no-scrollbar">
 
         {/* SLIDE CONTENT AREA */}
         {activeSlide ? (
@@ -921,38 +1087,33 @@ export default function SongPresentationModal({
             key={activeSlide.globalSlideId}
             className={`w-full max-w-6xl my-auto flex flex-col ${
               textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
-            } justify-center py-1 px-4 space-y-2 sm:space-y-3 animate-in fade-in zoom-in-95 duration-200`}
+            } justify-center py-2 px-4 space-y-3 sm:space-y-4 animate-in fade-in zoom-in-95 duration-200`}
           >
-            {/* Section Tag Badge (Song Title & Verse 1, Chorus, etc.) */}
-            <div className={`flex flex-col ${textAlign === 'left' ? 'items-start' : textAlign === 'right' ? 'items-end' : 'items-center'} gap-1`}>
-              {activeSongInfo.totalSongs > 1 && (
-                <div className="text-xs font-black uppercase tracking-widest text-slate-400">
-                  {activeSlide.songTitle}
-                </div>
-              )}
-              {activeSlide.title && (
-                <div className={`inline-flex items-center gap-2 px-3.5 py-1 rounded-full ${themeClasses.sectionBadge} border text-xs sm:text-sm font-black uppercase tracking-widest backdrop-blur-md shadow-xs mb-0.5`}>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>{activeSlide.title}</span>
-                </div>
-              )}
-            </div>
+            {/* Note: Song title and Verse badges removed from canvas per projector presentation requirements */}
 
             {/* STANZA LINES DISPLAY */}
             {!showChords && !activeLyricLines.every((l) => l.isChordOnly) ? (
               /* CLEAN LYRICS WHEN CHORDS ARE OFF */
-              <div className={`space-y-1 sm:space-y-1.5 md:space-y-2 w-full max-w-6xl mx-auto flex flex-col ${
+              <div className={`space-y-2 sm:space-y-3 md:space-y-4 w-full max-w-6xl mx-auto flex flex-col ${
                 textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
               }`}>
                 {activeLyricLines.map((line, lIdx) => (
                   <p
                     key={lIdx}
-                    className={`${themeClasses.lyricText} ${
+                    className={`font-montserrat font-bold ${
+                      fontColor ? '' : themeClasses.lyricText
+                    } ${
                       textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'
-                    } leading-tight tracking-tight w-full px-2 transition-all`}
+                    } leading-snug tracking-normal w-full px-2 transition-all`}
                     style={{
                       fontSize: `${dynamicLyricFontSize}rem`,
-                      lineHeight: 1.15,
+                      lineHeight: 1.25,
+                      fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
+                      fontWeight: 700,
+                      ...(fontColor ? { color: fontColor } : {}),
+                      textShadow: showBgVideo && activeBgVideo
+                        ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
+                        : '0 2px 10px rgba(0,0,0,0.2)',
                     }}
                   >
                     {line.cleanLyricText}
@@ -1018,10 +1179,18 @@ export default function SongPresentationModal({
                                   />
                                 )}
                                 <span
-                                  className={`${themeClasses.lyricText} transition-all tracking-tight leading-tight whitespace-pre`}
+                                  className={`font-montserrat font-bold ${
+                                    fontColor ? '' : themeClasses.lyricText
+                                  } transition-all tracking-normal leading-snug whitespace-pre`}
                                   style={{
                                     fontSize: `${dynamicLyricFontSize}rem`,
-                                    lineHeight: 1.15,
+                                    lineHeight: 1.25,
+                                    fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
+                                    fontWeight: 700,
+                                    ...(fontColor ? { color: fontColor } : {}),
+                                    textShadow: showBgVideo && activeBgVideo
+                                      ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
+                                      : '0 2px 10px rgba(0,0,0,0.2)',
                                   }}
                                 >
                                   {seg.text || '\u00A0'}
@@ -1056,10 +1225,18 @@ export default function SongPresentationModal({
                             />
                           )}
                           <span
-                            className={`${themeClasses.lyricText} transition-all tracking-tight leading-tight whitespace-pre`}
+                            className={`font-montserrat font-bold ${
+                              fontColor ? '' : themeClasses.lyricText
+                            } transition-all tracking-normal leading-snug whitespace-pre`}
                             style={{
                               fontSize: `${dynamicLyricFontSize}rem`,
-                              lineHeight: 1.15,
+                              lineHeight: 1.25,
+                              fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
+                              fontWeight: 700,
+                              ...(fontColor ? { color: fontColor } : {}),
+                              textShadow: showBgVideo && activeBgVideo
+                                ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
+                                : '0 2px 10px rgba(0,0,0,0.2)',
                             }}
                           >
                             {seg.text || '\u00A0'}

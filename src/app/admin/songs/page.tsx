@@ -9,6 +9,10 @@ import {
   deleteWorshipSong,
   isYouTubeUrl,
   subscribeToSongsChanges,
+  getDefaultVisualizerVideo,
+  setDefaultVisualizerVideo,
+  uploadSongVideo,
+  BUILTIN_VISUALIZER_PRESETS,
 } from '@/lib/data/songs-service';
 import SongDetailModal from '@/components/music/SongDetailModal';
 import {
@@ -21,6 +25,10 @@ import {
   FileAudio,
   Sparkles,
   Mic2,
+  Video,
+  Check,
+  Upload,
+  X,
 } from 'lucide-react';
 
 function SongsAdminContent() {
@@ -39,12 +47,52 @@ function SongsAdminContent() {
   // Modals & Detail View
   const [viewingSong, setViewingSong] = useState<WorshipSong | null>(null);
 
+  // Visualizer Video Background Modal
+  const [showVisualizerModal, setShowVisualizerModal] = useState<boolean>(false);
+  const [defaultVideo, setDefaultVideo] = useState<string>('');
+  const [uploadingDefaultVideo, setUploadingDefaultVideo] = useState<boolean>(false);
+  const [customVideoUrlInput, setCustomVideoUrlInput] = useState<string>('');
+
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Load default visualizer video setting
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const def = getDefaultVisualizerVideo();
+      setDefaultVideo(def);
+      setCustomVideoUrlInput(def);
+    }
+  }, []);
+
+  const handleDefaultVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingDefaultVideo(true);
+      const { url } = await uploadSongVideo(file);
+      setDefaultVideo(url);
+      setCustomVideoUrlInput(url);
+      triggerToast('Motion background video file attached!');
+    } catch (err: any) {
+      console.error('Failed to attach video:', err);
+      alert(err.message || 'Could not attach video file.');
+    } finally {
+      setUploadingDefaultVideo(false);
+    }
+  };
+
+  const handleSaveDefaultVisualizer = () => {
+    const videoToSave = customVideoUrlInput.trim() || defaultVideo;
+    setDefaultVisualizerVideo(videoToSave);
+    setDefaultVideo(videoToSave);
+    triggerToast('Chapter visualizer background video saved successfully!');
+    setShowVisualizerModal(false);
   };
 
   // Check for saved searchParam from redirect
@@ -200,7 +248,17 @@ function SongsAdminContent() {
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center gap-2.5 self-start md:self-center shrink-0">
+        <div className="relative z-10 flex items-center gap-2.5 self-start md:self-center shrink-0 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowVisualizerModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/20 shadow-md transition-all active:scale-95"
+            title="Set chapter-wide default visualizer background video for presentations"
+          >
+            <Video className="w-4 h-4 text-amber-400" />
+            <span>Visualizer Video</span>
+          </button>
+
           <Link
             href="/admin/songs/new"
             className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg transition-all active:scale-95"
@@ -475,6 +533,174 @@ function SongsAdminContent() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* VISUALIZER BACKGROUND VIDEO MODAL                                    */}
+      {/* ===================================================================== */}
+      {showVisualizerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-6 bg-[#243c81] text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-amber-400">
+                  <Video className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black tracking-tight">Presentation Visualizer Video</h2>
+                  <p className="text-xs text-blue-200">Default motion background loop for projector presentations</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVisualizerModal(false)}
+                className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-5 flex-1">
+              {/* Live Preview Screen */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                  Live Loop Preview
+                </label>
+                <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner flex items-center justify-center">
+                  {defaultVideo ? (
+                    <>
+                      <video
+                        key={defaultVideo}
+                        src={defaultVideo}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-slate-950/60 flex flex-col items-center justify-center p-4 pointer-events-none text-center">
+                        <p className="text-white text-lg sm:text-2xl font-bold font-montserrat drop-shadow-lg leading-tight">
+                          &quot;I once was lost, but now am found&quot;
+                        </p>
+                        <p className="text-white/80 text-xs sm:text-sm font-bold font-montserrat drop-shadow-md mt-1">
+                          Was blind, but now I see.
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center p-6 text-slate-400">
+                      <Video className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                      <p className="text-xs font-bold">No motion video selected (Solid Theme BG active)</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Preset Motion Loops */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                  Select a Curated Motion Preset
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {BUILTIN_VISUALIZER_PRESETS.map((preset) => {
+                    const isSelected = defaultVideo === preset.url;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setDefaultVideo(preset.url);
+                          setCustomVideoUrlInput(preset.url);
+                        }}
+                        className={`p-3 rounded-2xl border text-left flex items-start justify-between gap-3 transition-all ${
+                          isSelected
+                            ? 'border-[#243c81] bg-blue-50/70 ring-2 ring-[#243c81]'
+                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-xs font-black text-slate-900">{preset.name}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{preset.description}</p>
+                        </div>
+                        {isSelected && (
+                          <div className="w-5 h-5 rounded-full bg-[#243c81] text-white flex items-center justify-center shrink-0">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Upload Custom MP4 or WebM */}
+              <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-xs font-black uppercase text-slate-700">Upload Custom Video File</h4>
+                  <p className="text-xs text-slate-500">Supports .mp4, .webm, or .mov motion loops</p>
+                </div>
+                <label className="cursor-pointer px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition-all shrink-0">
+                  <Upload className="w-4 h-4 text-amber-400" />
+                  <span>{uploadingDefaultVideo ? 'Reading Video...' : 'Upload Video File'}</span>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/webm,video/quicktime,video/*"
+                    onChange={handleDefaultVideoUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Direct Video URL input */}
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+                  Or Direct Video URL:
+                </label>
+                <input
+                  type="url"
+                  value={customVideoUrlInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCustomVideoUrlInput(val);
+                    setDefaultVideo(val);
+                  }}
+                  placeholder="https://assets.mixkit.co/videos/...mp4"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setDefaultVideo('');
+                  setCustomVideoUrlInput('');
+                }}
+                className="text-xs font-bold text-rose-600 hover:underline"
+              >
+                Clear / Remove Video
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowVisualizerModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveDefaultVisualizer}
+                  className="px-5 py-2 rounded-xl bg-[#243c81] hover:bg-blue-800 text-white font-black text-xs shadow-md"
+                >
+                  Save Visualizer Settings
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

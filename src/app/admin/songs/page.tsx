@@ -11,6 +11,7 @@ import {
   subscribeToSongsChanges,
   getDefaultVisualizerVideo,
   setDefaultVisualizerVideo,
+  resolveVisualizerVideoUrl,
   uploadSongVideo,
   BUILTIN_VISUALIZER_PRESETS,
 } from '@/lib/data/songs-service';
@@ -63,11 +64,25 @@ function SongsAdminContent() {
 
   // Load default visualizer video setting
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const def = getDefaultVisualizerVideo();
-      setDefaultVideo(def);
-      setCustomVideoUrlInput(def);
+    async function loadVid() {
+      if (typeof window !== 'undefined') {
+        try {
+          const resolved = await resolveVisualizerVideoUrl();
+          setDefaultVideo(resolved);
+          const rawToken = getDefaultVisualizerVideo();
+          if (rawToken.startsWith('idb:')) {
+            setCustomVideoUrlInput('Uploaded Video File (Stored locally in Browser)');
+          } else if (rawToken.startsWith('data:video/')) {
+            setCustomVideoUrlInput('Custom Video Data Loop');
+          } else {
+            setCustomVideoUrlInput(rawToken);
+          }
+        } catch (err) {
+          console.warn('Failed to load default visualizer video:', err);
+        }
+      }
     }
+    loadVid();
   }, []);
 
   const handleDefaultVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,10 +90,10 @@ function SongsAdminContent() {
     if (!file) return;
     try {
       setUploadingDefaultVideo(true);
-      const { url } = await uploadSongVideo(file);
+      const { url } = await uploadSongVideo(file, 'default_visualizer');
       setDefaultVideo(url);
-      setCustomVideoUrlInput(url);
-      triggerToast('Motion background video file attached!');
+      setCustomVideoUrlInput(`Uploaded: ${file.name}`);
+      triggerToast(`Motion video "${file.name}" attached successfully!`);
     } catch (err: any) {
       console.error('Failed to attach video:', err);
       alert(err.message || 'Could not attach video file.');
@@ -87,12 +102,26 @@ function SongsAdminContent() {
     }
   };
 
-  const handleSaveDefaultVisualizer = () => {
-    const videoToSave = customVideoUrlInput.trim() || defaultVideo;
-    setDefaultVisualizerVideo(videoToSave);
-    setDefaultVideo(videoToSave);
-    triggerToast('Chapter visualizer background video saved successfully!');
-    setShowVisualizerModal(false);
+  const handleSaveDefaultVisualizer = async () => {
+    try {
+      let videoToSave = defaultVideo;
+      if (
+        customVideoUrlInput &&
+        !customVideoUrlInput.startsWith('Uploaded:') &&
+        !customVideoUrlInput.startsWith('Uploaded Video') &&
+        !customVideoUrlInput.startsWith('Custom Video')
+      ) {
+        videoToSave = customVideoUrlInput.trim();
+      }
+      await setDefaultVisualizerVideo(videoToSave);
+      const resolved = await resolveVisualizerVideoUrl();
+      setDefaultVideo(resolved);
+      triggerToast('Chapter visualizer background video saved successfully!');
+      setShowVisualizerModal(false);
+    } catch (err: any) {
+      console.error('Error saving visualizer video:', err);
+      alert('Could not save visualizer video: ' + (err.message || 'Unknown error'));
+    }
   };
 
   // Check for saved searchParam from redirect
@@ -674,9 +703,12 @@ function SongsAdminContent() {
             <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setDefaultVideo('');
                   setCustomVideoUrlInput('');
+                  await setDefaultVisualizerVideo('');
+                  triggerToast('Visualizer video removed.');
+                  setShowVisualizerModal(false);
                 }}
                 className="text-xs font-bold text-rose-600 hover:underline"
               >

@@ -9,6 +9,7 @@ import {
   saveWorshipSong,
   uploadSongAudio,
   uploadSongVideo,
+  resolveVisualizerVideoUrl,
   fileToAudioDataUrl,
   isYouTubeUrl,
 } from '@/lib/data/songs-service';
@@ -99,7 +100,8 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
             setAudioUrl(fetched.audioUrl || '');
             setAudioFileName(fetched.audioFileName || '');
             setYoutubeUrl(fetched.youtubeUrl || '');
-            setVideoUrl(fetched.videoUrl || '');
+            const resolvedVideo = await resolveVisualizerVideoUrl(fetched.videoUrl || '');
+            setVideoUrl(resolvedVideo);
             setVideoFileName(fetched.videoFileName || '');
             setCcliNumber(fetched.ccliNumber || '');
             setNotes(fetched.notes || '');

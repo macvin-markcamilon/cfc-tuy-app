@@ -1,7 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { WorshipSong, getDefaultVisualizerVideo, BUILTIN_VISUALIZER_PRESETS } from '@/lib/data/songs-service';
+import {
+  WorshipSong,
+  getDefaultVisualizerVideo,
+  resolveVisualizerVideoUrl,
+  BUILTIN_VISUALIZER_PRESETS,
+} from '@/lib/data/songs-service';
 import { transposeChord, transposeSongContent, getChordShape } from '@/lib/music/guitarChords';
 import { parseChordProLine, ChordProWord } from '@/lib/music/chordPro';
 import {
@@ -109,16 +114,23 @@ export default function SongPresentationModal({
 
   // Load saved preferences for visualizer video & font color
   useEffect(() => {
-    if (typeof window !== 'undefined' && isOpen) {
-      const def = getDefaultVisualizerVideo();
-      setDefaultBgVideo(def);
-      const savedColor = localStorage.getItem('cfc_presentation_font_color');
-      if (savedColor) setFontColor(savedColor);
-      const savedVideoPref = localStorage.getItem('cfc_presentation_show_video');
-      if (savedVideoPref !== null) {
-        setShowBgVideo(savedVideoPref === 'true');
+    async function loadPrefs() {
+      if (typeof window !== 'undefined' && isOpen) {
+        try {
+          const resolved = await resolveVisualizerVideoUrl();
+          setDefaultBgVideo(resolved);
+        } catch (err) {
+          console.warn('Failed to resolve visualizer video:', err);
+        }
+        const savedColor = localStorage.getItem('cfc_presentation_font_color');
+        if (savedColor) setFontColor(savedColor);
+        const savedVideoPref = localStorage.getItem('cfc_presentation_show_video');
+        if (savedVideoPref !== null) {
+          setShowBgVideo(savedVideoPref === 'true');
+        }
       }
     }
+    loadPrefs();
   }, [isOpen]);
 
   // Reset slide index when song/playlist changes or modal opens
@@ -1092,7 +1104,45 @@ export default function SongPresentationModal({
             {/* Note: Song title and Verse badges removed from canvas per projector presentation requirements */}
 
             {/* STANZA LINES DISPLAY */}
-            {!showChords && !activeLyricLines.every((l) => l.isChordOnly) ? (
+            {activeLyricLines.length === 0 ? (
+              /* TITLE / INTRO SLIDE (When slide has no lyrics, e.g. Intro or Title Slide) */
+              <div className="my-auto flex flex-col items-center justify-center text-center space-y-4 py-8 sm:py-12 animate-in fade-in zoom-in-95 duration-300 max-w-5xl mx-auto px-4">
+                <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full ${themeClasses.badgeBg} text-xs sm:text-sm font-black uppercase tracking-widest shadow-md`}>
+                  <span>{activeSlide.songCategory}</span>
+                  <span className="opacity-40">•</span>
+                  <span>{activeSlide.title || 'Intro'}</span>
+                </div>
+
+                <h1
+                  className={`text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black ${
+                    fontColor ? '' : themeClasses.lyricText
+                  } tracking-tight font-montserrat leading-tight drop-shadow-md`}
+                  style={{
+                    fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
+                    fontWeight: 800,
+                    ...(fontColor ? { color: fontColor } : {}),
+                    textShadow: showBgVideo && activeBgVideo
+                      ? '0 4px 24px rgba(0,0,0,0.95), 0 2px 6px rgba(0,0,0,0.9)'
+                      : '0 2px 14px rgba(0,0,0,0.25)',
+                  }}
+                >
+                  {activeSlide.songTitle}
+                </h1>
+
+                <p
+                  className={`text-sm sm:text-lg font-bold font-montserrat opacity-80 ${
+                    fontColor ? '' : themeClasses.headerText
+                  }`}
+                  style={{
+                    fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
+                    fontWeight: 600,
+                    ...(fontColor ? { color: fontColor } : {}),
+                  }}
+                >
+                  Couples For Christ • Tuy Chapter
+                </p>
+              </div>
+            ) : !showChords && !activeLyricLines.every((l) => l.isChordOnly) ? (
               /* CLEAN LYRICS WHEN CHORDS ARE OFF */
               <div className={`space-y-2 sm:space-y-3 md:space-y-4 w-full max-w-6xl mx-auto flex flex-col ${
                 textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'

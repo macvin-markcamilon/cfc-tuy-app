@@ -1,5 +1,11 @@
 import { MinistryType } from '@/types';
 import { createClient } from '@/lib/supabase/client';
+import {
+  saveVideoBlob,
+  getVideoBlobUrl,
+  deleteVideoBlob,
+  dataUrlToBlob,
+} from './video-storage';
 
 export interface WorshipSong {
   id: string;
@@ -640,25 +646,78 @@ export function getDefaultVisualizerVideo(): string {
   return localStorage.getItem(DEFAULT_VISUALIZER_VIDEO_KEY) || '';
 }
 
-export function setDefaultVisualizerVideo(url: string): void {
+export async function resolveVisualizerVideoUrl(urlOrToken?: string): Promise<string> {
+  if (!isBrowser()) return '';
+  const token = urlOrToken || getDefaultVisualizerVideo();
+  if (!token) return '';
+
+  if (token.startsWith('idb:')) {
+    const key = token.replace(/^idb:/, '').split('|')[0] || 'default_visualizer';
+    const blobUrl = await getVideoBlobUrl(key);
+    return blobUrl || '';
+  }
+
+  if (token.startsWith('blob:') || token.startsWith('http://') || token.startsWith('https://')) {
+    return token;
+  }
+
+  // If a data URL was pasted, migrate to IndexedDB to free localStorage
+  if (token.startsWith('data:video/')) {
+    try {
+      const blob = dataUrlToBlob(token);
+      const blobUrl = await saveVideoBlob('default_visualizer', blob);
+      try {
+        localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, 'idb:default_visualizer');
+      } catch {}
+      return blobUrl;
+    } catch {
+      return token;
+    }
+  }
+
+  return token;
+}
+
+export async function setDefaultVisualizerVideo(url: string): Promise<void> {
   if (!isBrowser()) return;
-  localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, url);
-  notifySongsChange({ action: 'default_video_updated', url });
+
+  try {
+    let tokenToStore = url.trim();
+
+    // If it's a huge data URL, save to IndexedDB instead of localStorage
+    if (tokenToStore.startsWith('data:video/')) {
+      const blob = dataUrlToBlob(tokenToStore);
+      await saveVideoBlob('default_visualizer', blob);
+      tokenToStore = 'idb:default_visualizer';
+    } else if (tokenToStore.startsWith('blob:')) {
+      tokenToStore = 'idb:default_visualizer';
+    }
+
+    if (!tokenToStore) {
+      localStorage.removeItem(DEFAULT_VISUALIZER_VIDEO_KEY);
+      await deleteVideoBlob('default_visualizer');
+    } else {
+      localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, tokenToStore);
+    }
+
+    notifySongsChange({ action: 'default_video_updated', url: tokenToStore });
+  } catch (err) {
+    console.warn('Failed to set default visualizer video in storage:', err);
+  }
 }
 
 /**
  * Upload a visualizer background video (.mp4, .webm, .mov)
- * Uses FileReader Data URL / Blob URL for smooth reliable looping playback
+ * Uses IndexedDB to store the video binary, returning a fast, native Blob URL
  */
-export async function uploadSongVideo(file: File): Promise<{ url: string; fileName: string }> {
+export async function uploadSongVideo(file: File, key = 'default_visualizer'): Promise<{ url: string; fileName: string }> {
   if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|webm|mov|m4v|ogg)$/i)) {
     throw new Error('Please upload a video file (.mp4, .webm, .mov).');
   }
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({ url: reader.result as string, fileName: file.name });
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+  const blobUrl = await saveVideoBlob(key, file);
+  return {
+    url: blobUrl,
+    fileName: file.name,
+  };
 }

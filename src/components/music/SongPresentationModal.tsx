@@ -150,6 +150,9 @@ function SongPresentationModalContent({
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
   const [fontSizeMultiplier, setFontSizeMultiplier] = useState<number>(1); // 0.7x to 1.8x scale
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
+  const [slideDirection, setSlideDirection] = useState<'forward' | 'backward'>('forward');
+  const [presentationStyle, setPresentationStyle] = useState<'apple' | 'classic'>('apple');
+  const [transitionStyle, setTransitionStyle] = useState<'apple-blur' | 'fade-up' | 'slide' | 'scale-glow'>('apple-blur');
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isBlackout, setIsBlackout] = useState<boolean>(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState<boolean>(false);
@@ -172,6 +175,7 @@ function SongPresentationModalContent({
   const [fontColor, setFontColor] = useState<string>('#ffffff');
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const chordsSwitchId = useId();
+  const appleLyricsSwitchId = useId();
 
   useEffect(() => {
     if (typeof window !== 'undefined' && !('switch' in HTMLInputElement.prototype)) {
@@ -220,6 +224,19 @@ function SongPresentationModalContent({
         const savedBlurAmount = localStorage.getItem('cfc_presentation_blur_amount');
         if (savedBlurAmount) {
           setBlurAmount(parseInt(savedBlurAmount, 10) || 8);
+        }
+        const savedLyricsStyle = localStorage.getItem('cfc_presentation_lyrics_style');
+        if (savedLyricsStyle === 'apple' || savedLyricsStyle === 'classic') {
+          setPresentationStyle(savedLyricsStyle);
+        }
+        const savedTransitionStyle = localStorage.getItem('cfc_presentation_transition_style');
+        if (
+          savedTransitionStyle === 'apple-blur' ||
+          savedTransitionStyle === 'fade-up' ||
+          savedTransitionStyle === 'slide' ||
+          savedTransitionStyle === 'scale-glow'
+        ) {
+          setTransitionStyle(savedTransitionStyle);
         }
       }
     }
@@ -738,41 +755,100 @@ function SongPresentationModalContent({
     return transposeChord(keyToUse, transposeOffset);
   }, [activeSongInfo.key, initialKey, transposeOffset]);
 
+  // Helper to filter a slide's lines based on showChords
+  const getFilteredLinesForSlide = useCallback(
+    (targetSlide: PresentationSlide | null) => {
+      if (!targetSlide) return [];
+      return targetSlide.lines.filter((line) => {
+        if (!showChords) {
+          return !line.isChordOnly && line.cleanLyricText.length > 0;
+        }
+        return true;
+      });
+    },
+    [showChords]
+  );
+
   // Filter lines for current slide based on showChords setting
   const activeLyricLines = useMemo(() => {
-    if (!activeSlide) return [];
-    return activeSlide.lines.filter((line) => {
-      if (!showChords) {
-        return !line.isChordOnly && line.cleanLyricText.length > 0;
-      }
-      return true;
-    });
-  }, [activeSlide, showChords]);
+    return getFilteredLinesForSlide(activeSlide);
+  }, [activeSlide, getFilteredLinesForSlide]);
 
-  // Dynamic Lyric Font Size calculation based on line count
+  // Previous and Next slides within the same song for Apple Music blurred flow
+  const prevSlideInSong = useMemo(() => {
+    if (!activeSlide || currentSlideIndex <= 0) return null;
+    const candidate = slides[currentSlideIndex - 1];
+    return candidate && candidate.songIndex === activeSlide.songIndex ? candidate : null;
+  }, [activeSlide, currentSlideIndex, slides]);
+
+  const nextSlideInSong = useMemo(() => {
+    if (!activeSlide || currentSlideIndex >= slides.length - 1) return null;
+    const candidate = slides[currentSlideIndex + 1];
+    return candidate && candidate.songIndex === activeSlide.songIndex ? candidate : null;
+  }, [activeSlide, currentSlideIndex, slides]);
+
+  const prevLyricLines = useMemo(() => {
+    return getFilteredLinesForSlide(prevSlideInSong);
+  }, [prevSlideInSong, getFilteredLinesForSlide]);
+
+  const nextLyricLines = useMemo(() => {
+    return getFilteredLinesForSlide(nextSlideInSong);
+  }, [nextSlideInSong, getFilteredLinesForSlide]);
+
+  // Active CSS animation class based on transitionStyle and slideDirection
+  const activeTransitionClass = useMemo(() => {
+    if (transitionStyle === 'apple-blur') {
+      return slideDirection === 'forward' ? 'lyric-anim-apple-forward' : 'lyric-anim-apple-backward';
+    }
+    if (transitionStyle === 'fade-up') {
+      return slideDirection === 'forward' ? 'lyric-anim-fade-forward' : 'lyric-anim-fade-backward';
+    }
+    if (transitionStyle === 'slide') {
+      return slideDirection === 'forward' ? 'lyric-anim-slide-forward' : 'lyric-anim-slide-backward';
+    }
+    return 'lyric-anim-scale-glow';
+  }, [transitionStyle, slideDirection]);
+
+  // Dynamic Lyric Font Size calculation based on line count and Apple Music mode
   const dynamicLyricFontSize = useMemo(() => {
     const count = activeLyricLines.length;
-    let base = 3.6;
+    const isApple = presentationStyle === 'apple';
+    let base = isApple ? 3.1 : 3.6;
     if (!showChords) {
-      if (count <= 2) base = 4.5;
-      else if (count <= 4) base = 3.6;
-      else if (count <= 6) base = 2.9;
-      else base = 2.3;
+      if (count <= 2) base = isApple ? 3.8 : 4.5;
+      else if (count <= 4) base = isApple ? 3.1 : 3.6;
+      else if (count <= 6) base = isApple ? 2.5 : 2.9;
+      else base = isApple ? 2.1 : 2.3;
     } else {
-      if (count <= 2) base = 3.8;
-      else if (count <= 4) base = 3.1;
-      else if (count <= 6) base = 2.5;
-      else base = 2.0;
+      if (count <= 2) base = isApple ? 3.2 : 3.8;
+      else if (count <= 4) base = isApple ? 2.6 : 3.1;
+      else if (count <= 6) base = isApple ? 2.2 : 2.5;
+      else base = isApple ? 1.8 : 2.0;
     }
-    return Math.max(1.5, base * fontSizeMultiplier);
-  }, [activeLyricLines.length, showChords, fontSizeMultiplier]);
+    return Math.max(1.4, base * fontSizeMultiplier);
+  }, [activeLyricLines.length, showChords, fontSizeMultiplier, presentationStyle]);
 
-  // Handle slide navigation
+  // Handle slide navigation with directional transition tracking
+  const navigateToSlide = useCallback(
+    (targetIdx: number) => {
+      setCurrentSlideIndex((prev) => {
+        const clamped = Math.max(0, Math.min(targetIdx, slides.length - 1));
+        if (clamped !== prev) {
+          setSlideDirection(clamped >= prev ? 'forward' : 'backward');
+        }
+        return clamped;
+      });
+    },
+    [slides.length]
+  );
+
   const goToNextSlide = useCallback(() => {
+    setSlideDirection('forward');
     setCurrentSlideIndex((prev) => (prev < slides.length - 1 ? prev + 1 : prev));
   }, [slides.length]);
 
   const goToPrevSlide = useCallback(() => {
+    setSlideDirection('backward');
     setCurrentSlideIndex((prev) => (prev > 0 ? prev - 1 : prev));
   }, []);
 
@@ -782,6 +858,7 @@ function SongPresentationModalContent({
     const currentSongIdx = activeSlide.songIndex;
     const nextSongSlideIdx = slides.findIndex((s) => s.songIndex > currentSongIdx);
     if (nextSongSlideIdx !== -1) {
+      setSlideDirection('forward');
       setCurrentSlideIndex(nextSongSlideIdx);
     }
   }, [activeSlide, activeSongInfo.totalSongs, slides]);
@@ -792,6 +869,7 @@ function SongPresentationModalContent({
     const currentSongIdx = activeSlide.songIndex;
     const firstSlideOfCurrentSong = slides.findIndex((s) => s.songIndex === currentSongIdx);
 
+    setSlideDirection('backward');
     if (currentSlideIndex > firstSlideOfCurrentSong) {
       setCurrentSlideIndex(firstSlideOfCurrentSong);
     } else if (currentSongIdx > 0) {
@@ -905,14 +983,14 @@ function SongPresentationModalContent({
           if (e.shiftKey && e.key === '0') {
             setFontSizeMultiplier(1);
           } else {
-            setCurrentSlideIndex(0);
+            navigateToSlide(0);
           }
           break;
 
         case 'End':
           e.preventDefault();
           if (slides.length > 0) {
-            setCurrentSlideIndex(slides.length - 1);
+            navigateToSlide(slides.length - 1);
           }
           break;
 
@@ -929,7 +1007,7 @@ function SongPresentationModalContent({
           e.preventDefault();
           const targetIdx = parseInt(e.key, 10) - 1;
           if (targetIdx >= 0 && targetIdx < slides.length) {
-            setCurrentSlideIndex(targetIdx);
+            navigateToSlide(targetIdx);
           }
           break;
         }
@@ -960,6 +1038,38 @@ function SongPresentationModalContent({
         case 'S':
           e.preventDefault();
           setShowChords((prev) => !prev);
+          break;
+
+        // Toggle Apple Music Blurred Lyrics Mode
+        case 'l':
+        case 'L':
+          e.preventDefault();
+          setPresentationStyle((prev) => {
+            const next = prev === 'apple' ? 'classic' : 'apple';
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('cfc_presentation_lyrics_style', next);
+            }
+            return next;
+          });
+          break;
+
+        // Cycle Lyrics Transition Animation Style
+        case 'g':
+        case 'G':
+          e.preventDefault();
+          setTransitionStyle((prev) => {
+            const order: ('apple-blur' | 'fade-up' | 'slide' | 'scale-glow')[] = [
+              'apple-blur',
+              'fade-up',
+              'slide',
+              'scale-glow',
+            ];
+            const next = order[(order.indexOf(prev) + 1) % order.length];
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('cfc_presentation_transition_style', next);
+            }
+            return next;
+          });
           break;
 
         // Toggle Motion Background Video
@@ -1090,6 +1200,7 @@ function SongPresentationModalContent({
     slides.length,
     isFullscreen,
     showShortcutsModal,
+    navigateToSlide,
     goToNextSlide,
     goToPrevSlide,
     goToNextSong,
@@ -1103,6 +1214,7 @@ function SongPresentationModalContent({
     let timer: NodeJS.Timeout | null = null;
     if (isAutoPlay && isOpen && slides.length > 1) {
       timer = setInterval(() => {
+        setSlideDirection('forward');
         setCurrentSlideIndex((prev) => {
           if (prev >= slides.length - 1) {
             setIsAutoPlay(false);
@@ -1222,6 +1334,201 @@ function SongPresentationModalContent({
       pillActive: 'bg-orange-400 text-stone-950 border-orange-300 shadow-md scale-105 font-extrabold',
     },
   }[theme];
+
+  // Reusable renderer for lyric lines (supports both active focused stanza and Apple Music blurred context stanzas)
+  const renderLyricLinesBlock = (
+    lines: PresentationLine[],
+    options: {
+      fontSize: number;
+      animateLines?: boolean;
+      isContextPreview?: boolean;
+    }
+  ) => {
+    const { fontSize, animateLines = false, isContextPreview = false } = options;
+
+    if (!showChords && !lines.every((l) => l.isChordOnly)) {
+      return (
+        <div
+          className={`space-y-2 sm:space-y-3 w-full max-w-6xl mx-auto flex flex-col ${
+            textAlign === 'left'
+              ? 'items-start text-left'
+              : textAlign === 'right'
+                ? 'items-end text-right'
+                : 'items-center text-center'
+          }`}
+        >
+          {lines.map((line, lIdx) => (
+            <p
+              key={lIdx}
+              className={`font-montserrat font-bold ${
+                effectiveFontColor ? '' : themeClasses.lyricText
+              } ${
+                textAlign === 'left'
+                  ? 'text-left'
+                  : textAlign === 'right'
+                    ? 'text-right'
+                    : 'text-center'
+              } leading-snug tracking-normal w-full px-2 ${
+                animateLines ? activeTransitionClass : ''
+              }`}
+              style={{
+                fontSize: `${fontSize}rem`,
+                lineHeight: isContextPreview ? 1.2 : 1.25,
+                fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
+                fontWeight: isContextPreview ? 700 : 800,
+                ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
+                ...(animateLines ? { animationDelay: `${lIdx * 55}ms` } : {}),
+                textShadow:
+                  showBgVideo && activeBgVideo
+                    ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
+                    : '0 2px 10px rgba(0,0,0,0.2)',
+              }}
+            >
+              {line.cleanLyricText}
+            </p>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`space-y-2 sm:space-y-3.5 w-full max-w-6xl mx-auto flex flex-col ${
+          textAlign === 'left'
+            ? 'items-start text-left'
+            : textAlign === 'right'
+              ? 'items-end text-right'
+              : 'items-center text-center'
+        }`}
+      >
+        {lines.map((line, lIdx) => (
+          <div
+            key={lIdx}
+            className={`flex flex-wrap items-end ${
+              textAlign === 'left'
+                ? 'justify-start text-left'
+                : textAlign === 'right'
+                  ? 'justify-end text-right'
+                  : 'justify-center text-center'
+            } leading-tight w-full ${animateLines ? activeTransitionClass : ''}`}
+            style={animateLines ? { animationDelay: `${lIdx * 55}ms` } : undefined}
+          >
+            {line.isChordOnly ? (
+              <div
+                className={`font-mono font-extrabold ${themeClasses.chordText} bg-amber-500/10 border border-amber-500/30 px-3.5 py-1.5 rounded-2xl tracking-widest shadow-xs my-0.5 inline-flex items-center justify-center gap-3 mx-auto`}
+                style={{
+                  fontSize: `${fontSize * 0.7}rem`,
+                  lineHeight: 1.2,
+                }}
+              >
+                {line.rawChordLine || line.segments.map((s) => s.chord).filter(Boolean).join('   ')}
+              </div>
+            ) : line.words && line.words.length > 0 ? (
+              line.words.map((word, wIdx) => {
+                if (word.isSpace) {
+                  return (
+                    <span
+                      key={wIdx}
+                      className="inline-block whitespace-pre"
+                      style={{ width: `${fontSize * 0.28}rem` }}
+                    >
+                      {' '}
+                    </span>
+                  );
+                }
+
+                return (
+                  <span key={wIdx} className="inline-flex flex-nowrap items-end select-text">
+                    {word.segments.map((seg, sIdx) => (
+                      <span key={sIdx} className="inline-flex flex-col items-center">
+                        {seg.chord ? (
+                          <span
+                            className={`font-mono font-black ${themeClasses.chordText} tracking-wider transition-all select-none mb-0.5 opacity-95 text-center px-0.5`}
+                            style={{
+                              fontSize: `${Math.max(0.7, fontSize * 0.52)}rem`,
+                              lineHeight: 1.0,
+                            }}
+                          >
+                            {seg.chord}
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-block"
+                            style={{
+                              height: `${Math.max(0.7, fontSize * 0.52)}rem`,
+                            }}
+                          />
+                        )}
+                        <span
+                          className={`font-montserrat font-bold ${
+                            effectiveFontColor ? '' : themeClasses.lyricText
+                          } transition-all tracking-normal leading-snug whitespace-pre`}
+                          style={{
+                            fontSize: `${fontSize}rem`,
+                            lineHeight: isContextPreview ? 1.2 : 1.25,
+                            fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
+                            fontWeight: isContextPreview ? 700 : 800,
+                            ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
+                            textShadow:
+                              showBgVideo && activeBgVideo
+                                ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
+                                : '0 2px 10px rgba(0,0,0,0.2)',
+                          }}
+                        >
+                          {seg.text || '\u00A0'}
+                        </span>
+                      </span>
+                    ))}
+                  </span>
+                );
+              })
+            ) : (
+              line.segments.map((seg, sIdx) => (
+                <div key={sIdx} className="inline-flex flex-col items-center justify-end">
+                  {seg.chord ? (
+                    <span
+                      className={`font-mono font-black ${themeClasses.chordText} tracking-wider transition-all select-none mb-0.5 opacity-95 text-center px-0.5`}
+                      style={{
+                        fontSize: `${Math.max(0.7, fontSize * 0.52)}rem`,
+                        lineHeight: 1.0,
+                      }}
+                    >
+                      {seg.chord}
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-block"
+                      style={{
+                        height: `${Math.max(0.7, fontSize * 0.52)}rem`,
+                      }}
+                    />
+                  )}
+                  <span
+                    className={`font-montserrat font-bold ${
+                      effectiveFontColor ? '' : themeClasses.lyricText
+                    } transition-all tracking-normal leading-snug whitespace-pre`}
+                    style={{
+                      fontSize: `${fontSize}rem`,
+                      lineHeight: isContextPreview ? 1.2 : 1.25,
+                      fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
+                      fontWeight: isContextPreview ? 700 : 800,
+                      ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
+                      textShadow:
+                        showBgVideo && activeBgVideo
+                          ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
+                          : '0 2px 10px rgba(0,0,0,0.2)',
+                    }}
+                  >
+                    {seg.text || '\u00A0'}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className={`fixed inset-0 z-[100] w-screen h-screen ${themeClasses.bg} flex flex-col justify-between overflow-hidden select-none animate-in fade-in duration-200`}>
@@ -1542,6 +1849,65 @@ function SongPresentationModalContent({
               />
             </div>
 
+            {/* Apple Music Blurred Lyrics Flow Switch */}
+            <div
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all border ${
+                presentationStyle === 'apple' ? themeClasses.btnActive : themeClasses.btnBg
+              }`}
+              title="Apple Music Live Lyrics Mode: blurs previous & upcoming lyrics (Hotkey: L)"
+            >
+              <label htmlFor={appleLyricsSwitchId} className="cursor-pointer select-none flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Apple Lyrics</span>
+              </label>
+              <input
+                id={appleLyricsSwitchId}
+                type="checkbox"
+                // @ts-expect-error progressive enhancement HTML switch attribute
+                switch=""
+                checked={presentationStyle === 'apple'}
+                onChange={(e) => {
+                  const next = e.target.checked ? 'apple' : 'classic';
+                  setPresentationStyle(next);
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('cfc_presentation_lyrics_style', next);
+                  }
+                }}
+                className="cursor-pointer accent-amber-400"
+              />
+            </div>
+
+            {/* Lyrics Transition Animation Selector */}
+            <button
+              type="button"
+              onClick={() => {
+                const order: ('apple-blur' | 'fade-up' | 'slide' | 'scale-glow')[] = [
+                  'apple-blur',
+                  'fade-up',
+                  'slide',
+                  'scale-glow',
+                ];
+                const next = order[(order.indexOf(transitionStyle) + 1) % order.length];
+                setTransitionStyle(next);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('cfc_presentation_transition_style', next);
+                }
+              }}
+              className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${themeClasses.btnBg}`}
+              title="Cycle Lyrics Transition Animation (Hotkey: G)"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden md:inline">
+                {transitionStyle === 'apple-blur'
+                  ? 'Blur Morph'
+                  : transitionStyle === 'fade-up'
+                    ? 'Fade Float'
+                    : transitionStyle === 'slide'
+                      ? 'Slide'
+                      : 'Scale Glow'}
+              </span>
+            </button>
+
             {/* Fullscreen Toggle (Shows ONLY Lyrics Display) */}
             <button
               type="button"
@@ -1606,15 +1972,15 @@ function SongPresentationModalContent({
           <div className="w-full h-full flex items-center justify-center" />
         ) : activeSlide ? (
           <div
-            key={activeSlide.globalSlideId}
-            className={`w-full max-w-6xl my-auto flex flex-col ${
+            key={`${activeSlide.globalSlideId}-${presentationStyle}-${transitionStyle}`}
+            className={`w-full max-w-6xl h-full my-auto flex flex-col ${
               textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
-            } justify-center py-2 px-4 space-y-3 sm:space-y-4 animate-in fade-in zoom-in-95 duration-200`}
+            } justify-center py-2 px-4`}
           >
             {/* STANZA LINES DISPLAY */}
             {activeLyricLines.length === 0 ? (
               /* TITLE / INTRO SLIDE (When slide has no lyrics, e.g. Intro or Title Slide) */
-              <div className="my-auto flex flex-col items-center justify-center text-center space-y-4 py-8 sm:py-12 animate-in fade-in zoom-in-95 duration-300 max-w-5xl mx-auto px-4">
+              <div className={`my-auto flex flex-col items-center justify-center text-center space-y-4 py-8 sm:py-12 max-w-5xl mx-auto px-4 ${activeTransitionClass}`}>
                 <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full ${themeClasses.badgeBg} text-xs sm:text-sm font-black uppercase tracking-widest shadow-md`}>
                   <span>{activeSlide.songCategory}</span>
                   <span className="opacity-40">•</span>
@@ -1650,160 +2016,98 @@ function SongPresentationModalContent({
                   Couples For Christ • Tuy Chapter
                 </p>
               </div>
-            ) : !showChords && !activeLyricLines.every((l) => l.isChordOnly) ? (
-              /* CLEAN LYRICS WHEN CHORDS ARE OFF */
-              <div className={`space-y-2 sm:space-y-3 md:space-y-4 w-full max-w-6xl mx-auto flex flex-col ${
-                textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
-              }`}>
-                {activeLyricLines.map((line, lIdx) => (
-                  <p
-                    key={lIdx}
-                    className={`font-montserrat font-bold ${
-                      effectiveFontColor ? '' : themeClasses.lyricText
-                    } ${
-                      textAlign === 'left' ? 'text-left' : textAlign === 'right' ? 'text-right' : 'text-center'
-                    } leading-snug tracking-normal w-full px-2 transition-all`}
-                    style={{
-                      fontSize: `${dynamicLyricFontSize}rem`,
-                      lineHeight: 1.25,
-                      fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
-                      fontWeight: 700,
-                      ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
-                      textShadow: showBgVideo && activeBgVideo
-                        ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
-                        : '0 2px 10px rgba(0,0,0,0.2)',
-                    }}
-                  >
-                    {line.cleanLyricText}
-                  </p>
-                ))}
+            ) : presentationStyle === 'apple' ? (
+              /* APPLE MUSIC LIVE LYRICS PRESENTATION MODE:
+                 Previous lyrics (above) & upcoming lyrics (below) are blurred and dimmed around the crisp active stanza */
+              <div className="w-full h-full flex flex-col justify-between items-center apple-lyrics-mask py-4 sm:py-6 overflow-hidden">
+                {/* 1. PREVIOUS LYRICS STANZA (BLURRED TOP CONTEXT) */}
+                <div className="w-full flex-1 flex flex-col justify-end items-center pb-4 sm:pb-7 min-h-[72px] sm:min-h-[110px] overflow-hidden">
+                  {prevLyricLines.length > 0 ? (
+                    <div
+                      onClick={goToPrevSlide}
+                      role="button"
+                      tabIndex={-1}
+                      title="Click to return to previous lyrics slide"
+                      className="w-full cursor-pointer transition-all duration-500 ease-out hover:opacity-55 select-none"
+                      style={{
+                        filter: 'blur(4.5px)',
+                        opacity: 0.34,
+                        transform: 'scale(0.86) translateY(-4px)',
+                        transformOrigin:
+                          textAlign === 'left'
+                            ? 'bottom left'
+                            : textAlign === 'right'
+                              ? 'bottom right'
+                              : 'bottom center',
+                      }}
+                    >
+                      {renderLyricLinesBlock(prevLyricLines.slice(-3), {
+                        fontSize: Math.max(1.15, dynamicLyricFontSize * 0.78),
+                        animateLines: false,
+                        isContextPreview: true,
+                      })}
+                    </div>
+                  ) : (
+                    <div className="h-8 sm:h-12" />
+                  )}
+                </div>
+
+                {/* 2. CURRENT ACTIVE LYRICS STANZA (CRISP, FOCUSED & ANIMATED CENTER) */}
+                <div
+                  className={`w-full shrink-0 py-3 sm:py-5 z-10 ${activeTransitionClass}`}
+                  style={{
+                    filter: 'blur(0px)',
+                    opacity: 1,
+                    transform: 'scale(1)',
+                  }}
+                >
+                  {renderLyricLinesBlock(activeLyricLines, {
+                    fontSize: dynamicLyricFontSize,
+                    animateLines: true,
+                    isContextPreview: false,
+                  })}
+                </div>
+
+                {/* 3. NEXT / AFTER LYRICS STANZA (BLURRED BOTTOM CONTEXT) */}
+                <div className="w-full flex-1 flex flex-col justify-start items-center pt-4 sm:pt-7 min-h-[72px] sm:min-h-[110px] overflow-hidden">
+                  {nextLyricLines.length > 0 ? (
+                    <div
+                      onClick={goToNextSlide}
+                      role="button"
+                      tabIndex={-1}
+                      title="Click to advance to next lyrics slide"
+                      className="w-full cursor-pointer transition-all duration-500 ease-out hover:opacity-55 select-none"
+                      style={{
+                        filter: 'blur(4.5px)',
+                        opacity: 0.36,
+                        transform: 'scale(0.86) translateY(4px)',
+                        transformOrigin:
+                          textAlign === 'left'
+                            ? 'top left'
+                            : textAlign === 'right'
+                              ? 'top right'
+                              : 'top center',
+                      }}
+                    >
+                      {renderLyricLinesBlock(nextLyricLines.slice(0, 3), {
+                        fontSize: Math.max(1.15, dynamicLyricFontSize * 0.78),
+                        animateLines: false,
+                        isContextPreview: true,
+                      })}
+                    </div>
+                  ) : (
+                    <div className="h-8 sm:h-12" />
+                  )}
+                </div>
               </div>
             ) : (
-              /* LYRICS WITH CHORDS ABOVE WHEN CHORDS ARE ON (OR PURE CHORD INTRO/INTERLUDE) */
-              <div className={`space-y-2.5 sm:space-y-4 w-full max-w-6xl mx-auto flex flex-col ${
-                textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
-              }`}>
-                {activeLyricLines.map((line, lIdx) => (
-                  <div
-                    key={lIdx}
-                    className={`flex flex-wrap items-end ${
-                      textAlign === 'left' ? 'justify-start text-left' : textAlign === 'right' ? 'justify-end text-right' : 'justify-center text-center'
-                    } leading-tight w-full`}
-                  >
-                    {line.isChordOnly ? (
-                      <div
-                        className={`font-mono font-extrabold ${themeClasses.chordText} bg-amber-500/10 border border-amber-500/30 px-3.5 py-1.5 rounded-2xl tracking-widest shadow-xs my-0.5 inline-flex items-center justify-center gap-3 mx-auto`}
-                        style={{
-                          fontSize: `${dynamicLyricFontSize * 0.7}rem`,
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        {line.rawChordLine || line.segments.map((s) => s.chord).filter(Boolean).join('   ')}
-                      </div>
-                    ) : line.words && line.words.length > 0 ? (
-                      line.words.map((word, wIdx) => {
-                        if (word.isSpace) {
-                          return (
-                            <span
-                              key={wIdx}
-                              className="inline-block whitespace-pre"
-                              style={{ width: `${dynamicLyricFontSize * 0.28}rem` }}
-                            >
-                              {' '}
-                            </span>
-                          );
-                        }
-
-                        return (
-                          <span key={wIdx} className="inline-flex flex-nowrap items-end select-text">
-                            {word.segments.map((seg, sIdx) => (
-                              <span key={sIdx} className="inline-flex flex-col items-center">
-                                {seg.chord ? (
-                                  <span
-                                    className={`font-mono font-black ${themeClasses.chordText} tracking-wider transition-all select-none mb-0.5 opacity-95 text-center px-0.5`}
-                                    style={{
-                                      fontSize: `${Math.max(0.75, dynamicLyricFontSize * 0.52)}rem`,
-                                      lineHeight: 1.0,
-                                    }}
-                                  >
-                                    {seg.chord}
-                                  </span>
-                                ) : (
-                                  <span
-                                    className="inline-block"
-                                    style={{
-                                      height: `${Math.max(0.75, dynamicLyricFontSize * 0.52)}rem`,
-                                    }}
-                                  />
-                                )}
-                                <span
-                                  className={`font-montserrat font-bold ${
-                                    effectiveFontColor ? '' : themeClasses.lyricText
-                                  } transition-all tracking-normal leading-snug whitespace-pre`}
-                                  style={{
-                                    fontSize: `${dynamicLyricFontSize}rem`,
-                                    lineHeight: 1.25,
-                                    fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
-                                    fontWeight: 700,
-                                    ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
-                                    textShadow: showBgVideo && activeBgVideo
-                                      ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
-                                      : '0 2px 10px rgba(0,0,0,0.2)',
-                                  }}
-                                >
-                                  {seg.text || '\u00A0'}
-                                </span>
-                              </span>
-                            ))}
-                          </span>
-                        );
-                      })
-                    ) : (
-                      line.segments.map((seg, sIdx) => (
-                        <div
-                          key={sIdx}
-                          className="inline-flex flex-col items-center justify-end"
-                        >
-                          {seg.chord ? (
-                            <span
-                              className={`font-mono font-black ${themeClasses.chordText} tracking-wider transition-all select-none mb-0.5 opacity-95 text-center px-0.5`}
-                              style={{
-                                fontSize: `${Math.max(0.75, dynamicLyricFontSize * 0.52)}rem`,
-                                lineHeight: 1.0,
-                              }}
-                            >
-                              {seg.chord}
-                            </span>
-                          ) : (
-                            <span
-                              className="inline-block"
-                              style={{
-                                height: `${Math.max(0.75, dynamicLyricFontSize * 0.52)}rem`,
-                              }}
-                            />
-                          )}
-                          <span
-                            className={`font-montserrat font-bold ${
-                              effectiveFontColor ? '' : themeClasses.lyricText
-                            } transition-all tracking-normal leading-snug whitespace-pre`}
-                            style={{
-                              fontSize: `${dynamicLyricFontSize}rem`,
-                              lineHeight: 1.25,
-                              fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
-                              fontWeight: 700,
-                              ...(effectiveFontColor ? { color: effectiveFontColor } : {}),
-                              textShadow: showBgVideo && activeBgVideo
-                                ? '0 3px 18px rgba(0,0,0,0.95), 0 1px 4px rgba(0,0,0,0.9)'
-                                : '0 2px 10px rgba(0,0,0,0.2)',
-                            }}
-                          >
-                            {seg.text || '\u00A0'}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                ))}
+              /* CLASSIC SINGLE-SLIDE PRESENTATION MODE WITH DIRECTIONAL TRANSITION ANIMATION */
+              <div className={`w-full my-auto py-4 ${activeTransitionClass}`}>
+                {renderLyricLinesBlock(activeLyricLines, {
+                  fontSize: dynamicLyricFontSize,
+                  animateLines: true,
+                  isContextPreview: false,
+                })}
               </div>
             )}
             {/* "Up Next: [Song Title]" Banner on Last Slide of Song (Hidden in Fullscreen) */}
@@ -1955,7 +2259,7 @@ function SongPresentationModalContent({
               <button
                 key={slide.globalSlideId}
                 type="button"
-                onClick={() => setCurrentSlideIndex(idx)}
+                onClick={() => navigateToSlide(idx)}
                 className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shrink-0 border ${
                   currentSlideIndex === idx ? themeClasses.pillActive : themeClasses.pillBg
                 }`}
@@ -2054,6 +2358,8 @@ function SongPresentationModalContent({
                 { keys: '← / ↑ / Backspace / PgUp', desc: 'Previous Slide' },
                 { keys: 'N or Shift + →', desc: 'Next Song in Lineup' },
                 { keys: 'P or Shift + ←', desc: 'Previous Song in Lineup' },
+                { keys: 'L', desc: 'Toggle Apple Music Blurred Lyrics Mode' },
+                { keys: 'G', desc: 'Cycle Lyrics Transition Animation' },
                 { keys: '1 – 9', desc: 'Jump to Slide 1 – 9' },
                 { keys: 'Home / 0 or End', desc: 'First Slide / Last Slide' },
                 { keys: 'F', desc: 'Fullscreen (Lyrics Display Only)' },

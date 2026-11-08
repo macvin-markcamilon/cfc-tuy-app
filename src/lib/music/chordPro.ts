@@ -55,10 +55,12 @@ export function getSectionType(
 /**
  * Parse a single line of ChordPro formatted or standard text
  */
-export function parseChordProLine(line: string): ChordProLineParsed {
-  if (!line || typeof line !== 'string') {
+export function parseChordProLine(rawLine: string): ChordProLineParsed {
+  if (!rawLine || typeof rawLine !== 'string') {
     return { type: 'empty' };
   }
+  // Strip any accidental citation tags like [cite: 2]
+  const line = rawLine.replace(/\[cite:\s*[^\]]*\]/gi, '');
   const trimmed = line.trim();
   if (!trimmed) {
     return { type: 'empty' };
@@ -73,18 +75,15 @@ export function parseChordProLine(line: string): ChordProLineParsed {
       const directiveKey = inside.slice(0, colonIdx).trim().toLowerCase();
       const directiveVal = inside.slice(colonIdx + 1).trim();
 
+      if (['title', 't', 'subtitle', 'st', 'artist', 'key', 'tempo', 'time', 'capo', 'system'].includes(directiveKey)) {
+        return { type: 'end_directive' };
+      }
+
       if (['comment', 'c', 'comment_italic', 'ci', 'section'].includes(directiveKey)) {
         return {
           type: 'section',
           title: directiveVal,
           sectionType: getSectionType(directiveVal),
-        };
-      }
-      if (['title', 't'].includes(directiveKey)) {
-        return {
-          type: 'section',
-          title: directiveVal,
-          sectionType: 'general',
         };
       }
       return {
@@ -258,3 +257,63 @@ export function parseChordProLine(line: string): ChordProLineParsed {
     cleanText: cleanParts.join('').trim(),
   };
 }
+
+/**
+ * Extracts clean presentation lyrics (without guitar chords or pure chord lines)
+ * from a ChordPro / chord-and-lyric string, preserving section headers and stanza breaks.
+ */
+export function extractCleanLyricsFromChords(content: string): string {
+  if (!content || typeof content !== 'string') return '';
+
+  const lines = content.split('\n');
+  const outputLines: string[] = [];
+  let lastWasEmpty = true;
+
+  for (const rawLine of lines) {
+    const parsed = parseChordProLine(rawLine);
+
+    if (parsed.type === 'empty') {
+      if (!lastWasEmpty) {
+        outputLines.push('');
+        lastWasEmpty = true;
+      }
+      continue;
+    }
+
+    if (parsed.type === 'end_directive' || parsed.type === 'chord_progression') {
+      continue;
+    }
+
+    if (parsed.type === 'section') {
+      // Skip Intro / Instrumental / Interlude headers if generating pure lyrics
+      if (parsed.sectionType === 'intro') {
+        continue;
+      }
+      if (!lastWasEmpty && outputLines.length > 0) {
+        outputLines.push('');
+      }
+      outputLines.push(`[${parsed.title}]`);
+      lastWasEmpty = false;
+      continue;
+    }
+
+    if (parsed.type === 'chords_and_lyrics') {
+      if (parsed.cleanText) {
+        outputLines.push(parsed.cleanText);
+        lastWasEmpty = false;
+      }
+      continue;
+    }
+
+    if (parsed.type === 'lyrics_only') {
+      const cleaned = parsed.text.replace(/\[cite:\s*[^\]]*\]/gi, '').trim();
+      if (cleaned) {
+        outputLines.push(cleaned);
+        lastWasEmpty = false;
+      }
+    }
+  }
+
+  return outputLines.join('\n').trim();
+}
+

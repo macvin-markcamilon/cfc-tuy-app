@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useId } from 'react';
 import {
   WorshipSong,
   getDefaultVisualizerVideo,
   resolveVisualizerVideoUrl,
+  resolvePlayableVideoUrl,
+  toProxyVideoUrl,
   fetchChapterVisualizerSettingsFromDB,
   subscribeToSongsChanges,
   isYouTubeUrl,
@@ -39,6 +41,9 @@ import {
   AlignCenter,
   AlignRight,
   Check,
+  Keyboard,
+  FileText,
+  Guitar,
 } from 'lucide-react';
 
 interface SongPresentationModalProps {
@@ -141,11 +146,13 @@ function SongPresentationModalContent({
 }: SongPresentationModalProps) {
   // Transposition & display settings
   const [transposeOffset, setTransposeOffset] = useState<number>(0);
-  const [showChords, setShowChords] = useState<boolean>(false); // Chords OFF by default for presentation
+  const [showChords, setShowChords] = useState<boolean>(false); // Chords OFF (Lyrics Only) by default for presentation
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
   const [fontSizeMultiplier, setFontSizeMultiplier] = useState<number>(1); // 0.7x to 1.8x scale
   const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isBlackout, setIsBlackout] = useState<boolean>(false);
+  const [showShortcutsModal, setShowShortcutsModal] = useState<boolean>(false);
 
   // Auto slideshow settings
   const [isAutoPlay, setIsAutoPlay] = useState<boolean>(false);
@@ -157,12 +164,20 @@ function SongPresentationModalContent({
   // Visualizer Background Video state
   const [showBgVideo, setShowBgVideo] = useState<boolean>(true);
   const [defaultBgVideo, setDefaultBgVideo] = useState<string>('');
+  const [playableBgVideoUrl, setPlayableBgVideoUrl] = useState<string>('');
   const [isBlurred, setIsBlurred] = useState<boolean>(false);
   const [blurAmount, setBlurAmount] = useState<number>(8); // px
 
   // Custom Font Color setting (default #ffffff for high contrast)
   const [fontColor, setFontColor] = useState<string>('#ffffff');
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
+  const chordsSwitchId = useId();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !('switch' in HTMLInputElement.prototype)) {
+      import('input-switch-polyfill').catch(() => {});
+    }
+  }, []);
 
   // Compute active playlist songs list
   const activePlaylist = useMemo<WorshipSong[]>(() => {
@@ -178,7 +193,7 @@ function SongPresentationModalContent({
     async function loadVisualizerSettings() {
       if (typeof window !== 'undefined') {
         try {
-          const resolved = await resolveVisualizerVideoUrl();
+          const resolved = getDefaultVisualizerVideo();
           if (resolved) setDefaultBgVideo(resolved);
 
           const dbSettings = await fetchChapterVisualizerSettingsFromDB();
@@ -241,6 +256,7 @@ function SongPresentationModalContent({
       setTransposeOffset(0);
       setShowChords(false); // Chords OFF as default when opening presentation
       setIsAutoPlay(false);
+      setIsBlackout(false);
     }
   }, [isOpen, song?.id, playlist?.length]);
 
@@ -304,16 +320,24 @@ function SongPresentationModalContent({
     return null;
   }, []);
 
-  // Parse all song texts in the playlist into continuous slides
+  // Parse all song texts in the playlist into continuous, properly paginated slides
   const slides = useMemo<PresentationSlide[]>(() => {
     if (!activePlaylist.length) return [];
 
     const allParsedSlides: PresentationSlide[] = [];
     let globalSlideCounter = 0;
+    const MAX_LYRIC_LINES_PER_SLIDE = 4;
 
     activePlaylist.forEach((currentSong, songIdx) => {
-      const lyrics = currentSong.lyricsAndChords || '';
-      const transposedLyrics = transposeSongContent(lyrics, transposeOffset);
+      // Use dedicated lyricsOnly when in Lyrics-Only mode (!showChords) and lyricsOnly is provided
+      const useDedicatedLyrics =
+        !showChords && Boolean(currentSong.lyricsOnly && currentSong.lyricsOnly.trim().length > 0);
+      const rawSource = useDedicatedLyrics
+        ? currentSong.lyricsOnly || ''
+        : currentSong.lyricsAndChords || '';
+      const transposedLyrics = useDedicatedLyrics
+        ? rawSource
+        : transposeSongContent(rawSource, transposeOffset);
       if (!transposedLyrics) return;
 
       const rawStanzas = transposedLyrics
@@ -323,12 +347,98 @@ function SongPresentationModalContent({
 
       let verseCounter = 0;
       let chorusCounter = 0;
+      let localStanzaIdx = 0;
 
-      rawStanzas.forEach((stanza, sIdx) => {
+      // Helper to flush a section's parsed lines, chunking into 4-line slides so no slide ever scrolls
+      const flushSectionSlides = (
+        linesToFlush: PresentationLine[],
+        rawTitle: string,
+        rawType: PresentationSlide['type']
+      ) => {
+        if (linesToFlush.length === 0) return;
+
+        // Filter out chord-only lines when in Lyrics-Only mode (!showChords)
+        const relevantLines = !showChords
+          ? linesToFlush.filter((l) => !l.isChordOnly && l.cleanLyricText.length > 0)
+          : linesToFlush;
+
+        if (relevantLines.length === 0) {
+          // If it's an intro/interlude of only chords and chords are ON, keep it; if chords are OFF, skip empty chord-only slides
+          if (!showChords) return;
+        }
+
+        let resolvedTitle = rawTitle;
+        let resolvedType = rawType;
+
+        if (!resolvedTitle) {
+          const hasLyrics = linesToFlush.some((l) => !l.isChordOnly && l.cleanLyricText.length > 0);
+          if (!hasLyrics) {
+            resolvedTitle = localStanzaIdx === 0 ? 'Intro' : 'Interlude';
+            resolvedType = 'intro';
+          } else if (localStanzaIdx === 0) {
+            verseCounter++;
+            resolvedTitle = `Verse ${verseCounter}`;
+            resolvedType = 'verse';
+          } else if (localStanzaIdx === 1) {
+            chorusCounter++;
+            resolvedTitle = 'Chorus';
+            resolvedType = 'chorus';
+          } else {
+            verseCounter++;
+            resolvedTitle = `Verse ${verseCounter}`;
+            resolvedType = 'verse';
+          }
+        }
+
+        // Chunk lines into groups of at most MAX_LYRIC_LINES_PER_SLIDE lyric lines
+        const chunks: PresentationLine[][] = [];
+        let currentChunk: PresentationLine[] = [];
+        let lyricLinesInChunk = 0;
+
+        linesToFlush.forEach((line) => {
+          const isLyric = !line.isChordOnly && line.cleanLyricText.length > 0;
+          if (!showChords && !isLyric) {
+            return;
+          }
+          if (lyricLinesInChunk >= MAX_LYRIC_LINES_PER_SLIDE && currentChunk.length > 0) {
+            chunks.push(currentChunk);
+            currentChunk = [];
+            lyricLinesInChunk = 0;
+          }
+          currentChunk.push(line);
+          if (isLyric || showChords) {
+            lyricLinesInChunk++;
+          }
+        });
+        if (currentChunk.length > 0) {
+          chunks.push(currentChunk);
+        }
+
+        chunks.forEach((chunkLines, chunkIdx) => {
+          const slideLabel =
+            chunks.length > 1 ? `${resolvedTitle} (${chunkIdx + 1}/${chunks.length})` : resolvedTitle;
+          allParsedSlides.push({
+            id: localStanzaIdx++,
+            globalSlideId: globalSlideCounter++,
+            title: slideLabel,
+            type: resolvedType,
+            lines: chunkLines,
+            songId: currentSong.id,
+            songTitle: currentSong.title,
+            songKey: currentSong.key,
+            songCategory: currentSong.category || 'Worship',
+            songVideoUrl: currentSong.videoUrl || '',
+            songIndex: songIdx,
+            totalSongsInPlaylist: activePlaylist.length,
+          });
+        });
+      };
+
+      rawStanzas.forEach((stanza) => {
         const stanzaLines = stanza.split('\n');
         let slideTitle = '';
         let slideType: PresentationSlide['type'] = 'general';
-        const parsedLines: PresentationLine[] = [];
+        let parsedLines: PresentationLine[] = [];
 
         let lineIdx = 0;
         if (stanzaLines.length > 0) {
@@ -344,7 +454,12 @@ function SongPresentationModalContent({
           const currentLine = stanzaLines[lineIdx];
 
           const inlineHeader = parseExplicitHeader(currentLine);
-          if (inlineHeader && !slideTitle) {
+          if (inlineHeader) {
+            // If we already accumulated lines before this inline section header, flush them as their own slide(s)!
+            if (parsedLines.length > 0) {
+              flushSectionSlides(parsedLines, slideTitle, slideType);
+              parsedLines = [];
+            }
             slideTitle = inlineHeader.title;
             slideType = inlineHeader.type;
             lineIdx++;
@@ -434,21 +549,18 @@ function SongPresentationModalContent({
           // Check ChordPro line syntax
           const parsed = parseChordProLine(currentLine);
 
-          if (parsed.type === 'empty') {
-            lineIdx++;
-            continue;
-          }
-
-          if (parsed.type === 'end_directive') {
+          if (parsed.type === 'empty' || parsed.type === 'end_directive') {
             lineIdx++;
             continue;
           }
 
           if (parsed.type === 'section') {
-            if (!slideTitle) {
-              slideTitle = parsed.title;
-              slideType = parsed.sectionType as PresentationSlide['type'];
+            if (parsedLines.length > 0) {
+              flushSectionSlides(parsedLines, slideTitle, slideType);
+              parsedLines = [];
             }
+            slideTitle = parsed.title;
+            slideType = parsed.sectionType as PresentationSlide['type'];
             lineIdx++;
             continue;
           }
@@ -509,52 +621,21 @@ function SongPresentationModalContent({
           lineIdx++;
         }
 
-        if (!slideTitle) {
-          const hasLyrics = parsedLines.some((l) => !l.isChordOnly && l.cleanLyricText.length > 0);
-          if (!hasLyrics) {
-            slideTitle = sIdx === 0 ? 'Intro' : 'Interlude';
-            slideType = 'intro';
-          } else {
-            if (sIdx === 0) {
-              verseCounter++;
-              slideTitle = `Verse ${verseCounter}`;
-              slideType = 'verse';
-            } else if (sIdx === 1) {
-              chorusCounter++;
-              slideTitle = `Chorus`;
-              slideType = 'chorus';
-            } else if (sIdx === rawStanzas.length - 1) {
-              slideTitle = 'Outro';
-              slideType = 'outro';
-            } else {
-              verseCounter++;
-              slideTitle = `Verse ${verseCounter}`;
-              slideType = 'verse';
-            }
-          }
-        }
-
         if (parsedLines.length > 0) {
-          allParsedSlides.push({
-            id: sIdx,
-            globalSlideId: globalSlideCounter++,
-            title: slideTitle,
-            type: slideType,
-            lines: parsedLines,
-            songId: currentSong.id,
-            songTitle: currentSong.title,
-            songKey: currentSong.key,
-            songCategory: currentSong.category || 'Worship',
-            songVideoUrl: currentSong.videoUrl || '',
-            songIndex: songIdx,
-            totalSongsInPlaylist: activePlaylist.length,
-          });
+          flushSectionSlides(parsedLines, slideTitle, slideType);
         }
       });
     });
 
     return allParsedSlides;
-  }, [activePlaylist, transposeOffset, isChordLine, parseExplicitHeader]);
+  }, [activePlaylist, transposeOffset, showChords, isChordLine, parseExplicitHeader]);
+
+  // Clamp currentSlideIndex if slide count changes (e.g. toggling showChords)
+  useEffect(() => {
+    if (slides.length > 0 && currentSlideIndex >= slides.length) {
+      setCurrentSlideIndex(slides.length - 1);
+    }
+  }, [slides.length, currentSlideIndex]);
 
   // Current active slide
   const activeSlide = slides[currentSlideIndex] || null;
@@ -580,21 +661,44 @@ function SongPresentationModalContent({
     };
   }, [activeSlide, activePlaylist, song]);
 
-  // Active visualizer background video URL
-  const activeBgVideo = useMemo(() => {
+  // Raw candidate visualizer video URL (ignores stale blob: or Uploaded: strings on songs)
+  const rawCandidateBgVideo = useMemo(() => {
     const currentSong = activePlaylist[activeSongInfo.songIndex] || song;
-    const raw = currentSong?.videoUrl || defaultBgVideo || '';
-    if (!raw || raw.startsWith('blob:') || raw.startsWith('Uploaded:')) {
-      return '';
-    }
-    if (isYouTubeUrl(raw)) {
-      return raw.trim();
-    }
-    if (raw.includes('.supabase.co/storage/v1/object/public/songs/videos/')) {
-      return `/api/video?url=${encodeURIComponent(raw)}`;
-    }
-    return raw;
+    const songVid =
+      currentSong?.videoUrl &&
+      !currentSong.videoUrl.startsWith('blob:') &&
+      !currentSong.videoUrl.startsWith('Uploaded:')
+        ? currentSong.videoUrl.trim()
+        : '';
+    return songVid || defaultBgVideo || getDefaultVisualizerVideo() || '';
   }, [activePlaylist, activeSongInfo.songIndex, song, defaultBgVideo]);
+
+  // Resolve playable video URL (fetches & caches Supabase video as video/mp4 Blob in IndexedDB)
+  useEffect(() => {
+    let active = true;
+    if (!rawCandidateBgVideo) {
+      setPlayableBgVideoUrl('');
+      return;
+    }
+    // Immediately set proxy/direct URL so video can start streaming right away
+    const immediateUrl = toProxyVideoUrl(rawCandidateBgVideo);
+    setPlayableBgVideoUrl(immediateUrl);
+
+    // Also resolve IndexedDB cached blob URL for ultra-reliable looping playback
+    resolvePlayableVideoUrl(rawCandidateBgVideo)
+      .then((resolvedBlobOrProxy) => {
+        if (active && resolvedBlobOrProxy) {
+          setPlayableBgVideoUrl(resolvedBlobOrProxy);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [rawCandidateBgVideo]);
+
+  const activeBgVideo = playableBgVideoUrl || toProxyVideoUrl(rawCandidateBgVideo);
 
   const presentationVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -720,7 +824,40 @@ function SongPresentationModalContent({
     return !prevSlide || prevSlide.songIndex < activeSlide.songIndex;
   }, [activeSlide, activeSongInfo.totalSongs, currentSlideIndex, slides]);
 
-  // Keyboard Navigation Shortcuts
+  // HTML5 Fullscreen handler
+  const toggleFullscreen = useCallback(() => {
+    try {
+      if (!document.fullscreenElement) {
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        } else if ((document.documentElement as any).webkitRequestFullscreen) {
+          (document.documentElement as any).webkitRequestFullscreen();
+        }
+        setIsFullscreen(true);
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        } else if ((document as any).webkitExitFullscreen) {
+          (document as any).webkitExitFullscreen();
+        }
+        setIsFullscreen(false);
+      }
+    } catch (err) {
+      console.warn('Fullscreen toggle failed:', err);
+      setIsFullscreen((prev) => !prev);
+    }
+  }, []);
+
+  // Monitor fullscreen change events
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  // Comprehensive Keyboard Navigation & Presentation Shortcuts
   useEffect(() => {
     if (!isOpen) return;
 
@@ -729,7 +866,75 @@ function SongPresentationModalContent({
         return;
       }
 
+      if (e.metaKey || e.ctrlKey || e.altKey) {
+        return;
+      }
+
       switch (e.key) {
+        // Next Slide (or Shift + Arrow for Next Song)
+        case 'ArrowRight':
+        case 'ArrowDown':
+        case 'PageDown':
+        case ' ':
+        case 'Enter':
+          e.preventDefault();
+          if (e.shiftKey) {
+            goToNextSong();
+          } else {
+            goToNextSlide();
+          }
+          break;
+
+        // Previous Slide (or Shift + Arrow for Previous Song)
+        case 'ArrowLeft':
+        case 'ArrowUp':
+        case 'PageUp':
+        case 'Backspace':
+          e.preventDefault();
+          if (e.shiftKey) {
+            goToPrevSong();
+          } else {
+            goToPrevSlide();
+          }
+          break;
+
+        // First / Last Slide
+        case 'Home':
+        case '0':
+          e.preventDefault();
+          if (e.shiftKey && e.key === '0') {
+            setFontSizeMultiplier(1);
+          } else {
+            setCurrentSlideIndex(0);
+          }
+          break;
+
+        case 'End':
+          e.preventDefault();
+          if (slides.length > 0) {
+            setCurrentSlideIndex(slides.length - 1);
+          }
+          break;
+
+        // Number keys 1-9 jump directly to Slide 1-9
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9': {
+          e.preventDefault();
+          const targetIdx = parseInt(e.key, 10) - 1;
+          if (targetIdx >= 0 && targetIdx < slides.length) {
+            setCurrentSlideIndex(targetIdx);
+          }
+          break;
+        }
+
+        // Next / Previous Song in Playlist
         case 'n':
         case 'N':
           e.preventDefault();
@@ -740,38 +945,139 @@ function SongPresentationModalContent({
           e.preventDefault();
           goToPrevSong();
           break;
-        case 'ArrowRight':
-        case 'ArrowDown':
-        case 'PageDown':
-        case ' ':
-          e.preventDefault();
-          if (e.shiftKey) {
-            goToNextSong();
-          } else {
-            goToNextSlide();
-          }
-          break;
-        case 'ArrowLeft':
-        case 'ArrowUp':
-        case 'PageUp':
-          e.preventDefault();
-          if (e.shiftKey) {
-            goToPrevSong();
-          } else {
-            goToPrevSlide();
-          }
-          break;
-        case 'Escape':
-          onClose();
-          break;
+
+        // Toggle Fullscreen (Lyrics-Only Display)
         case 'f':
         case 'F':
+          e.preventDefault();
           toggleFullscreen();
           break;
+
+        // Switch between Lyrics Only and Lyrics with Chords
         case 'c':
         case 'C':
+        case 's':
+        case 'S':
+          e.preventDefault();
           setShowChords((prev) => !prev);
           break;
+
+        // Toggle Motion Background Video
+        case 'v':
+        case 'V':
+        case 'm':
+        case 'M':
+          e.preventDefault();
+          setShowBgVideo((prev) => {
+            const nextVal = !prev;
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('cfc_presentation_show_video', String(nextVal));
+            }
+            return nextVal;
+          });
+          break;
+
+        // Toggle Video Blur
+        case 'b':
+        case 'B':
+          e.preventDefault();
+          setIsBlurred((prev) => {
+            const nextVal = !prev;
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('cfc_presentation_blur_video', String(nextVal));
+            }
+            return nextVal;
+          });
+          break;
+
+        // Cycle Theme
+        case 't':
+        case 'T':
+          e.preventDefault();
+          setTheme((prev) => {
+            const themeKeys: ('white' | 'stage' | 'navy' | 'black' | 'warm')[] = [
+              'white',
+              'stage',
+              'navy',
+              'black',
+              'warm',
+            ];
+            return themeKeys[(themeKeys.indexOf(prev) + 1) % themeKeys.length];
+          });
+          break;
+
+        // Cycle Text Alignment
+        case 'a':
+        case 'A':
+          e.preventDefault();
+          setTextAlign((prev) => (prev === 'left' ? 'center' : prev === 'center' ? 'right' : 'left'));
+          break;
+
+        // Font Size Zoom In / Out
+        case '+':
+        case '=':
+          e.preventDefault();
+          setFontSizeMultiplier((p) => Math.min(+(p + 0.1).toFixed(2), 1.8));
+          break;
+        case '-':
+        case '_':
+          e.preventDefault();
+          setFontSizeMultiplier((p) => Math.max(+(p - 0.1).toFixed(2), 0.7));
+          break;
+
+        // Transpose Key Up / Down / Reset
+        case ']':
+          e.preventDefault();
+          setTransposeOffset((p) => p + 1);
+          break;
+        case '[':
+          e.preventDefault();
+          setTransposeOffset((p) => p - 1);
+          break;
+        case 'r':
+        case 'R':
+          e.preventDefault();
+          setTransposeOffset(0);
+          break;
+
+        // Blackout / Clear Lyrics Screen Toggle
+        case '.':
+        case 'k':
+        case 'K':
+          e.preventDefault();
+          setIsBlackout((prev) => !prev);
+          break;
+
+        // Auto-Play Toggle
+        case 'o':
+        case 'O':
+          e.preventDefault();
+          setIsAutoPlay((prev) => !prev);
+          break;
+
+        // Keyboard Shortcuts Help Modal
+        case '?':
+        case '/':
+        case 'h':
+        case 'H':
+          e.preventDefault();
+          setShowShortcutsModal((prev) => !prev);
+          break;
+
+        // Escape: close shortcuts modal, or exit fullscreen, or close presentation
+        case 'Escape':
+          if (showShortcutsModal) {
+            setShowShortcutsModal(false);
+          } else if (isFullscreen) {
+            if (document.fullscreenElement && document.exitFullscreen) {
+              document.exitFullscreen().catch(() => {});
+            }
+            setIsFullscreen(false);
+          } else {
+            onClose();
+          }
+          break;
+
         default:
           break;
       }
@@ -779,7 +1085,18 @@ function SongPresentationModalContent({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, goToNextSlide, goToPrevSlide, goToNextSong, goToPrevSong, onClose]);
+  }, [
+    isOpen,
+    slides.length,
+    isFullscreen,
+    showShortcutsModal,
+    goToNextSlide,
+    goToPrevSlide,
+    goToNextSong,
+    goToPrevSong,
+    toggleFullscreen,
+    onClose,
+  ]);
 
   // Auto-play slideshow timer
   useEffect(() => {
@@ -799,38 +1116,6 @@ function SongPresentationModalContent({
       if (timer) clearInterval(timer);
     };
   }, [isAutoPlay, isOpen, slides.length, autoPlayInterval]);
-
-  // HTML5 Fullscreen handler
-  const toggleFullscreen = () => {
-    try {
-      if (!document.fullscreenElement) {
-        if (document.documentElement.requestFullscreen) {
-          document.documentElement.requestFullscreen().catch(() => {});
-        } else if ((document.documentElement as any).webkitRequestFullscreen) {
-          (document.documentElement as any).webkitRequestFullscreen();
-        }
-        setIsFullscreen(true);
-      } else {
-        if (document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
-        } else if ((document as any).webkitExitFullscreen) {
-          (document as any).webkitExitFullscreen();
-        }
-        setIsFullscreen(false);
-      }
-    } catch (err) {
-      console.warn('Fullscreen toggle failed:', err);
-    }
-  };
-
-  // Monitor fullscreen change events
-  useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
-  }, []);
 
   if (!isOpen || (!song && !playlist?.length)) return null;
 
@@ -976,6 +1261,10 @@ function SongPresentationModalContent({
               }}
               onError={(e) => {
                 console.warn('Background motion video failed to load:', activeBgVideo, e);
+                // If blob URL failed, fall back to direct /api/video streaming endpoint
+                if (activeBgVideo.startsWith('blob:') && rawCandidateBgVideo) {
+                  setPlayableBgVideoUrl(toProxyVideoUrl(rawCandidateBgVideo));
+                }
               }}
               className={`w-full h-full object-cover transition-all duration-300 ${
                 isBlurred ? 'scale-105' : ''
@@ -991,321 +1280,337 @@ function SongPresentationModalContent({
       )}
 
       {/* =================================================================== */}
-      {/* TOP PRESENTATION BAR                                                */}
+      {/* TOP PRESENTATION BAR (HIDDEN IN FULLSCREEN SO ONLY LYRICS DISPLAY) */}
       {/* =================================================================== */}
-      <header className={`px-4 sm:px-8 py-3 sm:py-4 ${themeClasses.headerBg} backdrop-blur-md border-b flex items-center justify-between gap-4 shrink-0 shadow-xs relative z-20`}>
-        <div className="flex items-center gap-3 overflow-hidden min-w-0">
-          <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ${themeClasses.iconBg} flex items-center justify-center shrink-0 shadow-xs`}>
-            {activeSongInfo.totalSongs > 1 ? (
-              <ListMusic className="w-5 h-5 sm:w-6 sm:h-6" />
-            ) : (
-              <Tv className="w-5 h-5 sm:w-6 sm:h-6" />
-            )}
-          </div>
-          <div className="min-w-0 truncate">
-            <div className="flex items-center gap-2 flex-wrap mb-0.5">
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${themeClasses.badgeBg}`}>
-                {activeSongInfo.category}
-              </span>
-              <span className={`text-xs font-mono font-bold ${themeClasses.keyText}`}>
-                Key of {currentKey}
-              </span>
-              {activeSongInfo.totalSongs > 1 && (
-                <div className="relative inline-flex items-center">
-                  <select
-                    value={activeSongInfo.songIndex}
-                    onChange={(e) => {
-                      const targetSongIdx = parseInt(e.target.value, 10);
-                      const targetSlideIdx = slides.findIndex((s) => s.songIndex === targetSongIdx);
-                      if (targetSlideIdx !== -1) {
-                        setCurrentSlideIndex(targetSlideIdx);
-                      }
-                    }}
-                    className="text-xs font-bold text-amber-500 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 px-2.5 py-0.5 pr-6 rounded-full appearance-none cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors max-w-[200px] truncate"
-                    title="Jump to another song in presentation playlist"
-                  >
-                    {activePlaylist.map((s, idx) => (
-                      <option key={s.id || idx} value={idx}>
-                        Song {idx + 1} of {activeSongInfo.totalSongs}: {s.title}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="w-3 h-3 text-amber-600 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+      {!isFullscreen && (
+        <header className={`px-4 sm:px-8 py-3 sm:py-4 ${themeClasses.headerBg} backdrop-blur-md border-b flex items-center justify-between gap-4 shrink-0 shadow-xs relative z-20`}>
+          <div className="flex items-center gap-3 overflow-hidden min-w-0">
+            <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl ${themeClasses.iconBg} flex items-center justify-center shrink-0 shadow-xs`}>
+              {activeSongInfo.totalSongs > 1 ? (
+                <ListMusic className="w-5 h-5 sm:w-6 sm:h-6" />
+              ) : (
+                <Tv className="w-5 h-5 sm:w-6 sm:h-6" />
               )}
             </div>
-            {/* Song Title (Large enough to easily identify across the hall / projector) */}
-            <h1
-              className={`text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black ${themeClasses.headerText} truncate tracking-tight`}
-              style={{ fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif', fontWeight: 800 }}
-              title={activeSongInfo.title}
-            >
-              {activeSongInfo.title}
-            </h1>
-          </div>
-        </div>
-
-        {/* Slide Counter & Header Actions */}
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Current Slide Indicator */}
-          {slides.length > 0 && (
-            <div className={`px-3 py-1.5 rounded-xl ${themeClasses.btnBg} text-xs font-mono font-bold flex items-center gap-1.5`}>
-              <span className={`${themeClasses.accent} font-black`}>{currentSlideIndex + 1}</span>
-              <span className="opacity-40">/</span>
-              <span className="opacity-80">{slides.length}</span>
+            <div className="min-w-0 truncate">
+              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${themeClasses.badgeBg}`}>
+                  {activeSongInfo.category}
+                </span>
+                <span className={`text-xs font-mono font-bold ${themeClasses.keyText}`}>
+                  Key of {currentKey}
+                </span>
+                {activeSongInfo.totalSongs > 1 && (
+                  <div className="relative inline-flex items-center">
+                    <select
+                      value={activeSongInfo.songIndex}
+                      onChange={(e) => {
+                        const targetSongIdx = parseInt(e.target.value, 10);
+                        const targetSlideIdx = slides.findIndex((s) => s.songIndex === targetSongIdx);
+                        if (targetSlideIdx !== -1) {
+                          setCurrentSlideIndex(targetSlideIdx);
+                        }
+                      }}
+                      className="text-xs font-bold text-amber-500 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 px-2.5 py-0.5 pr-6 rounded-full appearance-none cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900 transition-colors max-w-[200px] truncate"
+                      title="Jump to another song in presentation playlist"
+                    >
+                      {activePlaylist.map((s, idx) => (
+                        <option key={s.id || idx} value={idx}>
+                          Song {idx + 1} of {activeSongInfo.totalSongs}: {s.title}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-3 h-3 text-amber-600 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                )}
+              </div>
+              {/* Song Title */}
+              <h1
+                className={`text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black ${themeClasses.headerText} truncate tracking-tight`}
+                style={{ fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif', fontWeight: 800 }}
+                title={activeSongInfo.title}
+              >
+                {activeSongInfo.title}
+              </h1>
             </div>
-          )}
-
-          {/* Text Alignment Selector (Left, Center, Right) */}
-          <div className={`flex items-center rounded-xl p-0.5 border border-white/10 ${themeClasses.btnBg}`}>
-            <button
-              type="button"
-              onClick={() => setTextAlign('left')}
-              className={`p-1.5 rounded-lg transition-all ${
-                textAlign === 'left' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
-              }`}
-              title="Align Left"
-            >
-              <AlignLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setTextAlign('center')}
-              className={`p-1.5 rounded-lg transition-all ${
-                textAlign === 'center' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
-              }`}
-              title="Align Center"
-            >
-              <AlignCenter className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setTextAlign('right')}
-              className={`p-1.5 rounded-lg transition-all ${
-                textAlign === 'right' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
-              }`}
-              title="Align Right"
-            >
-              <AlignRight className="w-4 h-4" />
-            </button>
           </div>
 
-          {/* Motion Video BG Toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              const nextVal = !showBgVideo;
-              setShowBgVideo(nextVal);
-              if (typeof window !== 'undefined') {
-                localStorage.setItem('cfc_presentation_show_video', String(nextVal));
-              }
-            }}
-            className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
-              showBgVideo ? themeClasses.btnActive : themeClasses.btnBg
-            }`}
-            title="Toggle Motion Background Video Loop"
-          >
-            <Video className="w-4 h-4" />
-            <span className="hidden sm:inline">Motion BG {showBgVideo ? 'ON' : 'OFF'}</span>
-          </button>
+          {/* Slide Counter & Header Actions */}
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            {/* Current Slide Indicator */}
+            {slides.length > 0 && (
+              <div className={`px-3 py-1.5 rounded-xl ${themeClasses.btnBg} text-xs font-mono font-bold flex items-center gap-1.5`}>
+                <span className={`${themeClasses.accent} font-black`}>{currentSlideIndex + 1}</span>
+                <span className="opacity-40">/</span>
+                <span className="opacity-80">{slides.length}</span>
+              </div>
+            )}
 
-          {/* Blur Visualizer Video Toggle */}
-          {showBgVideo && activeBgVideo && (
+            {/* Text Alignment Selector (Left, Center, Right) */}
+            <div className={`flex items-center rounded-xl p-0.5 border border-white/10 ${themeClasses.btnBg}`}>
+              <button
+                type="button"
+                onClick={() => setTextAlign('left')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  textAlign === 'left' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
+                }`}
+                title="Align Left (Hotkey: A)"
+              >
+                <AlignLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextAlign('center')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  textAlign === 'center' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
+                }`}
+                title="Align Center (Hotkey: A)"
+              >
+                <AlignCenter className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextAlign('right')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  textAlign === 'right' ? themeClasses.btnActive : 'opacity-60 hover:opacity-100'
+                }`}
+                title="Align Right (Hotkey: A)"
+              >
+                <AlignRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Motion Video BG Toggle */}
             <button
               type="button"
               onClick={() => {
-                const nextVal = !isBlurred;
-                setIsBlurred(nextVal);
+                const nextVal = !showBgVideo;
+                setShowBgVideo(nextVal);
                 if (typeof window !== 'undefined') {
-                  localStorage.setItem('cfc_presentation_blur_video', String(nextVal));
+                  localStorage.setItem('cfc_presentation_show_video', String(nextVal));
                 }
               }}
               className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
-                isBlurred ? themeClasses.btnActive : themeClasses.btnBg
+                showBgVideo ? themeClasses.btnActive : themeClasses.btnBg
               }`}
-              title="Toggle Blur Effect on Motion Visualizer"
+              title="Toggle Motion Background Video Loop (Hotkey: V)"
             >
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">Blur {isBlurred ? 'ON' : 'OFF'}</span>
-            </button>
-          )}
-
-          {/* Font Color Picker Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowColorPicker((prev) => !prev)}
-              className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${themeClasses.btnBg}`}
-              title="Customize Lyrics Font Color"
-            >
-              <div
-                className="w-3.5 h-3.5 rounded-full border border-white/60 shadow-xs shrink-0"
-                style={{ backgroundColor: fontColor || (theme === 'white' ? '#243c81' : '#ffffff') }}
-              />
-              <span className="hidden sm:inline">Font Color</span>
+              <Video className="w-4 h-4" />
+              <span className="hidden sm:inline">Motion BG {showBgVideo ? 'ON' : 'OFF'}</span>
             </button>
 
-            {showColorPicker && (
-              <div className="absolute right-0 top-full mt-2 p-3 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl z-50 w-60 flex flex-col gap-2.5 text-white">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                  <span>Lyrics Font Color</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFontColor(theme === 'white' ? '#243c81' : '#ffffff');
-                      setShowColorPicker(false);
-                      if (typeof window !== 'undefined') {
-                        localStorage.removeItem('cfc_presentation_font_color');
-                      }
-                    }}
-                    className="text-[10px] text-amber-400 hover:underline"
-                  >
-                    Reset
-                  </button>
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { hex: '#ffffff', label: 'Pure White' },
-                    { hex: '#facc15', label: 'Vibrant Yellow' },
-                    { hex: '#fbbf24', label: 'Warm Amber' },
-                    { hex: '#38bdf8', label: 'Sky Cyan' },
-                    { hex: '#4ade80', label: 'Pastel Green' },
-                    { hex: '#fb7185', label: 'Soft Rose' },
-                    { hex: '#e2e8f0', label: 'Silver' },
-                    { hex: '#243c81', label: 'CFC Navy' },
-                  ].map((c) => (
+            {/* Blur Visualizer Video Toggle */}
+            {showBgVideo && activeBgVideo && (
+              <button
+                type="button"
+                onClick={() => {
+                  const nextVal = !isBlurred;
+                  setIsBlurred(nextVal);
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('cfc_presentation_blur_video', String(nextVal));
+                  }
+                }}
+                className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
+                  isBlurred ? themeClasses.btnActive : themeClasses.btnBg
+                }`}
+                title="Toggle Blur Effect on Motion Visualizer (Hotkey: B)"
+              >
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span className="hidden sm:inline">Blur {isBlurred ? 'ON' : 'OFF'}</span>
+              </button>
+            )}
+
+            {/* Font Color Picker Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowColorPicker((prev) => !prev)}
+                className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${themeClasses.btnBg}`}
+                title="Customize Lyrics Font Color"
+              >
+                <div
+                  className="w-3.5 h-3.5 rounded-full border border-white/60 shadow-xs shrink-0"
+                  style={{ backgroundColor: fontColor || (theme === 'white' ? '#243c81' : '#ffffff') }}
+                />
+                <span className="hidden sm:inline">Font Color</span>
+              </button>
+
+              {showColorPicker && (
+                <div className="absolute right-0 top-full mt-2 p-3 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl z-50 w-60 flex flex-col gap-2.5 text-white">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                    <span>Lyrics Font Color</span>
                     <button
-                      key={c.hex}
                       type="button"
                       onClick={() => {
-                        setFontColor(c.hex);
+                        setFontColor(theme === 'white' ? '#243c81' : '#ffffff');
                         setShowColorPicker(false);
                         if (typeof window !== 'undefined') {
-                          localStorage.setItem('cfc_presentation_font_color', c.hex);
+                          localStorage.removeItem('cfc_presentation_font_color');
                         }
                       }}
-                      className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-transform hover:scale-105 active:scale-95 ${
-                        fontColor.toLowerCase() === c.hex.toLowerCase() ? 'ring-2 ring-amber-400 scale-105 border-white' : 'border-slate-700'
-                      }`}
-                      style={{ backgroundColor: c.hex }}
-                      title={c.label}
+                      className="text-[10px] text-amber-400 hover:underline"
                     >
-                      {fontColor.toLowerCase() === c.hex.toLowerCase() && (
-                        <Check
-                          className={`w-4 h-4 ${
-                            c.hex === '#ffffff' || c.hex === '#facc15' || c.hex === '#fbbf24' || c.hex === '#4ade80' || c.hex === '#e2e8f0'
-                              ? 'text-black'
-                              : 'text-white'
-                          }`}
-                        />
-                      )}
+                      Reset
                     </button>
-                  ))}
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { hex: '#ffffff', label: 'Pure White' },
+                      { hex: '#facc15', label: 'Vibrant Yellow' },
+                      { hex: '#fbbf24', label: 'Warm Amber' },
+                      { hex: '#38bdf8', label: 'Sky Cyan' },
+                      { hex: '#4ade80', label: 'Pastel Green' },
+                      { hex: '#fb7185', label: 'Soft Rose' },
+                      { hex: '#e2e8f0', label: 'Silver' },
+                      { hex: '#243c81', label: 'CFC Navy' },
+                    ].map((c) => (
+                      <button
+                        key={c.hex}
+                        type="button"
+                        onClick={() => {
+                          setFontColor(c.hex);
+                          setShowColorPicker(false);
+                          if (typeof window !== 'undefined') {
+                            localStorage.setItem('cfc_presentation_font_color', c.hex);
+                          }
+                        }}
+                        className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-transform hover:scale-105 active:scale-95 ${
+                          fontColor.toLowerCase() === c.hex.toLowerCase() ? 'ring-2 ring-amber-400 scale-105 border-white' : 'border-slate-700'
+                        }`}
+                        style={{ backgroundColor: c.hex }}
+                        title={c.label}
+                      >
+                        {fontColor.toLowerCase() === c.hex.toLowerCase() && (
+                          <Check
+                            className={`w-4 h-4 ${
+                              c.hex === '#ffffff' || c.hex === '#facc15' || c.hex === '#fbbf24' || c.hex === '#4ade80' || c.hex === '#e2e8f0'
+                                ? 'text-black'
+                                : 'text-white'
+                            }`}
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                    <label className="text-xs text-slate-400 font-medium">Custom:</label>
+                    <input
+                      type="color"
+                      value={fontColor.startsWith('#') ? fontColor : '#ffffff'}
+                      onChange={(e) => {
+                        setFontColor(e.target.value);
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem('cfc_presentation_font_color', e.target.value);
+                        }
+                      }}
+                      className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0"
+                    />
+                    <span className="text-xs font-mono text-slate-300 uppercase truncate">{fontColor}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
-                  <label className="text-xs text-slate-400 font-medium">Custom:</label>
-                  <input
-                    type="color"
-                    value={fontColor.startsWith('#') ? fontColor : '#ffffff'}
-                    onChange={(e) => {
-                      setFontColor(e.target.value);
-                      if (typeof window !== 'undefined') {
-                        localStorage.setItem('cfc_presentation_font_color', e.target.value);
-                      }
-                    }}
-                    className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0"
-                  />
-                  <span className="text-xs font-mono text-slate-300 uppercase truncate">{fontColor}</span>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* Switch between Lyrics Only and Lyrics with Chords */}
+            <div
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all border ${
+                showChords ? themeClasses.btnActive : themeClasses.btnBg
+              }`}
+              title="Switch between Lyrics Only and Lyrics with Chords (Hotkey: C or S)"
+            >
+              <label htmlFor={chordsSwitchId} className="cursor-pointer select-none flex items-center gap-1.5">
+                {showChords ? (
+                  <>
+                    <Guitar className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">With Chords</span>
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Lyrics Only</span>
+                  </>
+                )}
+              </label>
+              <input
+                id={chordsSwitchId}
+                type="checkbox"
+                // @ts-expect-error progressive enhancement HTML switch attribute
+                switch=""
+                checked={showChords}
+                onChange={(e) => setShowChords(e.target.checked)}
+                className="cursor-pointer accent-amber-400"
+              />
+            </div>
+
+            {/* Fullscreen Toggle (Shows ONLY Lyrics Display) */}
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className={`p-2 sm:px-3 sm:py-2 rounded-xl ${themeClasses.btnBg} transition-all font-bold text-xs flex items-center gap-1.5`}
+              title="Full Screen Lyrics-Only Display (Hotkey: F)"
+            >
+              <Maximize2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Full Screen</span>
+            </button>
+
+            {/* Theme Selector */}
+            <button
+              type="button"
+              onClick={() => {
+                const themeKeys: ('white' | 'stage' | 'navy' | 'black' | 'warm')[] = ['white', 'stage', 'navy', 'black', 'warm'];
+                const nextIdx = (themeKeys.indexOf(theme) + 1) % themeKeys.length;
+                setTheme(themeKeys[nextIdx]);
+              }}
+              className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${themeClasses.btnBg}`}
+              title="Switch Theme (Hotkey: T)"
+            >
+              <Palette className="w-4 h-4" />
+              <span className="hidden sm:inline capitalize">{theme}</span>
+            </button>
+
+            {/* Keyboard Shortcuts Button */}
+            <button
+              type="button"
+              onClick={() => setShowShortcutsModal(true)}
+              className={`p-2 sm:px-2.5 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all border ${themeClasses.btnBg}`}
+              title="Keyboard Shortcuts (Hotkey: ?)"
+            >
+              <Keyboard className="w-4 h-4" />
+              <span className="hidden lg:inline">Shortcuts</span>
+            </button>
+
+            {/* Close Modal */}
+            <button
+              type="button"
+              onClick={onClose}
+              className={`p-2 rounded-xl ${themeClasses.btnBg} hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all active:scale-95`}
+              aria-label="Exit Presentation"
+              title="Exit Presentation (Esc)"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-
-          {/* Toggle Chords */}
-          <button
-            type="button"
-            onClick={() => setShowChords((prev) => !prev)}
-            className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
-              showChords ? themeClasses.btnActive : themeClasses.btnBg
-            }`}
-            title="Toggle Chords Visibility (Hotkey: C)"
-          >
-            {showChords ? (
-              <>
-                <Eye className="w-4 h-4" />
-                <span className="hidden sm:inline">Chords ON</span>
-              </>
-            ) : (
-              <>
-                <EyeOff className="w-4 h-4 opacity-60" />
-                <span className="hidden sm:inline">Chords OFF</span>
-              </>
-            )}
-          </button>
-
-          {/* Fullscreen Toggle */}
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className={`p-2 sm:px-3 sm:py-2 rounded-xl ${themeClasses.btnBg} transition-all font-bold text-xs flex items-center gap-1.5`}
-            title="Toggle Fullscreen (Hotkey: F)"
-          >
-            {isFullscreen ? (
-              <>
-                <Minimize2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Exit Fullscreen</span>
-              </>
-            ) : (
-              <>
-                <Maximize2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Fill Screen</span>
-              </>
-            )}
-          </button>
-
-          {/* Theme Selector */}
-          <button
-            type="button"
-            onClick={() => {
-              const themeKeys: ('white' | 'stage' | 'navy' | 'black' | 'warm')[] = ['white', 'stage', 'navy', 'black', 'warm'];
-              const nextIdx = (themeKeys.indexOf(theme) + 1) % themeKeys.length;
-              setTheme(themeKeys[nextIdx]);
-            }}
-            className={`p-2 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${themeClasses.btnBg}`}
-            title="Switch Theme (White, Stage, Navy, Black, Warm)"
-          >
-            <Palette className="w-4 h-4" />
-            <span className="hidden sm:inline capitalize">{theme}</span>
-          </button>
-
-          {/* Close Modal */}
-          <button
-            type="button"
-            onClick={onClose}
-            className={`p-2 rounded-xl ${themeClasses.btnBg} hover:bg-rose-600 hover:text-white hover:border-rose-600 transition-all active:scale-95`}
-            aria-label="Exit Presentation"
-            title="Exit Presentation (Esc)"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* =================================================================== */}
-      {/* PRESENTATION SLIDE CANVAS (FILLED SCREEN CONTENT)                   */}
+      {/* PRESENTATION SLIDE CANVAS (PURE LYRICS DISPLAY IN FULLSCREEN)       */}
       {/* =================================================================== */}
-      <main className="flex-1 flex flex-col justify-center items-center p-4 sm:p-8 max-w-7xl mx-auto w-full relative z-10 overflow-y-auto no-scrollbar">
-
+      <main
+        className={`flex-1 flex flex-col justify-center items-center w-full relative z-10 overflow-hidden ${
+          isFullscreen ? 'h-screen max-w-none p-6 sm:p-12' : 'p-4 sm:p-8 max-w-7xl mx-auto'
+        }`}
+      >
         {/* SLIDE CONTENT AREA */}
-        {activeSlide ? (
+        {isBlackout ? (
+          <div className="w-full h-full flex items-center justify-center" />
+        ) : activeSlide ? (
           <div
             key={activeSlide.globalSlideId}
             className={`w-full max-w-6xl my-auto flex flex-col ${
               textAlign === 'left' ? 'items-start text-left' : textAlign === 'right' ? 'items-end text-right' : 'items-center text-center'
             } justify-center py-2 px-4 space-y-3 sm:space-y-4 animate-in fade-in zoom-in-95 duration-200`}
           >
-            {/* Note: Song title and Verse badges removed from canvas per projector presentation requirements */}
-
             {/* STANZA LINES DISPLAY */}
             {activeLyricLines.length === 0 ? (
               /* TITLE / INTRO SLIDE (When slide has no lyrics, e.g. Intro or Title Slide) */
@@ -1501,8 +1806,8 @@ function SongPresentationModalContent({
                 ))}
               </div>
             )}
-            {/* "Up Next: [Song Title]" Banner on Last Slide of Song */}
-            {isLastSlideOfCurrentSong && nextSongTitle && (
+            {/* "Up Next: [Song Title]" Banner on Last Slide of Song (Hidden in Fullscreen) */}
+            {!isFullscreen && isLastSlideOfCurrentSong && nextSongTitle && (
               <div className="pt-3 flex items-center justify-center animate-pulse">
                 <button
                   type="button"
@@ -1522,9 +1827,9 @@ function SongPresentationModalContent({
         )}
 
         {/* =================================================================== */}
-        {/* LOWER RIGHT NAVIGATION CONTROLS (PROJECTOR OPERATOR DOCK)          */}
+        {/* LOWER RIGHT NAVIGATION CONTROLS (HIDDEN IN FULLSCREEN)             */}
         {/* =================================================================== */}
-        {slides.length > 1 && (
+        {!isFullscreen && slides.length > 1 && (
           <div className={`fixed bottom-16 sm:bottom-20 right-4 sm:right-8 z-30 flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-2xl ${themeClasses.headerBg} border shadow-2xl backdrop-blur-md transition-all`}>
             {/* Previous Song (if multi-song playlist) */}
             {activeSongInfo.totalSongs > 1 && (
@@ -1601,113 +1906,183 @@ function SongPresentationModalContent({
       </main>
 
       {/* =================================================================== */}
-      {/* BOTTOM CONTROL TOOLBAR                                              */}
+      {/* BOTTOM CONTROL TOOLBAR (HIDDEN IN FULLSCREEN SO ONLY LYRICS SHOW)  */}
       {/* =================================================================== */}
-      <footer className={`px-4 sm:px-8 py-3 ${themeClasses.toolbarBg} backdrop-blur-md border-t flex flex-wrap items-center justify-between gap-3 shrink-0 z-20`}>
-        {/* Left: Quick Transpose Controls */}
-        <div className="flex items-center gap-2">
-          <span className={`text-[11px] font-black uppercase tracking-wider ${themeClasses.subText} hidden sm:inline`}>
-            Key:
-          </span>
-          <div className={`flex items-center ${themeClasses.btnBg} rounded-xl p-1`}>
-            <button
-              type="button"
-              onClick={() => setTransposeOffset((p) => p - 1)}
-              className={`w-7 h-7 rounded-lg ${themeClasses.pillBg} font-black text-xs flex items-center justify-center transition-all`}
-              title="Transpose Key Down (-1)"
-            >
-              -1
-            </button>
-            <span className={`px-2.5 font-mono text-xs font-black ${themeClasses.keyText}`}>
-              {currentKey}
+      {!isFullscreen && (
+        <footer className={`px-4 sm:px-8 py-3 ${themeClasses.toolbarBg} backdrop-blur-md border-t flex flex-wrap items-center justify-between gap-3 shrink-0 z-20`}>
+          {/* Left: Quick Transpose Controls */}
+          <div className="flex items-center gap-2">
+            <span className={`text-[11px] font-black uppercase tracking-wider ${themeClasses.subText} hidden sm:inline`}>
+              Key:
             </span>
-            <button
-              type="button"
-              onClick={() => setTransposeOffset((p) => p + 1)}
-              className={`w-7 h-7 rounded-lg ${themeClasses.pillBg} font-black text-xs flex items-center justify-center transition-all`}
-              title="Transpose Key Up (+1)"
-            >
-              +1
-            </button>
-          </div>
+            <div className={`flex items-center ${themeClasses.btnBg} rounded-xl p-1`}>
+              <button
+                type="button"
+                onClick={() => setTransposeOffset((p) => p - 1)}
+                className={`w-7 h-7 rounded-lg ${themeClasses.pillBg} font-black text-xs flex items-center justify-center transition-all`}
+                title="Transpose Key Down (-1) [Hotkey: []"
+              >
+                -1
+              </button>
+              <span className={`px-2.5 font-mono text-xs font-black ${themeClasses.keyText}`}>
+                {currentKey}
+              </span>
+              <button
+                type="button"
+                onClick={() => setTransposeOffset((p) => p + 1)}
+                className={`w-7 h-7 rounded-lg ${themeClasses.pillBg} font-black text-xs flex items-center justify-center transition-all`}
+                title="Transpose Key Up (+1) [Hotkey: ]]"
+              >
+                +1
+              </button>
+            </div>
 
-          {transposeOffset !== 0 && (
-            <button
-              type="button"
-              onClick={() => setTransposeOffset(0)}
-              className={`text-[10px] font-bold ${themeClasses.subText} hover:underline px-1`}
-            >
-              Reset
-            </button>
-          )}
-        </div>
-
-        {/* Center: Slide Quick Navigation Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[280px] sm:max-w-xl py-1 mx-auto">
-          {slides.map((slide, idx) => (
-            <button
-              key={slide.globalSlideId}
-              type="button"
-              onClick={() => setCurrentSlideIndex(idx)}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shrink-0 border ${
-                currentSlideIndex === idx ? themeClasses.pillActive : themeClasses.pillBg
-              }`}
-            >
-              {slide.totalSongsInPlaylist > 1 ? `${String(slide.songTitle || 'Song').substring(0, 8)}..: ${slide.title || 'Slide'}` : (slide.title || `Slide ${idx + 1}`)}
-            </button>
-          ))}
-        </div>
-
-        {/* Right: Font Resizer & Slideshow Auto Play */}
-        <div className="flex items-center gap-2">
-          {/* Font Scaling */}
-          <div className={`flex items-center ${themeClasses.btnBg} rounded-xl p-0.5`}>
-            <button
-              type="button"
-              onClick={() => setFontSizeMultiplier((p) => Math.max(p - 0.1, 0.7))}
-              className="p-1.5 rounded-lg hover:bg-black/10 text-slate-600 hover:text-slate-900"
-              title="Smaller Font"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className={`px-1.5 font-mono text-[10px] font-bold ${themeClasses.subText}`}>
-              {Math.round(fontSizeMultiplier * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={() => setFontSizeMultiplier((p) => Math.min(p + 0.1, 1.8))}
-              className="p-1.5 rounded-lg hover:bg-black/10 text-slate-600 hover:text-slate-900"
-              title="Larger Font"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Auto Slideshow */}
-          <button
-            type="button"
-            onClick={() => setIsAutoPlay((p) => !p)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
-              isAutoPlay
-                ? 'bg-emerald-500 text-white border-emerald-400 shadow-md animate-pulse'
-                : themeClasses.btnBg
-            }`}
-            title="Auto Advance Slides"
-          >
-            {isAutoPlay ? (
-              <>
-                <Pause className="w-3.5 h-3.5 fill-current" />
-                <span className="hidden sm:inline">Playing</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span className="hidden sm:inline">Auto</span>
-              </>
+            {transposeOffset !== 0 && (
+              <button
+                type="button"
+                onClick={() => setTransposeOffset(0)}
+                className={`text-[10px] font-bold ${themeClasses.subText} hover:underline px-1`}
+                title="Reset Key (Hotkey: R)"
+              >
+                Reset
+              </button>
             )}
-          </button>
+          </div>
+
+          {/* Center: Slide Quick Navigation Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[280px] sm:max-w-xl py-1 mx-auto">
+            {slides.map((slide, idx) => (
+              <button
+                key={slide.globalSlideId}
+                type="button"
+                onClick={() => setCurrentSlideIndex(idx)}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all shrink-0 border ${
+                  currentSlideIndex === idx ? themeClasses.pillActive : themeClasses.pillBg
+                }`}
+              >
+                {slide.totalSongsInPlaylist > 1 ? `${String(slide.songTitle || 'Song').substring(0, 8)}..: ${slide.title || 'Slide'}` : (slide.title || `Slide ${idx + 1}`)}
+              </button>
+            ))}
+          </div>
+
+          {/* Right: Font Resizer & Slideshow Auto Play */}
+          <div className="flex items-center gap-2">
+            {/* Font Scaling */}
+            <div className={`flex items-center ${themeClasses.btnBg} rounded-xl p-0.5`}>
+              <button
+                type="button"
+                onClick={() => setFontSizeMultiplier((p) => Math.max(+(p - 0.1).toFixed(2), 0.7))}
+                className="p-1.5 rounded-lg hover:bg-black/10 text-slate-600 hover:text-slate-900"
+                title="Smaller Font (Hotkey: -)"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className={`px-1.5 font-mono text-[10px] font-bold ${themeClasses.subText}`}>
+                {Math.round(fontSizeMultiplier * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={() => setFontSizeMultiplier((p) => Math.min(+(p + 0.1).toFixed(2), 1.8))}
+                className="p-1.5 rounded-lg hover:bg-black/10 text-slate-600 hover:text-slate-900"
+                title="Larger Font (Hotkey: +)"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Auto Slideshow */}
+            <button
+              type="button"
+              onClick={() => setIsAutoPlay((p) => !p)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${
+                isAutoPlay
+                  ? 'bg-emerald-500 text-white border-emerald-400 shadow-md animate-pulse'
+                  : themeClasses.btnBg
+              }`}
+              title="Auto Advance Slides (Hotkey: O)"
+            >
+              {isAutoPlay ? (
+                <>
+                  <Pause className="w-3.5 h-3.5 fill-current" />
+                  <span className="hidden sm:inline">Playing</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span className="hidden sm:inline">Auto</span>
+                </>
+              )}
+            </button>
+          </div>
+        </footer>
+      )}
+
+      {/* =================================================================== */}
+      {/* KEYBOARD SHORTCUTS HELP MODAL OVERLAY                               */}
+      {/* =================================================================== */}
+      {showShortcutsModal && (
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setShowShortcutsModal(false)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 text-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
+                  <Keyboard className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black">Presentation Keyboard Shortcuts</h3>
+                  <p className="text-xs text-slate-400">Quick keys for slides, songs, fullscreen &amp; visualizers</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowShortcutsModal(false)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              {[
+                { keys: '→ / ↓ / Space / Enter', desc: 'Next Slide' },
+                { keys: '← / ↑ / Backspace / PgUp', desc: 'Previous Slide' },
+                { keys: 'N or Shift + →', desc: 'Next Song in Lineup' },
+                { keys: 'P or Shift + ←', desc: 'Previous Song in Lineup' },
+                { keys: '1 – 9', desc: 'Jump to Slide 1 – 9' },
+                { keys: 'Home / 0 or End', desc: 'First Slide / Last Slide' },
+                { keys: 'F', desc: 'Fullscreen (Lyrics Display Only)' },
+                { keys: 'C or S', desc: 'Switch Lyrics Only / With Chords' },
+                { keys: 'V or M', desc: 'Toggle Motion Background Video' },
+                { keys: 'B', desc: 'Toggle Video Blur' },
+                { keys: 'T', desc: 'Cycle Presentation Theme' },
+                { keys: 'A', desc: 'Cycle Text Alignment' },
+                { keys: '+ / - / Shift + 0', desc: 'Font Size Larger / Smaller / Reset' },
+                { keys: '[ / ] / R', desc: 'Transpose Key -1 / +1 / Reset' },
+                { keys: '. (Period) or K', desc: 'Blackout / Clear Lyrics Screen' },
+                { keys: 'O', desc: 'Toggle Auto-Play Slideshow' },
+                { keys: '? or H', desc: 'Toggle Shortcuts Help' },
+                { keys: 'Esc', desc: 'Exit Fullscreen or Close' },
+              ].map((item) => (
+                <div
+                  key={item.keys}
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-800/70 border border-slate-700/60"
+                >
+                  <span className="text-slate-300 font-semibold">{item.desc}</span>
+                  <kbd className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-700 text-amber-400 font-mono font-bold text-[11px] shrink-0">
+                    {item.keys}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </footer>
+      )}
     </div>
   );
 }

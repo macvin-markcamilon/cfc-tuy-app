@@ -366,6 +366,7 @@ export default function SongDetailPage({ params }: SongDetailPageProps) {
         {/* Interactive Ultimate Guitar Chord Sheet */}
         <InteractiveChordSheet
           content={song.lyricsAndChords}
+          lyricsOnly={song.lyricsOnly}
           originalKey={song.key}
         />
 

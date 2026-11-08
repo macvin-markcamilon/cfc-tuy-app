@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useId } from 'react';
 import {
   transposeChord,
   transposeSongContent,
   getChordShape,
 } from '@/lib/music/guitarChords';
-import { parseChordProLine } from '@/lib/music/chordPro';
+import { parseChordProLine, extractCleanLyricsFromChords } from '@/lib/music/chordPro';
 import GuitarChordDiagram from './GuitarChordDiagram';
 import {
   Play,
@@ -23,21 +23,48 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  FileText,
+  Guitar,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 
 interface InteractiveChordSheetProps {
   content: string;
+  lyricsOnly?: string;
   originalKey?: string;
   fontSize?: number;
   className?: string;
+  initialShowLyricsOnly?: boolean;
 }
 
 export default function InteractiveChordSheet({
   content,
+  lyricsOnly,
   originalKey = 'G',
   fontSize: initialFontSize = 15,
   className = '',
+  initialShowLyricsOnly = false,
 }: InteractiveChordSheetProps) {
+  const switchId = useId();
+  // Mode switch: false = Lyrics with Chords, true = Lyrics Only
+  const [showLyricsOnly, setShowLyricsOnly] = useState<boolean>(initialShowLyricsOnly);
+  const [isSheetFullscreen, setIsSheetFullscreen] = useState<boolean>(false);
+
+  // Sync when initialShowLyricsOnly prop changes (e.g. from editor mode switch)
+  useEffect(() => {
+    setShowLyricsOnly(initialShowLyricsOnly);
+  }, [initialShowLyricsOnly]);
+
+  // Load input-switch-polyfill if native HTML switch attribute is not supported
+  useEffect(() => {
+    if (typeof window !== 'undefined' && typeof HTMLInputElement !== 'undefined') {
+      if (!('switch' in HTMLInputElement.prototype)) {
+        import('input-switch-polyfill').catch(() => {});
+      }
+    }
+  }, []);
+
   // Transposition & Capo
   const [transposeOffset, setTransposeOffset] = useState<number>(0);
   const [capoFret, setCapoFret] = useState<number>(0);
@@ -72,6 +99,34 @@ export default function InteractiveChordSheet({
   const transposedContent = useMemo(() => {
     return transposeSongContent(content, transposeOffset);
   }, [content, transposeOffset]);
+
+  // Effective Lyrics-Only Content (uses separate lyricsOnly field if provided, else strips chords from content)
+  const effectiveLyricsOnlyContent = useMemo(() => {
+    if (lyricsOnly && lyricsOnly.trim()) {
+      return lyricsOnly.trim();
+    }
+    return extractCleanLyricsFromChords(content);
+  }, [lyricsOnly, content]);
+
+  // Monitor fullscreen state
+  useEffect(() => {
+    const handleFs = () => {
+      setIsSheetFullscreen(Boolean(document.fullscreenElement && sheetContainerRef.current && document.fullscreenElement === sheetContainerRef.current));
+    };
+    document.addEventListener('fullscreenchange', handleFs);
+    return () => document.removeEventListener('fullscreenchange', handleFs);
+  }, []);
+
+  const toggleSheetFullscreen = () => {
+    if (!sheetContainerRef.current || typeof document === 'undefined') return;
+    if (!document.fullscreenElement) {
+      sheetContainerRef.current.requestFullscreen?.().catch(() => {});
+      setIsSheetFullscreen(true);
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+      setIsSheetFullscreen(false);
+    }
+  };
 
   // Current Transposed Key
   const currentKey = useMemo(() => {
@@ -414,179 +469,229 @@ export default function InteractiveChordSheet({
   return (
     <div
       ref={sheetContainerRef}
-      className={`flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden ${className}`}
+      className={`flex flex-col bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden ${
+        isSheetFullscreen ? 'fixed inset-0 z-50 rounded-none border-none overflow-y-auto' : ''
+      } ${className}`}
     >
       {/* =================================================================== */}
-      {/* MUSICAL CONTROLS BAR (Ultimate Guitar Toolbar)                      */}
+      {/* MUSICAL CONTROLS BAR (Hidden in Fullscreen so only lyrics display)  */}
       {/* =================================================================== */}
-      <div className="p-3 sm:p-3.5 bg-slate-900 text-white border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 text-xs sticky top-0 z-20 shadow-xs">
-        {/* Left: Transposer */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center bg-white/10 rounded-xl p-1 border border-white/10">
-            <button
-              type="button"
-              onClick={() => setTransposeOffset((p) => p - 1)}
-              className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/30 text-white font-black flex items-center justify-center transition-all active:scale-90"
-              title="Transpose down 1 semitone (-1)"
-            >
-              -1
-            </button>
-
-            <div className="px-3 text-center min-w-[90px]">
-              <span className="text-[10px] text-amber-300 font-bold uppercase block leading-none">
-                Key
+      {!isSheetFullscreen && (
+        <div className="p-3 sm:p-3.5 bg-slate-900 text-white border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 text-xs sticky top-0 z-20 shadow-xs">
+          {/* Left: Switch between Lyrics with Chords and Lyrics Only + Transposer */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Switch: Lyrics with Chords vs Lyrics Only */}
+            <div className="flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-white/15">
+              <Guitar className={`w-3.5 h-3.5 transition-colors ${!showLyricsOnly ? 'text-amber-400' : 'text-slate-400'}`} />
+              <span
+                onClick={() => setShowLyricsOnly(false)}
+                className={`cursor-pointer font-bold transition-colors ${!showLyricsOnly ? 'text-amber-300 font-black' : 'text-slate-400 hover:text-white'}`}
+              >
+                With Chords
               </span>
-              <span className="font-extrabold text-sm text-white">
-                {currentKey}
-                {transposeOffset !== 0 && (
-                  <span className="text-[10px] text-blue-200 ml-1">
-                    ({transposeOffset > 0 ? `+${transposeOffset}` : transposeOffset})
-                  </span>
-                )}
+              <label htmlFor={switchId} className="inline-flex items-center cursor-pointer mx-0.5" title="Switch between Lyrics with Chords and Lyrics Only">
+                <span className="sr-only">Switch to Lyrics Only</span>
+                <input
+                  id={switchId}
+                  type="checkbox"
+                  {...({ switch: '' } as any)}
+                  checked={showLyricsOnly}
+                  onChange={(e) => setShowLyricsOnly(e.target.checked)}
+                  style={{ accentColor: '#fbbf24', margin: 0, cursor: 'pointer' }}
+                  className="w-8 h-4 rounded-full cursor-pointer accent-amber-400 focus-visible:outline-2 focus-visible:outline-amber-400 focus-visible:outline-offset-2"
+                />
+              </label>
+              <span
+                onClick={() => setShowLyricsOnly(true)}
+                className={`cursor-pointer font-bold transition-colors ${showLyricsOnly ? 'text-amber-300 font-black' : 'text-slate-400 hover:text-white'}`}
+              >
+                Lyrics Only
               </span>
+              <FileText className={`w-3.5 h-3.5 transition-colors ${showLyricsOnly ? 'text-amber-400' : 'text-slate-400'}`} />
             </div>
 
-            <button
-              type="button"
-              onClick={() => setTransposeOffset((p) => p + 1)}
-              className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/30 text-white font-black flex items-center justify-center transition-all active:scale-90"
-              title="Transpose up 1 semitone (+1)"
-            >
-              +1
-            </button>
-          </div>
+            {!showLyricsOnly && (
+              <>
+                <div className="flex items-center bg-white/10 rounded-xl p-1 border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setTransposeOffset((p) => p - 1)}
+                    className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/30 text-white font-black flex items-center justify-center transition-all active:scale-90"
+                    title="Transpose down 1 semitone (-1)"
+                  >
+                    -1
+                  </button>
 
-          {transposeOffset !== 0 && (
-            <button
-              type="button"
-              onClick={() => setTransposeOffset(0)}
-              className="text-[10px] font-bold text-slate-300 hover:text-white underline px-1"
-              title="Reset to original key"
-            >
-              Reset
-            </button>
-          )}
-        </div>
+                  <div className="px-3 text-center min-w-[90px]">
+                    <span className="text-[10px] text-amber-300 font-bold uppercase block leading-none">
+                      Key
+                    </span>
+                    <span className="font-extrabold text-sm text-white">
+                      {currentKey}
+                      {transposeOffset !== 0 && (
+                        <span className="text-[10px] text-blue-200 ml-1">
+                          ({transposeOffset > 0 ? `+${transposeOffset}` : transposeOffset})
+                        </span>
+                      )}
+                    </span>
+                  </div>
 
-        {/* Middle: Capo Selector */}
-        <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-xl border border-white/10">
-          <span className="text-[10px] font-bold text-slate-300 uppercase">Capo:</span>
-          <select
-            value={capoFret}
-            onChange={(e) => setCapoFret(Number(e.target.value))}
-            className="bg-transparent text-white font-bold text-xs focus:outline-hidden cursor-pointer"
-          >
-            <option value={0} className="text-slate-900 bg-white">No Capo</option>
-            <option value={1} className="text-slate-900 bg-white">Capo 1st Fret</option>
-            <option value={2} className="text-slate-900 bg-white">Capo 2nd Fret</option>
-            <option value={3} className="text-slate-900 bg-white">Capo 3rd Fret</option>
-            <option value={4} className="text-slate-900 bg-white">Capo 4th Fret</option>
-            <option value={5} className="text-slate-900 bg-white">Capo 5th Fret</option>
-            <option value={6} className="text-slate-900 bg-white">Capo 6th Fret</option>
-            <option value={7} className="text-slate-900 bg-white">Capo 7th Fret</option>
-          </select>
-        </div>
+                  <button
+                    type="button"
+                    onClick={() => setTransposeOffset((p) => p + 1)}
+                    className="w-7 h-7 rounded-lg bg-white/15 hover:bg-white/30 text-white font-black flex items-center justify-center transition-all active:scale-90"
+                    title="Transpose up 1 semitone (+1)"
+                  >
+                    +1
+                  </button>
+                </div>
 
-        {/* Right: Hands-free Auto-Scroll & Font Size Controls */}
-        <div className="flex items-center gap-2">
-          {/* Text Alignment Selector */}
-          <div className="flex items-center bg-white/10 rounded-xl p-0.5 border border-white/10">
-            <button
-              type="button"
-              onClick={() => setTextAlign('left')}
-              className={`p-1.5 rounded-lg transition-all ${
-                textAlign === 'left' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
-              }`}
-              title="Align Left"
-            >
-              <AlignLeft className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setTextAlign('center')}
-              className={`p-1.5 rounded-lg transition-all ${
-                textAlign === 'center' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
-              }`}
-              title="Align Center"
-            >
-              <AlignCenter className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setTextAlign('right')}
-              className={`p-1.5 rounded-lg transition-all ${
-                textAlign === 'right' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
-              }`}
-              title="Align Right"
-            >
-              <AlignRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Font Resizer */}
-          <div className="flex items-center bg-white/10 rounded-xl p-0.5 border border-white/10">
-            <button
-              type="button"
-              onClick={() => setFontSize((p) => Math.max(p - 1, 12))}
-              className="p-1.5 rounded-lg hover:bg-white/20 text-slate-300 hover:text-white"
-              title="Decrease Font Size"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="px-2 font-mono text-[11px] font-bold text-white">{fontSize}px</span>
-            <button
-              type="button"
-              onClick={() => setFontSize((p) => Math.min(p + 1, 24))}
-              className="p-1.5 rounded-lg hover:bg-white/20 text-slate-300 hover:text-white"
-              title="Increase Font Size"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Auto Scroll Button */}
-          <div className="flex items-center gap-1 bg-amber-500 text-slate-950 px-3 py-1.5 rounded-xl font-black text-xs shadow-md">
-            <button
-              type="button"
-              onClick={() => setIsAutoScrolling((p) => !p)}
-              className="flex items-center gap-1.5 active:scale-95"
-              title="Hands-free auto-scrolling for guitarists"
-            >
-              {isAutoScrolling ? (
-                <>
-                  <Pause className="w-3.5 h-3.5" />
-                  <span>Pause Scroll</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Auto-Scroll</span>
-                </>
-              )}
-            </button>
-
-            {isAutoScrolling && (
-              <select
-                value={scrollSpeed}
-                onChange={(e) => setScrollSpeed(Number(e.target.value))}
-                className="bg-black/10 rounded-md font-bold text-[10px] ml-1 px-1 py-0.5 focus:outline-hidden cursor-pointer"
-              >
-                <option value={0.5}>0.5x</option>
-                <option value={0.75}>0.75x</option>
-                <option value={1}>1.0x</option>
-                <option value={1.25}>1.25x</option>
-                <option value={1.5}>1.5x</option>
-                <option value={2}>2.0x</option>
-              </select>
+                {transposeOffset !== 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setTransposeOffset(0)}
+                    className="text-[10px] font-bold text-slate-300 hover:text-white underline px-1"
+                    title="Reset to original key"
+                  >
+                    Reset
+                  </button>
+                )}
+              </>
             )}
           </div>
+
+          {/* Middle: Capo Selector (Only in Chords mode) */}
+          {!showLyricsOnly && (
+            <div className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-xl border border-white/10">
+              <span className="text-[10px] font-bold text-slate-300 uppercase">Capo:</span>
+              <select
+                value={capoFret}
+                onChange={(e) => setCapoFret(Number(e.target.value))}
+                className="bg-transparent text-white font-bold text-xs focus:outline-hidden cursor-pointer"
+              >
+                <option value={0} className="text-slate-900 bg-white">No Capo</option>
+                <option value={1} className="text-slate-900 bg-white">Capo 1st Fret</option>
+                <option value={2} className="text-slate-900 bg-white">Capo 2nd Fret</option>
+                <option value={3} className="text-slate-900 bg-white">Capo 3rd Fret</option>
+                <option value={4} className="text-slate-900 bg-white">Capo 4th Fret</option>
+                <option value={5} className="text-slate-900 bg-white">Capo 5th Fret</option>
+                <option value={6} className="text-slate-900 bg-white">Capo 6th Fret</option>
+                <option value={7} className="text-slate-900 bg-white">Capo 7th Fret</option>
+              </select>
+            </div>
+          )}
+
+          {/* Right: Hands-free Auto-Scroll & Font Size Controls */}
+          <div className="flex items-center gap-2">
+            {/* Text Alignment Selector */}
+            <div className="flex items-center bg-white/10 rounded-xl p-0.5 border border-white/10">
+              <button
+                type="button"
+                onClick={() => setTextAlign('left')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  textAlign === 'left' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
+                }`}
+                title="Align Left"
+              >
+                <AlignLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextAlign('center')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  textAlign === 'center' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
+                }`}
+                title="Align Center"
+              >
+                <AlignCenter className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setTextAlign('right')}
+                className={`p-1.5 rounded-lg transition-all ${
+                  textAlign === 'right' ? 'bg-amber-400 text-slate-950 font-bold' : 'text-slate-300 hover:text-white'
+                }`}
+                title="Align Right"
+              >
+                <AlignRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Font Resizer */}
+            <div className="flex items-center bg-white/10 rounded-xl p-0.5 border border-white/10">
+              <button
+                type="button"
+                onClick={() => setFontSize((p) => Math.max(p - 1, 12))}
+                className="p-1.5 rounded-lg hover:bg-white/20 text-slate-300 hover:text-white"
+                title="Decrease Font Size"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+              </button>
+              <span className="px-2 font-mono text-[11px] font-bold text-white">{fontSize}px</span>
+              <button
+                type="button"
+                onClick={() => setFontSize((p) => Math.min(p + 1, 28))}
+                className="p-1.5 rounded-lg hover:bg-white/20 text-slate-300 hover:text-white"
+                title="Increase Font Size"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Auto Scroll Button */}
+            <div className="flex items-center gap-1 bg-amber-500 text-slate-950 px-3 py-1.5 rounded-xl font-black text-xs shadow-md">
+              <button
+                type="button"
+                onClick={() => setIsAutoScrolling((p) => !p)}
+                className="flex items-center gap-1.5 active:scale-95"
+                title="Hands-free auto-scrolling for guitarists"
+              >
+                {isAutoScrolling ? (
+                  <>
+                    <Pause className="w-3.5 h-3.5" />
+                    <span>Pause Scroll</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Auto-Scroll</span>
+                  </>
+                )}
+              </button>
+
+              {isAutoScrolling && (
+                <select
+                  value={scrollSpeed}
+                  onChange={(e) => setScrollSpeed(Number(e.target.value))}
+                  className="bg-black/10 rounded-md font-bold text-[10px] ml-1 px-1 py-0.5 focus:outline-hidden cursor-pointer"
+                >
+                  <option value={0.5}>0.5x</option>
+                  <option value={0.75}>0.75x</option>
+                  <option value={1}>1.0x</option>
+                  <option value={1.25}>1.25x</option>
+                  <option value={1.5}>1.5x</option>
+                  <option value={2}>2.0x</option>
+                </select>
+              )}
+            </div>
+
+            {/* Fullscreen Pure Display Button */}
+            <button
+              type="button"
+              onClick={toggleSheetFullscreen}
+              className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/10 transition-all"
+              title="Fullscreen Lyrics Display"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* =================================================================== */}
       {/* QUICK CHORD BAR (All chords in this song with preview diagrams)     */}
       {/* =================================================================== */}
-      {uniqueChords.length > 0 && (
+      {!isSheetFullscreen && !showLyricsOnly && uniqueChords.length > 0 && (
         <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-2 overflow-x-auto no-scrollbar">
           <span className="text-[10px] font-black uppercase text-slate-400 shrink-0 flex items-center gap-1">
             <Music className="w-3 h-3 text-[#243c81]" />
@@ -610,12 +715,16 @@ export default function InteractiveChordSheet({
       )}
 
       {/* =================================================================== */}
-      {/* SONG SHEET BODY: CHORDS & LYRICS                                   */}
+      {/* SONG SHEET BODY: CHORDS & LYRICS OR LYRICS ONLY                    */}
       {/* =================================================================== */}
-      <div className={`p-6 sm:p-8 bg-white overflow-x-auto min-h-[400px] ${
+      <div className={`p-6 sm:p-8 bg-white overflow-x-auto min-h-[400px] flex-1 ${
         textAlign === 'center' ? 'text-center' : textAlign === 'right' ? 'text-right' : 'text-left'
       }`}>
-        {transposedContent.split('\n').map((line, idx) => renderChordProLine(line, idx))}
+        {showLyricsOnly ? (
+          effectiveLyricsOnlyContent.split('\n').map((line, idx) => renderChordProLine(line.replace(/\[[A-G][#b]?[^\]]*\]/g, ''), idx))
+        ) : (
+          transposedContent.split('\n').map((line, idx) => renderChordProLine(line, idx))
+        )}
       </div>
 
       {/* =================================================================== */}

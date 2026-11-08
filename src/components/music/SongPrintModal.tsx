@@ -116,6 +116,10 @@ export default function SongPrintModal({
 
   // Process lines according to selected Print Mode
   const processedLines = useMemo(() => {
+    if (printMode === 'lyrics-only' && song?.lyricsOnly && song.lyricsOnly.trim().length > 0) {
+      return song.lyricsOnly.split('\n');
+    }
+
     if (!transposedContent) return [];
     const lines = transposedContent.split('\n');
 
@@ -132,7 +136,7 @@ export default function SongPrintModal({
 
     // Default: 'chords-and-lyrics'
     return lines;
-  }, [transposedContent, printMode]);
+  }, [transposedContent, printMode, song?.lyricsOnly]);
 
   if (!isOpen || !song) return null;
 

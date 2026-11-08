@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { WorshipSong, uploadSongAudio, fileToAudioDataUrl, isYouTubeUrl } from '@/lib/data/songs-service';
+import { extractCleanLyricsFromChords } from '@/lib/music/chordPro';
 import InteractiveChordSheet from './InteractiveChordSheet';
 import {
   X,
@@ -17,6 +18,9 @@ import {
   Eye,
   Check,
   Plus,
+  FileText,
+  Guitar,
+  Wand2,
 } from 'lucide-react';
 
 interface SongEditorModalProps {
@@ -43,6 +47,8 @@ export default function SongEditorModal({
     initialSong?.lyricsAndChords ||
       `[Intro]\n[G]  [C]  [D]  [G]\n\n[Verse 1]\n[G]Amazing grace how [C]sweet the [G]sound\nThat [Em]saved a wretch like [D]me\n\n[Chorus]\n[G]I once was lost, but [C]now am [G]found\nWas [Em]blind, but [D]now I [G]see.`
   );
+  const [lyricsOnly, setLyricsOnly] = useState(initialSong?.lyricsOnly || '');
+  const [lyricsInputType, setLyricsInputType] = useState<'chords' | 'lyrics'>('chords');
   const [audioUrl, setAudioUrl] = useState(initialSong?.audioUrl || '');
   const [audioFileName, setAudioFileName] = useState(initialSong?.audioFileName || '');
   const [youtubeUrl, setYoutubeUrl] = useState(initialSong?.youtubeUrl || '');
@@ -55,6 +61,14 @@ export default function SongEditorModal({
   const [uploadingAudio, setUploadingAudio] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lyricsOnlyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const switchId = useId();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !('switch' in HTMLInputElement.prototype)) {
+      import('input-switch-polyfill').catch(() => {});
+    }
+  }, []);
 
   // Sync state whenever modal opens or initialSong changes
   useEffect(() => {
@@ -67,6 +81,7 @@ export default function SongEditorModal({
       setCategory(initialSong.category || 'Praise');
       setMinistry(initialSong.ministry || 'CFC');
       setLyricsAndChords(initialSong.lyricsAndChords || '');
+      setLyricsOnly(initialSong.lyricsOnly || '');
       setAudioUrl(initialSong.audioUrl || '');
       setAudioFileName(initialSong.audioFileName || '');
       const defaultYt = initialSong.youtubeUrl || (isYouTubeUrl(initialSong.audioUrl) ? initialSong.audioUrl : '') || '';
@@ -104,20 +119,24 @@ export default function SongEditorModal({
 
   // Insert section tag like [Verse 1], [Chorus], etc.
   const insertSectionTag = (tag: string) => {
-    const textarea = textareaRef.current;
+    const isLyricsTab = lyricsInputType === 'lyrics';
+    const textarea = isLyricsTab ? lyricsOnlyTextareaRef.current : textareaRef.current;
+    const currentValue = isLyricsTab ? lyricsOnly : lyricsAndChords;
+    const setValue = isLyricsTab ? setLyricsOnly : setLyricsAndChords;
+
     if (!textarea) {
-      setLyricsAndChords((prev) => prev + `\n\n[${tag}]\n`);
+      setValue((prev) => prev + `\n\n[${tag}]\n`);
       return;
     }
 
     const start = textarea.selectionStart;
     const sectionToken = `\n\n[${tag}]\n`;
     const nextVal =
-      lyricsAndChords.substring(0, start) +
+      currentValue.substring(0, start) +
       sectionToken +
-      lyricsAndChords.substring(start);
+      currentValue.substring(start);
 
-    setLyricsAndChords(nextVal);
+    setValue(nextVal);
     setTimeout(() => {
       textarea.focus();
       textarea.setSelectionRange(start + sectionToken.length, start + sectionToken.length);
@@ -173,6 +192,7 @@ export default function SongEditorModal({
         category,
         ministry,
         lyricsAndChords,
+        lyricsOnly,
         ccliNumber,
         audioUrl,
         audioFileName,
@@ -467,51 +487,120 @@ export default function SongEditorModal({
 
           {/* Row 3: Ultimate Guitar Chords & Lyrics Editor */}
           <div className="flex-1 flex flex-col gap-3">
+            {/* Switch Bar between Lyrics with Chords and Lyrics Only */}
+            <div className="p-3 rounded-2xl bg-slate-100 border border-slate-200 flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="bg-white p-1 rounded-xl border border-slate-200 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setLyricsInputType('chords')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all ${
+                      lyricsInputType === 'chords'
+                        ? 'bg-[#243c81] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Guitar className="w-3.5 h-3.5" />
+                    <span>Lyrics with Chords</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLyricsInputType('lyrics')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all ${
+                      lyricsInputType === 'lyrics'
+                        ? 'bg-[#243c81] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Lyrics Only</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700">
+                  <label htmlFor={switchId} className="cursor-pointer select-none">
+                    Switch to Lyrics Only
+                  </label>
+                  <input
+                    id={switchId}
+                    type="checkbox"
+                    // @ts-expect-error progressive enhancement HTML switch attribute
+                    switch=""
+                    checked={lyricsInputType === 'lyrics'}
+                    onChange={(e) => setLyricsInputType(e.target.checked ? 'lyrics' : 'chords')}
+                    className="cursor-pointer accent-[#243c81]"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const extracted = extractCleanLyricsFromChords(lyricsAndChords);
+                  setLyricsOnly(extracted);
+                  setLyricsInputType('lyrics');
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-900 border border-amber-400/50 text-xs font-black flex items-center gap-1.5 transition-all"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-amber-600" />
+                <span>Auto-Extract Lyrics from Chords</span>
+              </button>
+            </div>
+
             {/* Quick Chord Insertion Bar */}
             <div className="p-3 bg-slate-900 rounded-2xl text-white flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-black uppercase text-amber-400 mr-1 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Tap to Insert Chord:</span>
-                </span>
+              {lyricsInputType === 'chords' ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-black uppercase text-amber-400 mr-1 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Tap to Insert Chord:</span>
+                  </span>
 
-                {quickChords.map((chord) => (
-                  <button
-                    key={chord}
-                    type="button"
-                    onClick={() => insertChordAtCursor(chord)}
-                    className="px-2 py-0.8 rounded-lg bg-white/15 hover:bg-amber-400 hover:text-slate-950 font-mono font-black text-xs transition-all active:scale-90"
-                    title={`Insert [${chord}] at cursor`}
-                  >
-                    [{chord}]
-                  </button>
-                ))}
-              </div>
+                  {quickChords.map((chord) => (
+                    <button
+                      key={chord}
+                      type="button"
+                      onClick={() => insertChordAtCursor(chord)}
+                      className="px-2 py-0.8 rounded-lg bg-white/15 hover:bg-amber-400 hover:text-slate-950 font-mono font-black text-xs transition-all active:scale-90"
+                      title={`Insert [${chord}] at cursor`}
+                    >
+                      [{chord}]
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Lyrics Only Input — Separate slides with blank lines or [Verse] / [Chorus] headers</span>
+                </div>
+              )}
 
               {/* Custom Chord + Section Tags */}
               <div className="flex items-center gap-2">
                 {/* Custom Chord input */}
-                <div className="flex items-center bg-white/10 rounded-lg p-0.5 border border-white/15">
-                  <input
-                    type="text"
-                    value={customChordInput}
-                    onChange={(e) => setCustomChordInput(e.target.value)}
-                    placeholder="e.g. F#m"
-                    className="w-16 px-1.5 py-0.5 bg-transparent text-white font-mono text-xs focus:outline-hidden placeholder-slate-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (customChordInput.trim()) {
-                        insertChordAtCursor(customChordInput.trim());
-                        setCustomChordInput('');
-                      }
-                    }}
-                    className="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 font-bold text-[10px] hover:bg-amber-300"
-                  >
-                    + Add
-                  </button>
-                </div>
+                {lyricsInputType === 'chords' && (
+                  <div className="flex items-center bg-white/10 rounded-lg p-0.5 border border-white/15">
+                    <input
+                      type="text"
+                      value={customChordInput}
+                      onChange={(e) => setCustomChordInput(e.target.value)}
+                      placeholder="e.g. F#m"
+                      className="w-16 px-1.5 py-0.5 bg-transparent text-white font-mono text-xs focus:outline-hidden placeholder-slate-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (customChordInput.trim()) {
+                          insertChordAtCursor(customChordInput.trim());
+                          setCustomChordInput('');
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 font-bold text-[10px] hover:bg-amber-300"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                )}
 
                 {/* Section tags */}
                 <div className="hidden md:flex items-center gap-1">
@@ -534,18 +623,37 @@ export default function SongEditorModal({
               {/* Textarea (Edit) */}
               {(editorMode === 'edit' || editorMode === 'split') && (
                 <div className="flex flex-col">
-                  <div className="flex items-center justify-between mb-1.5 text-xs text-slate-500">
-                    <span className="font-bold text-slate-700">Lyrics &amp; Chords (ChordPro Format)</span>
-                    <span className="text-[11px]">Wrap chords in brackets: [G]Amazing [C]grace</span>
-                  </div>
-                  <textarea
-                    ref={textareaRef}
-                    rows={16}
-                    value={lyricsAndChords}
-                    onChange={(e) => setLyricsAndChords(e.target.value)}
-                    placeholder="[Intro]&#10;[G]  [C]  [D]  [G]&#10;&#10;[Verse 1]&#10;[G]The light of Christ has [C]come into the [G]world&#10;..."
-                    className="w-full p-4 rounded-2xl border border-slate-300 bg-slate-900 text-amber-200 font-mono text-xs sm:text-sm leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y flex-1"
-                  />
+                  {lyricsInputType === 'chords' ? (
+                    <>
+                      <div className="flex items-center justify-between mb-1.5 text-xs text-slate-500">
+                        <span className="font-bold text-slate-700">Lyrics &amp; Chords (ChordPro Format)</span>
+                        <span className="text-[11px]">Wrap chords in brackets: [G]Amazing [C]grace</span>
+                      </div>
+                      <textarea
+                        ref={textareaRef}
+                        rows={16}
+                        value={lyricsAndChords}
+                        onChange={(e) => setLyricsAndChords(e.target.value)}
+                        placeholder="[Intro]&#10;[G]  [C]  [D]  [G]&#10;&#10;[Verse 1]&#10;[G]The light of Christ has [C]come into the [G]world&#10;..."
+                        className="w-full p-4 rounded-2xl border border-slate-300 bg-slate-900 text-amber-200 font-mono text-xs sm:text-sm leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y flex-1"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-1.5 text-xs text-slate-500">
+                        <span className="font-bold text-slate-700">Lyrics Only (Presentation Display)</span>
+                        <span className="text-[11px]">Use blank lines or [Verse] / [Chorus] to split slides</span>
+                      </div>
+                      <textarea
+                        ref={lyricsOnlyTextareaRef}
+                        rows={16}
+                        value={lyricsOnly}
+                        onChange={(e) => setLyricsOnly(e.target.value)}
+                        placeholder="[Verse 1]&#10;The light of Christ has come into the world&#10;The light of Christ has come into the world..."
+                        className="w-full p-4 rounded-2xl border-2 border-blue-300 bg-slate-900 text-white font-sans text-sm leading-relaxed focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y flex-1"
+                      />
+                    </>
+                  )}
                 </div>
               )}
 
@@ -553,12 +661,14 @@ export default function SongEditorModal({
               {(editorMode === 'preview' || editorMode === 'split') && (
                 <div className="flex flex-col">
                   <div className="flex items-center justify-between mb-1.5 text-xs text-slate-500">
-                    <span className="font-bold text-slate-700">Live Ultimate Guitar Interactive Preview</span>
-                    <span className="text-[11px] text-blue-600 font-bold">Click any chord to preview diagram</span>
+                    <span className="font-bold text-slate-700">Live Interactive Preview</span>
+                    <span className="text-[11px] text-blue-600 font-bold">Use switch to toggle Chords / Lyrics Only</span>
                   </div>
                   <div className="border border-slate-200 rounded-2xl overflow-hidden flex-1 max-h-[500px] overflow-y-auto">
                     <InteractiveChordSheet
                       content={lyricsAndChords}
+                      lyricsOnly={lyricsOnly}
+                      initialShowLyricsOnly={lyricsInputType === 'lyrics'}
                       originalKey={key}
                     />
                   </div>

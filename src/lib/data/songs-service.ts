@@ -17,6 +17,7 @@ export interface WorshipSong {
   category: 'Praise' | 'Worship' | 'Reflection' | 'Offertory' | 'Gathering' | 'Recessional' | 'Marian' | 'Mass Ordinary';
   ministry?: MinistryType | 'ALL';
   lyricsAndChords: string;
+  lyricsOnly?: string; // Separate clean presentation lyrics (distinct from lyrics with chords)
   ccliNumber?: string;
   audioUrl?: string; // MP3 URL or base64 data URI
   audioFileName?: string;
@@ -321,6 +322,7 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
   let notes = d.notes || local?.notes || '';
   let videoUrl = d.video_url || local?.videoUrl || '';
   let videoFileName = d.video_file_name || local?.videoFileName || '';
+  let lyricsOnly = d.lyrics_only || d.lyricsOnly || local?.lyricsOnly || '';
 
   // 1. If audio_url is actually a YouTube link, route it to youtubeUrl
   if (!youtubeUrl && audioUrl && isYouTubeUrl(audioUrl)) {
@@ -333,7 +335,7 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
     const match = notes.match(/\[YOUTUBE:\s*([^\]]+)\]/);
     if (match) {
       if (!youtubeUrl) youtubeUrl = match[1].trim();
-      notes = notes.replace(/\[YOUTUBE:\s*[^\]]+\]/, '').trim();
+      notes = notes.replace(/\[YOUTUBE:\s*[^\]]+\]/g, '').trim();
     }
   }
 
@@ -342,8 +344,13 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
     const match = notes.match(/\[VIDEO:\s*([^\]]+)\]/);
     if (match) {
       if (!videoUrl) videoUrl = match[1].trim();
-      notes = notes.replace(/\[VIDEO:\s*[^\]]+\]/, '').trim();
+      notes = notes.replace(/\[VIDEO:\s*[^\]]+\]/g, '').trim();
     }
+  }
+
+  // Clean expired/stale blob: URLs from song videoUrl so they don't block default visualizer
+  if (videoUrl && (videoUrl.startsWith('blob:') || videoUrl.startsWith('Uploaded:'))) {
+    videoUrl = '';
   }
 
   // 4. If Video file name was encoded inside notes with [VIDEO_FILE: ...], extract it
@@ -351,7 +358,16 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
     const match = notes.match(/\[VIDEO_FILE:\s*([^\]]+)\]/);
     if (match) {
       if (!videoFileName) videoFileName = match[1].trim();
-      notes = notes.replace(/\[VIDEO_FILE:\s*[^\]]+\]/, '').trim();
+      notes = notes.replace(/\[VIDEO_FILE:\s*[^\]]+\]/g, '').trim();
+    }
+  }
+
+  // 5. If separate Lyrics Only content was encoded inside notes with [LYRICS_ONLY_START]...[LYRICS_ONLY_END], extract it
+  if (notes && notes.includes('[LYRICS_ONLY_START]')) {
+    const match = notes.match(/\[LYRICS_ONLY_START\]([\s\S]*?)\[LYRICS_ONLY_END\]/);
+    if (match) {
+      if (!lyricsOnly) lyricsOnly = match[1].trim();
+      notes = notes.replace(/\[LYRICS_ONLY_START\][\s\S]*?\[LYRICS_ONLY_END\]/g, '').trim();
     }
   }
 
@@ -365,6 +381,7 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
     category: d.category || local?.category || 'Praise',
     ministry: d.ministry || local?.ministry || 'CFC',
     lyricsAndChords: d.lyrics_and_chords || d.lyricsAndChords || local?.lyricsAndChords || '',
+    lyricsOnly: lyricsOnly,
     ccliNumber: d.ccli_number || local?.ccliNumber,
     audioUrl: audioUrl,
     audioFileName: d.audio_file_name || local?.audioFileName,
@@ -383,26 +400,31 @@ export function mapRowToWorshipSong(d: any, local?: WorshipSong): WorshipSong {
  */
 export function mapSongToRow(song: WorshipSong) {
   let finalAudioUrl = song.audioUrl || '';
-  let notes = song.notes || '';
+  let notes = (song.notes || '')
+    .replace(/\[YOUTUBE:\s*[^\]]+\]/g, '')
+    .replace(/\[VIDEO:\s*[^\]]+\]/g, '')
+    .replace(/\[VIDEO_FILE:\s*[^\]]+\]/g, '')
+    .replace(/\[LYRICS_ONLY_START\][\s\S]*?\[LYRICS_ONLY_END\]/g, '')
+    .trim();
 
   if (song.youtubeUrl && !finalAudioUrl) {
     finalAudioUrl = song.youtubeUrl;
   } else if (song.youtubeUrl && finalAudioUrl) {
-    if (!notes.includes('[YOUTUBE:')) {
-      notes = notes ? `${notes}\n[YOUTUBE: ${song.youtubeUrl}]` : `[YOUTUBE: ${song.youtubeUrl}]`;
-    }
+    notes = notes ? `${notes}\n[YOUTUBE: ${song.youtubeUrl}]` : `[YOUTUBE: ${song.youtubeUrl}]`;
   }
 
-  if (song.videoUrl) {
-    if (!notes.includes('[VIDEO:')) {
-      notes = notes ? `${notes}\n[VIDEO: ${song.videoUrl}]` : `[VIDEO: ${song.videoUrl}]`;
-    }
+  if (song.videoUrl && !song.videoUrl.startsWith('blob:') && !song.videoUrl.startsWith('Uploaded:')) {
+    notes = notes ? `${notes}\n[VIDEO: ${song.videoUrl}]` : `[VIDEO: ${song.videoUrl}]`;
   }
 
   if (song.videoFileName) {
-    if (!notes.includes('[VIDEO_FILE:')) {
-      notes = notes ? `${notes}\n[VIDEO_FILE: ${song.videoFileName}]` : `[VIDEO_FILE: ${song.videoFileName}]`;
-    }
+    notes = notes ? `${notes}\n[VIDEO_FILE: ${song.videoFileName}]` : `[VIDEO_FILE: ${song.videoFileName}]`;
+  }
+
+  if (song.lyricsOnly && song.lyricsOnly.trim()) {
+    notes = notes
+      ? `${notes}\n[LYRICS_ONLY_START]\n${song.lyricsOnly.trim()}\n[LYRICS_ONLY_END]`
+      : `[LYRICS_ONLY_START]\n${song.lyricsOnly.trim()}\n[LYRICS_ONLY_END]`;
   }
 
   return {
@@ -567,6 +589,7 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
     category: song.category || 'Praise',
     ministry: song.ministry || 'CFC',
     lyricsAndChords: song.lyricsAndChords || '',
+    lyricsOnly: song.lyricsOnly?.trim() || '',
     ccliNumber: song.ccliNumber || '',
     audioUrl: finalAudioUrl,
     audioFileName: song.audioFileName || '',
@@ -698,6 +721,40 @@ export function getDefaultVisualizerVideo(): string {
 }
 
 /**
+ * Discovers the latest uploaded visualizer video from Supabase Storage ('songs/videos')
+ * as a resilient fallback if the DB configuration record was cleared or not yet initialized.
+ */
+export async function discoverLatestStorageVideoUrl(): Promise<string> {
+  try {
+    const supabase = createClient();
+    if (!supabase) return '';
+    const { data: files, error } = await supabase.storage.from('songs').list('videos', {
+      limit: 20,
+      sortBy: { column: 'created_at', order: 'desc' },
+    });
+    if (error || !files || files.length === 0) return '';
+
+    // Filter out tiny dummy test files (< 50KB) or non-video placeholders
+    const validVideos = files.filter((f: any) => {
+      const name = (f.name || '').toLowerCase();
+      if (!name.match(/\.(mp4|webm|mov|m4v)$/i)) return false;
+      if (name.startsWith('test')) return false;
+      const size = f.metadata?.size ?? f.metadata?.contentLength ?? 100000;
+      return size >= 50000;
+    });
+
+    const chosen = validVideos[0] || files.find((f: any) => (f.metadata?.size ?? 0) > 100000);
+    if (!chosen) return '';
+
+    const { data: pubData } = supabase.storage.from('songs').getPublicUrl(`videos/${chosen.name}`);
+    return pubData?.publicUrl || '';
+  } catch (err) {
+    console.warn('Could not list storage videos:', err);
+    return '';
+  }
+}
+
+/**
  * Fetch chapter visualizer configuration from Supabase DB
  */
 export async function fetchChapterVisualizerSettingsFromDB(): Promise<VisualizerConfig | null> {
@@ -710,13 +767,17 @@ export async function fetchChapterVisualizerSettingsFromDB(): Promise<Visualizer
       .eq('id', SYSTEM_VISUALIZER_SETTINGS_ID)
       .maybeSingle();
 
-    if (error || !data || !data.notes) return null;
+    let parsed: VisualizerConfig = {
+      defaultVideoUrl: '',
+      updatedAt: new Date().toISOString(),
+    };
 
-    let parsed: VisualizerConfig;
-    try {
-      parsed = JSON.parse(data.notes);
-    } catch {
-      parsed = { defaultVideoUrl: data.notes, updatedAt: new Date().toISOString() };
+    if (!error && data && data.notes) {
+      try {
+        parsed = JSON.parse(data.notes);
+      } catch {
+        parsed = { defaultVideoUrl: data.notes, updatedAt: new Date().toISOString() };
+      }
     }
 
     // Clean any expired/temporary local blob URLs that might have been saved
@@ -724,11 +785,17 @@ export async function fetchChapterVisualizerSettingsFromDB(): Promise<Visualizer
       parsed.defaultVideoUrl = '';
     }
 
+    // Fallback: if defaultVideoUrl is empty in DB, auto-discover the latest uploaded video in Supabase storage
+    if (!parsed.defaultVideoUrl) {
+      const discovered = await discoverLatestStorageVideoUrl();
+      if (discovered) {
+        parsed.defaultVideoUrl = discovered;
+      }
+    }
+
     if (isBrowser()) {
       if (parsed.defaultVideoUrl) {
         localStorage.setItem(DEFAULT_VISUALIZER_VIDEO_KEY, parsed.defaultVideoUrl);
-      } else {
-        localStorage.removeItem(DEFAULT_VISUALIZER_VIDEO_KEY);
       }
       if (parsed.fontColor) {
         localStorage.setItem('cfc_presentation_font_color', parsed.fontColor);
@@ -863,6 +930,72 @@ export async function resolveVisualizerVideoUrl(urlOrToken?: string): Promise<st
 
   return token;
 }
+
+/**
+ * Synchronous helper to convert a raw Supabase Storage video URL into the /api/video streaming proxy URL.
+ */
+export function toProxyVideoUrl(rawUrl?: string): string {
+  if (!rawUrl) return '';
+  const trimmed = rawUrl.trim();
+  if (!trimmed || trimmed.startsWith('Uploaded:')) return '';
+  if (trimmed.includes('.supabase.co/storage/v1/object/public/songs/videos/')) {
+    return `/api/video?url=${encodeURIComponent(trimmed)}`;
+  }
+  return trimmed;
+}
+
+/**
+ * Resolves a raw video URL into a reliable, playable URL for <video> elements.
+ * For Supabase Storage videos (which are stored with audio/mpeg MIME to bypass bucket restrictions),
+ * caches the binary in IndexedDB with video/mp4 MIME and returns a local ObjectURL,
+ * bypassing serverless payload limits and MIME restrictions.
+ */
+export async function resolvePlayableVideoUrl(rawUrl: string): Promise<string> {
+  if (!isBrowser() || !rawUrl) return '';
+  const trimmed = rawUrl.trim();
+  if (!trimmed || trimmed.startsWith('Uploaded:')) return '';
+
+  if (isYouTubeUrl(trimmed)) {
+    return trimmed;
+  }
+
+  // Extract underlying Supabase URL if wrapped in /api/video?url=...
+  let directUrl = trimmed;
+  if (trimmed.startsWith('/api/video?url=')) {
+    try {
+      directUrl = decodeURIComponent(trimmed.replace('/api/video?url=', ''));
+    } catch {}
+  }
+
+  if (directUrl.includes('.supabase.co/storage/v1/object/public/songs/videos/')) {
+    const cacheKey = `vid_cache_${directUrl.split('/').pop() || 'default'}`;
+    try {
+      const cachedBlobUrl = await getVideoBlobUrl(cacheKey);
+      if (cachedBlobUrl) {
+        return cachedBlobUrl;
+      }
+    } catch {}
+
+    try {
+      const response = await fetch(directUrl, { mode: 'cors' });
+      if (response.ok) {
+        const buffer = await response.arrayBuffer();
+        if (buffer.byteLength > 1000) {
+          const mp4Blob = new Blob([buffer], { type: 'video/mp4' });
+          const blobUrl = await saveVideoBlob(cacheKey, mp4Blob);
+          return blobUrl;
+        }
+      }
+    } catch (err) {
+      console.warn('Direct CORS video fetch failed, falling back to /api/video proxy:', err);
+    }
+
+    return `/api/video?url=${encodeURIComponent(directUrl)}`;
+  }
+
+  return trimmed;
+}
+
 
 export async function setDefaultVisualizerVideo(url: string, isBlurred?: boolean, blurAmount?: number): Promise<void> {
   await saveChapterVisualizerSettingsToDB({ defaultVideoUrl: url, isBlurred, blurAmount });

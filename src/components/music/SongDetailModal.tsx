@@ -131,6 +131,7 @@ export default function SongDetailModal({
           {/* Interactive Ultimate Guitar Chord Sheet */}
           <InteractiveChordSheet
             content={song.lyricsAndChords}
+            lyricsOnly={song.lyricsOnly}
             originalKey={song.key}
           />
         </div>

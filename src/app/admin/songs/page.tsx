@@ -13,6 +13,8 @@ import {
   getDefaultVisualizerVideo,
   setDefaultVisualizerVideo,
   resolveVisualizerVideoUrl,
+  resolvePlayableVideoUrl,
+  toProxyVideoUrl,
   uploadSongVideo,
   fetchChapterVisualizerSettingsFromDB,
   saveChapterVisualizerSettingsToDB,
@@ -53,10 +55,29 @@ function SongsAdminContent() {
   // Visualizer Video Background Modal
   const [showVisualizerModal, setShowVisualizerModal] = useState<boolean>(false);
   const [defaultVideo, setDefaultVideo] = useState<string>('');
+  const [playableDefaultVideo, setPlayableDefaultVideo] = useState<string>('');
   const [uploadingDefaultVideo, setUploadingDefaultVideo] = useState<boolean>(false);
   const [customVideoUrlInput, setCustomVideoUrlInput] = useState<string>('');
   const [isBlurred, setIsBlurred] = useState<boolean>(false);
   const [blurAmount, setBlurAmount] = useState<number>(8); // px
+
+  // Resolve playable preview URL for defaultVideo
+  useEffect(() => {
+    let active = true;
+    if (!defaultVideo) {
+      setPlayableDefaultVideo('');
+      return;
+    }
+    setPlayableDefaultVideo(toProxyVideoUrl(defaultVideo));
+    resolvePlayableVideoUrl(defaultVideo)
+      .then((resolved) => {
+        if (active && resolved) setPlayableDefaultVideo(resolved);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [defaultVideo]);
 
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -664,12 +685,8 @@ function SongsAdminContent() {
                         />
                       ) : (
                         <video
-                          key={defaultVideo}
-                          src={
-                            defaultVideo.includes('.supabase.co/storage/v1/object/public/songs/videos/')
-                              ? `/api/video?url=${encodeURIComponent(defaultVideo)}`
-                              : defaultVideo
-                          }
+                          key={playableDefaultVideo || defaultVideo}
+                          src={playableDefaultVideo || toProxyVideoUrl(defaultVideo)}
                           autoPlay
                           loop
                           muted

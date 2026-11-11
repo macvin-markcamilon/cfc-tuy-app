@@ -261,9 +261,12 @@ export function parseChordProLine(rawLine: string): ChordProLineParsed {
 /**
  * Extracts clean presentation lyrics (without guitar chords or pure chord lines)
  * from a ChordPro / chord-and-lyric string, preserving section headers and stanza breaks.
+ * If songTitle is provided, ensures the first line is the title of the song.
  */
-export function extractCleanLyricsFromChords(content: string): string {
-  if (!content || typeof content !== 'string') return '';
+export function extractCleanLyricsFromChords(content: string, songTitle?: string): string {
+  if (!content || typeof content !== 'string') {
+    return songTitle && songTitle.trim() ? songTitle.trim() : '';
+  }
 
   const lines = content.split('\n');
   const outputLines: string[] = [];
@@ -314,6 +317,20 @@ export function extractCleanLyricsFromChords(content: string): string {
     }
   }
 
-  return outputLines.join('\n').trim();
+  const extracted = outputLines.join('\n').trim();
+
+  // If songTitle is provided, make sure the first line is the title of the song
+  if (songTitle && songTitle.trim()) {
+    const cleanTitle = songTitle.trim();
+    if (!extracted) {
+      return cleanTitle;
+    }
+    const firstLine = extracted.split('\n')[0]?.trim().toLowerCase();
+    if (firstLine !== cleanTitle.toLowerCase()) {
+      return `${cleanTitle}\n\n${extracted}`;
+    }
+  }
+
+  return extracted;
 }
 

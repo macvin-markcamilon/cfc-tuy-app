@@ -289,10 +289,14 @@ function SongPresentationModalContent({
     const tokens = trimmed.split(/\s+/);
     if (!tokens.length) return false;
 
+    // Strict chord token matching: chords must start with uppercase [A-G] note
+    const chordPattern = /^[A-G][#b]?(m|min|maj|dim|aug|sus|add)?[0-9]*(?:(\/|\/b|\/#)[A-G][#b]?)?$/;
+
     let validCount = 0;
     tokens.forEach((t) => {
-      const c = t.replace(/[^A-Ga-g#0-9/]/g, '');
-      if (getChordShape(c) || /^[A-G][#b]?(m|maj|min|dim|aug|sus|add|7|9|11|13|\/)*$/i.test(c)) {
+      const clean = t.replace(/^[()[\].,;:]+|[()[\].,;:]+$/g, '');
+      if (!clean) return;
+      if (getChordShape(clean) || chordPattern.test(clean)) {
         validCount++;
       }
     });
@@ -349,9 +353,19 @@ function SongPresentationModalContent({
       // Use dedicated lyricsOnly when in Lyrics-Only mode (!showChords) and lyricsOnly is provided
       const useDedicatedLyrics =
         !showChords && Boolean(currentSong.lyricsOnly && currentSong.lyricsOnly.trim().length > 0);
-      const rawSource = useDedicatedLyrics
+      let rawSource = useDedicatedLyrics
         ? currentSong.lyricsOnly || ''
         : currentSong.lyricsAndChords || '';
+
+      // In the lyrics make the first line the title of the song if not already present
+      if (currentSong.title && currentSong.title.trim()) {
+        const cleanTitle = currentSong.title.trim();
+        const firstLine = rawSource.trim().split('\n')[0]?.trim().toLowerCase();
+        if (firstLine !== cleanTitle.toLowerCase()) {
+          rawSource = `${cleanTitle}\n\n${rawSource.trim()}`;
+        }
+      }
+
       const transposedLyrics = useDedicatedLyrics
         ? rawSource
         : transposeSongContent(rawSource, transposeOffset);
@@ -387,16 +401,26 @@ function SongPresentationModalContent({
         let resolvedTitle = rawTitle;
         let resolvedType = rawType;
 
-        if (!resolvedTitle) {
+        // Check if this stanza is the song title (first slide)
+        const isTitleStanza =
+          localStanzaIdx === 0 &&
+          linesToFlush.length === 1 &&
+          (linesToFlush[0].cleanLyricText.trim().toLowerCase() === currentSong.title.trim().toLowerCase() ||
+           currentSong.title.trim().toLowerCase().includes(linesToFlush[0].cleanLyricText.trim().toLowerCase()));
+
+        if (isTitleStanza) {
+          resolvedTitle = 'Title';
+          resolvedType = 'intro';
+        } else if (!resolvedTitle) {
           const hasLyrics = linesToFlush.some((l) => !l.isChordOnly && l.cleanLyricText.length > 0);
           if (!hasLyrics) {
             resolvedTitle = localStanzaIdx === 0 ? 'Intro' : 'Interlude';
             resolvedType = 'intro';
-          } else if (localStanzaIdx === 0) {
+          } else if (verseCounter === 0 && localStanzaIdx <= 1) {
             verseCounter++;
             resolvedTitle = `Verse ${verseCounter}`;
             resolvedType = 'verse';
-          } else if (localStanzaIdx === 1) {
+          } else if (chorusCounter === 0 && (localStanzaIdx === 1 || localStanzaIdx === 2)) {
             chorusCounter++;
             resolvedTitle = 'Chorus';
             resolvedType = 'chorus';
@@ -479,6 +503,21 @@ function SongPresentationModalContent({
             }
             slideTitle = inlineHeader.title;
             slideType = inlineHeader.type;
+            lineIdx++;
+            continue;
+          }
+
+          // If in dedicated pure lyrics presentation mode, treat every line directly as clean lyrics (no chords to strip or misidentify)
+          if (useDedicatedLyrics) {
+            const cleanText = currentLine.trim();
+            if (cleanText) {
+              parsedLines.push({
+                isChordOnly: false,
+                cleanLyricText: cleanText,
+                words: [{ segments: [{ text: cleanText }] }],
+                segments: [{ text: cleanText }],
+              });
+            }
             lineIdx++;
             continue;
           }
@@ -809,23 +848,25 @@ function SongPresentationModalContent({
     return 'lyric-anim-scale-glow';
   }, [transitionStyle, slideDirection]);
 
-  // Dynamic Lyric Font Size calculation based on line count and Apple Music mode
+  // Dynamic Lyric Font Size calculation based on line count and Apple Music mode (50% larger typography)
   const dynamicLyricFontSize = useMemo(() => {
     const count = activeLyricLines.length;
     const isApple = presentationStyle === 'apple';
-    let base = isApple ? 3.1 : 3.6;
+    let base = isApple ? 4.6 : 5.4;
     if (!showChords) {
-      if (count <= 2) base = isApple ? 3.8 : 4.5;
-      else if (count <= 4) base = isApple ? 3.1 : 3.6;
-      else if (count <= 6) base = isApple ? 2.5 : 2.9;
-      else base = isApple ? 2.1 : 2.3;
+      if (count <= 1) base = isApple ? 6.2 : 6.8;
+      else if (count <= 2) base = isApple ? 5.6 : 6.2;
+      else if (count <= 4) base = isApple ? 4.6 : 5.2;
+      else if (count <= 6) base = isApple ? 3.7 : 4.2;
+      else base = isApple ? 3.1 : 3.4;
     } else {
-      if (count <= 2) base = isApple ? 3.2 : 3.8;
-      else if (count <= 4) base = isApple ? 2.6 : 3.1;
-      else if (count <= 6) base = isApple ? 2.2 : 2.5;
-      else base = isApple ? 1.8 : 2.0;
+      if (count <= 1) base = isApple ? 5.2 : 5.8;
+      else if (count <= 2) base = isApple ? 4.7 : 5.4;
+      else if (count <= 4) base = isApple ? 3.8 : 4.4;
+      else if (count <= 6) base = isApple ? 3.2 : 3.6;
+      else base = isApple ? 2.6 : 2.9;
     }
-    return Math.max(1.4, base * fontSizeMultiplier);
+    return Math.max(1.8, base * fontSizeMultiplier);
   }, [activeLyricLines.length, showChords, fontSizeMultiplier, presentationStyle]);
 
   // Handle slide navigation with directional transition tracking
@@ -1372,7 +1413,7 @@ function SongPresentationModalContent({
                 animateLines ? activeTransitionClass : ''
               }`}
               style={{
-                fontSize: `${fontSize}rem`,
+                fontSize: isContextPreview ? `${fontSize}rem` : `clamp(1.75rem, ${fontSize * 0.75}vw + 0.5rem, ${fontSize}rem)`,
                 lineHeight: isContextPreview ? 1.2 : 1.25,
                 fontFamily: 'var(--font-montserrat), "Montserrat", sans-serif',
                 fontWeight: isContextPreview ? 700 : 800,
@@ -1821,20 +1862,20 @@ function SongPresentationModalContent({
             {/* Switch between Lyrics Only and Lyrics with Chords */}
             <div
               className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all border ${
-                showChords ? themeClasses.btnActive : themeClasses.btnBg
+                !showChords ? themeClasses.btnActive : themeClasses.btnBg
               }`}
-              title="Switch between Lyrics Only and Lyrics with Chords (Hotkey: C or S)"
+              title={!showChords ? 'Currently in Lyrics Only presentation (Hotkey: C to toggle)' : 'Currently showing Chords (Hotkey: C to toggle)'}
             >
               <label htmlFor={chordsSwitchId} className="cursor-pointer select-none flex items-center gap-1.5">
-                {showChords ? (
+                {!showChords ? (
                   <>
-                    <Guitar className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">With Chords</span>
+                    <FileText className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="hidden sm:inline">Lyrics Only</span>
                   </>
                 ) : (
                   <>
-                    <FileText className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Lyrics Only</span>
+                    <Guitar className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="hidden sm:inline">With Chords</span>
                   </>
                 )}
               </label>
@@ -1843,8 +1884,8 @@ function SongPresentationModalContent({
                 type="checkbox"
                 // @ts-expect-error progressive enhancement HTML switch attribute
                 switch=""
-                checked={showChords}
-                onChange={(e) => setShowChords(e.target.checked)}
+                checked={!showChords}
+                onChange={(e) => setShowChords(!e.target.checked)}
                 className="cursor-pointer accent-amber-400"
               />
             </div>
@@ -1854,7 +1895,7 @@ function SongPresentationModalContent({
               className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all border ${
                 presentationStyle === 'apple' ? themeClasses.btnActive : themeClasses.btnBg
               }`}
-              title="Apple Music Live Lyrics Mode: blurs previous & upcoming lyrics (Hotkey: L)"
+              title="Apple Lyrics Mode: crisp active stanza with upcoming lyrics blurred below (Hotkey: L)"
             >
               <label htmlFor={appleLyricsSwitchId} className="cursor-pointer select-none flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -2018,43 +2059,11 @@ function SongPresentationModalContent({
               </div>
             ) : presentationStyle === 'apple' ? (
               /* APPLE MUSIC LIVE LYRICS PRESENTATION MODE:
-                 Previous lyrics (above) & upcoming lyrics (below) are blurred and dimmed around the crisp active stanza */
-              <div className="w-full h-full flex flex-col justify-between items-center apple-lyrics-mask py-4 sm:py-6 overflow-hidden">
-                {/* 1. PREVIOUS LYRICS STANZA (BLURRED TOP CONTEXT) */}
-                <div className="w-full flex-1 flex flex-col justify-end items-center pb-4 sm:pb-7 min-h-[72px] sm:min-h-[110px] overflow-hidden">
-                  {prevLyricLines.length > 0 ? (
-                    <div
-                      onClick={goToPrevSlide}
-                      role="button"
-                      tabIndex={-1}
-                      title="Click to return to previous lyrics slide"
-                      className="w-full cursor-pointer transition-all duration-500 ease-out hover:opacity-55 select-none"
-                      style={{
-                        filter: 'blur(4.5px)',
-                        opacity: 0.34,
-                        transform: 'scale(0.86) translateY(-4px)',
-                        transformOrigin:
-                          textAlign === 'left'
-                            ? 'bottom left'
-                            : textAlign === 'right'
-                              ? 'bottom right'
-                              : 'bottom center',
-                      }}
-                    >
-                      {renderLyricLinesBlock(prevLyricLines.slice(-3), {
-                        fontSize: Math.max(1.15, dynamicLyricFontSize * 0.78),
-                        animateLines: false,
-                        isContextPreview: true,
-                      })}
-                    </div>
-                  ) : (
-                    <div className="h-8 sm:h-12" />
-                  )}
-                </div>
-
-                {/* 2. CURRENT ACTIVE LYRICS STANZA (CRISP, FOCUSED & ANIMATED CENTER) */}
+                 Active stanza is front, center and crisp with upcoming lyrics blurred below (top/previous removed) */
+              <div className="w-full h-full flex flex-col justify-center items-center apple-lyrics-mask py-6 sm:py-10 overflow-hidden">
+                {/* 1. CURRENT ACTIVE LYRICS STANZA (CRISP, PROMINENT & ANIMATED CENTER) */}
                 <div
-                  className={`w-full shrink-0 py-3 sm:py-5 z-10 ${activeTransitionClass}`}
+                  className={`w-full shrink-0 py-4 sm:py-6 z-10 ${activeTransitionClass}`}
                   style={{
                     filter: 'blur(0px)',
                     opacity: 1,
@@ -2068,19 +2077,19 @@ function SongPresentationModalContent({
                   })}
                 </div>
 
-                {/* 3. NEXT / AFTER LYRICS STANZA (BLURRED BOTTOM CONTEXT) */}
-                <div className="w-full flex-1 flex flex-col justify-start items-center pt-4 sm:pt-7 min-h-[72px] sm:min-h-[110px] overflow-hidden">
-                  {nextLyricLines.length > 0 ? (
+                {/* 2. UPCOMING / NEXT LYRICS STANZA (BLURRED BOTTOM CONTEXT) */}
+                {nextLyricLines.length > 0 && (
+                  <div className="w-full flex flex-col justify-start items-center pt-4 sm:pt-8 min-h-[72px] sm:min-h-[110px] overflow-hidden">
                     <div
                       onClick={goToNextSlide}
                       role="button"
                       tabIndex={-1}
                       title="Click to advance to next lyrics slide"
-                      className="w-full cursor-pointer transition-all duration-500 ease-out hover:opacity-55 select-none"
+                      className="w-full cursor-pointer transition-all duration-500 ease-out hover:opacity-65 select-none"
                       style={{
-                        filter: 'blur(4.5px)',
-                        opacity: 0.36,
-                        transform: 'scale(0.86) translateY(4px)',
+                        filter: 'blur(3.5px)',
+                        opacity: 0.38,
+                        transform: 'scale(0.88) translateY(6px)',
                         transformOrigin:
                           textAlign === 'left'
                             ? 'top left'
@@ -2089,16 +2098,14 @@ function SongPresentationModalContent({
                               : 'top center',
                       }}
                     >
-                      {renderLyricLinesBlock(nextLyricLines.slice(0, 3), {
-                        fontSize: Math.max(1.15, dynamicLyricFontSize * 0.78),
+                      {renderLyricLinesBlock(nextLyricLines.slice(0, 4), {
+                        fontSize: Math.max(1.3, dynamicLyricFontSize * 0.72),
                         animateLines: false,
                         isContextPreview: true,
                       })}
                     </div>
-                  ) : (
-                    <div className="h-8 sm:h-12" />
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             ) : (
               /* CLASSIC SINGLE-SLIDE PRESENTATION MODE WITH DIRECTIONAL TRANSITION ANIMATION */

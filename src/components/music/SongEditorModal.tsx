@@ -81,7 +81,7 @@ export default function SongEditorModal({
       setCategory(initialSong.category || 'Praise');
       setMinistry(initialSong.ministry || 'CFC');
       setLyricsAndChords(initialSong.lyricsAndChords || '');
-      setLyricsOnly(initialSong.lyricsOnly || '');
+      setLyricsOnly(initialSong.lyricsOnly || extractCleanLyricsFromChords(initialSong.lyricsAndChords || '', initialSong.title));
       setAudioUrl(initialSong.audioUrl || '');
       setAudioFileName(initialSong.audioFileName || '');
       const defaultYt = initialSong.youtubeUrl || (isYouTubeUrl(initialSong.audioUrl) ? initialSong.audioUrl : '') || '';
@@ -182,6 +182,15 @@ export default function SongEditorModal({
 
     try {
       setIsSubmitting(true);
+      let finalLyricsOnly = lyricsOnly.trim();
+      if (finalLyricsOnly && title.trim()) {
+        const cleanTitle = title.trim();
+        const firstLine = finalLyricsOnly.split('\n')[0]?.trim().toLowerCase();
+        if (firstLine !== cleanTitle.toLowerCase()) {
+          finalLyricsOnly = `${cleanTitle}\n\n${finalLyricsOnly}`;
+        }
+      }
+
       await onSave({
         id: initialSong?.id,
         title: title.trim(),
@@ -192,7 +201,7 @@ export default function SongEditorModal({
         category,
         ministry,
         lyricsAndChords,
-        lyricsOnly,
+        lyricsOnly: finalLyricsOnly,
         ccliNumber,
         audioUrl,
         audioFileName,
@@ -527,7 +536,13 @@ export default function SongEditorModal({
                     // @ts-expect-error progressive enhancement HTML switch attribute
                     switch=""
                     checked={lyricsInputType === 'lyrics'}
-                    onChange={(e) => setLyricsInputType(e.target.checked ? 'lyrics' : 'chords')}
+                    onChange={(e) => {
+                      const next = e.target.checked ? 'lyrics' : 'chords';
+                      setLyricsInputType(next);
+                      if (next === 'lyrics' && !lyricsOnly.trim() && title.trim()) {
+                        setLyricsOnly(extractCleanLyricsFromChords(lyricsAndChords, title) || title.trim());
+                      }
+                    }}
                     className="cursor-pointer accent-[#243c81]"
                   />
                 </div>
@@ -536,7 +551,7 @@ export default function SongEditorModal({
               <button
                 type="button"
                 onClick={() => {
-                  const extracted = extractCleanLyricsFromChords(lyricsAndChords);
+                  const extracted = extractCleanLyricsFromChords(lyricsAndChords, title);
                   setLyricsOnly(extracted);
                   setLyricsInputType('lyrics');
                 }}
@@ -668,6 +683,7 @@ export default function SongEditorModal({
                     <InteractiveChordSheet
                       content={lyricsAndChords}
                       lyricsOnly={lyricsOnly}
+                      songTitle={title}
                       initialShowLyricsOnly={lyricsInputType === 'lyrics'}
                       originalKey={key}
                     />

@@ -134,7 +134,7 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
             setCategory(fetched.category || 'Praise');
             setMinistry(fetched.ministry || 'CFC');
             setLyricsAndChords(fetched.lyricsAndChords || '');
-            setLyricsOnly(fetched.lyricsOnly || extractCleanLyricsFromChords(fetched.lyricsAndChords || ''));
+            setLyricsOnly(fetched.lyricsOnly || extractCleanLyricsFromChords(fetched.lyricsAndChords || '', fetched.title));
             setAudioUrl(fetched.audioUrl || '');
             setAudioFileName(fetched.audioFileName || '');
             setYoutubeUrl(fetched.youtubeUrl || '');
@@ -268,6 +268,15 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
 
     try {
       setIsSubmitting(true);
+      let finalLyricsOnly = lyricsOnly.trim();
+      if (finalLyricsOnly && title.trim()) {
+        const cleanTitle = title.trim();
+        const firstLine = finalLyricsOnly.split('\n')[0]?.trim().toLowerCase();
+        if (firstLine !== cleanTitle.toLowerCase()) {
+          finalLyricsOnly = `${cleanTitle}\n\n${finalLyricsOnly}`;
+        }
+      }
+
       const saved = await saveWorshipSong({
         id: initialSong?.id || songId,
         title: title.trim(),
@@ -278,7 +287,7 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
         category,
         ministry,
         lyricsAndChords,
-        lyricsOnly,
+        lyricsOnly: finalLyricsOnly,
         ccliNumber,
         audioUrl,
         audioFileName,
@@ -815,7 +824,13 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
                   // @ts-expect-error progressive enhancement HTML switch attribute
                   switch=""
                   checked={lyricsInputType === 'lyrics'}
-                  onChange={(e) => setLyricsInputType(e.target.checked ? 'lyrics' : 'chords')}
+                  onChange={(e) => {
+                    const next = e.target.checked ? 'lyrics' : 'chords';
+                    setLyricsInputType(next);
+                    if (next === 'lyrics' && !lyricsOnly.trim() && title.trim()) {
+                      setLyricsOnly(extractCleanLyricsFromChords(lyricsAndChords, title) || title.trim());
+                    }
+                  }}
                   className="cursor-pointer accent-[#243c81]"
                 />
               </div>
@@ -825,10 +840,10 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
               <button
                 type="button"
                 onClick={() => {
-                  const extracted = extractCleanLyricsFromChords(lyricsAndChords);
+                  const extracted = extractCleanLyricsFromChords(lyricsAndChords, title);
                   setLyricsOnly(extracted);
                   setLyricsInputType('lyrics');
-                  setToastMsg('Clean presentation lyrics generated from chord sheet!');
+                  setToastMsg('Clean presentation lyrics generated from chord sheet with title!');
                   setTimeout(() => setToastMsg(null), 3500);
                 }}
                 className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-900 border border-amber-400/50 text-xs font-black flex items-center gap-1.5 transition-all active:scale-95"
@@ -982,6 +997,7 @@ export default function SongEditorPage({ songId, isNew = false }: SongEditorPage
                   <InteractiveChordSheet
                     content={lyricsAndChords}
                     lyricsOnly={lyricsOnly}
+                    songTitle={title}
                     initialShowLyricsOnly={lyricsInputType === 'lyrics'}
                     originalKey={key}
                     className="flex-1"

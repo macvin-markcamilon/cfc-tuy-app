@@ -32,6 +32,7 @@ import {
 interface InteractiveChordSheetProps {
   content: string;
   lyricsOnly?: string;
+  songTitle?: string;
   originalKey?: string;
   fontSize?: number;
   className?: string;
@@ -41,6 +42,7 @@ interface InteractiveChordSheetProps {
 export default function InteractiveChordSheet({
   content,
   lyricsOnly,
+  songTitle,
   originalKey = 'G',
   fontSize: initialFontSize = 15,
   className = '',
@@ -105,8 +107,8 @@ export default function InteractiveChordSheet({
     if (lyricsOnly && lyricsOnly.trim()) {
       return lyricsOnly.trim();
     }
-    return extractCleanLyricsFromChords(content);
-  }, [lyricsOnly, content]);
+    return extractCleanLyricsFromChords(content, songTitle);
+  }, [lyricsOnly, content, songTitle]);
 
   // Monitor fullscreen state
   useEffect(() => {
@@ -289,16 +291,19 @@ export default function InteractiveChordSheet({
     const tokens = trimmed.split(/\s+/);
     if (!tokens.length) return false;
 
-    // A chord line has mostly recognized chords
+    // Strict chord token matching: chords must start with uppercase [A-G] note
+    const chordPattern = /^[A-G][#b]?(m|min|maj|dim|aug|sus|add)?[0-9]*(?:(\/|\/b|\/#)[A-G][#b]?)?$/;
+
     let validCount = 0;
     tokens.forEach((t) => {
-      const c = t.replace(/[^A-Ga-g#0-9/]/g, '');
-      if (getChordShape(c) || /^[A-G][#b]?(m|maj|min|dim|aug|sus|add|7|9|11|13|\/)*$/i.test(c)) {
+      const clean = t.replace(/^[()[\].,;:]+|[()[\].,;:]+$/g, '');
+      if (!clean) return;
+      if (getChordShape(clean) || chordPattern.test(clean)) {
         validCount++;
       }
     });
 
-    return validCount / tokens.length >= 0.7;
+    return validCount / tokens.length >= 0.65;
   }
 
   // Handle clicking a chord in the sheet

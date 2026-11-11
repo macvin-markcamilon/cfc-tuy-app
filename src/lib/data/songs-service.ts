@@ -579,9 +579,18 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
     finalAudioUrl = '';
   }
 
+  let cleanLyricsOnly = song.lyricsOnly?.trim() || '';
+  const cleanTitle = song.title?.trim() || 'Untitled Worship Song';
+  if (cleanLyricsOnly && cleanTitle) {
+    const firstLine = cleanLyricsOnly.split('\n')[0]?.trim().toLowerCase();
+    if (firstLine !== cleanTitle.toLowerCase()) {
+      cleanLyricsOnly = `${cleanTitle}\n\n${cleanLyricsOnly}`;
+    }
+  }
+
   const completeSong: WorshipSong = {
     id,
-    title: song.title?.trim() || 'Untitled Worship Song',
+    title: cleanTitle,
     artist: song.artist?.trim() || 'CFC Music Ministry',
     key: song.key || 'G',
     tempo: song.tempo || 'Moderate',
@@ -589,7 +598,7 @@ export async function saveWorshipSong(song: Partial<WorshipSong>): Promise<Worsh
     category: song.category || 'Praise',
     ministry: song.ministry || 'CFC',
     lyricsAndChords: song.lyricsAndChords || '',
-    lyricsOnly: song.lyricsOnly?.trim() || '',
+    lyricsOnly: cleanLyricsOnly,
     ccliNumber: song.ccliNumber || '',
     audioUrl: finalAudioUrl,
     audioFileName: song.audioFileName || '',
